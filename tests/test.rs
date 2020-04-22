@@ -15,7 +15,7 @@ fn test_specs() {
         let result = parse_text(&json_file_text).expect("Expected no error.");
         let result_text = parse_result_to_test_str(&result);
         let expected_text = fs::read_to_string(&text_file_path).expect("Expected to read expected file.").replace("\r\n", "\n");
-        fs::write(&text_file_path, result_text.clone()).unwrap();
+        // fs::write(&text_file_path, result_text.clone()).unwrap();
         assert_eq!(result_text.trim(), expected_text.trim());
     }
 }
@@ -84,7 +84,7 @@ fn value_to_test_str(value: &Value) -> String {
 fn range_to_test_str(range: &Range) -> String {
     let mut text = String::new();
     text.push_str("\"range\": {\n");
-    text.push_str(&format!("  \"pos\": {},\n", range.pos));
+    text.push_str(&format!("  \"start\": {},\n", range.start));
     text.push_str(&format!("  \"end\": {},\n", range.end));
     text.push_str(&format!("  \"startLine\": {},\n", range.start_line));
     text.push_str(&format!("  \"endLine\": {}\n", range.end_line));

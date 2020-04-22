@@ -29,7 +29,7 @@ impl ImmutableString {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Range {
     /// Start position of the node in the text.
-    pub pos: usize,
+    pub start: usize,
     /// End position of the node in the text.
     pub end: usize,
     /// Line of the start position of the node in the text.

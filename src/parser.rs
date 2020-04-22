@@ -57,7 +57,7 @@ impl Context {
 
     pub fn start_range(&mut self) {
         self.range_stack.push(Range {
-            pos: self.scanner.token_start(),
+            start: self.scanner.token_start(),
             start_line: self.scanner.token_start_line(),
             end: 0,
             end_line: 0,
@@ -73,7 +73,7 @@ impl Context {
 
     pub fn create_range_from_last_token(&self) -> Range {
         Range {
-            pos: self.scanner.token_start(),
+            start: self.scanner.token_start(),
             end: self.scanner.token_end(),
             start_line: self.scanner.token_start_line(),
             end_line: self.scanner.token_end_line(),

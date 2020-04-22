@@ -2,6 +2,7 @@ use super::tokens::Token;
 use super::errors::*;
 use super::common::ImmutableString;
 
+/// Converts text into a stream of tokens.
 pub struct Scanner {
     pos: usize,
     line_number: usize,
@@ -12,6 +13,7 @@ pub struct Scanner {
 }
 
 impl Scanner {
+    /// Creates a new scanner based on the provided text.
     pub fn new(text: &str) -> Scanner {
         Scanner {
             pos: 0,
@@ -23,6 +25,7 @@ impl Scanner {
         }
     }
 
+    /// Moves to and returns the next token.
     pub fn scan(&mut self) -> Result<Option<Token>, ParseError> {
         self.skip_whitespace();
         self.token_start = self.pos;
@@ -88,22 +91,27 @@ impl Scanner {
         }
     }
 
+    /// Gets the start position of the token.
     pub fn token_start(&self) -> usize {
         self.token_start
     }
 
+    /// Gets the end position of the token.
     pub fn token_end(&self) -> usize {
         self.pos
     }
 
+    /// Gets the line the token starts on.
     pub fn token_start_line(&self) -> usize {
         self.token_start_line
     }
 
+    /// Gets the line the token ends on.
     pub fn token_end_line(&self) -> usize {
         self.line_number
     }
 
+    /// Gets the current token.
     pub fn token(&self) -> Option<Token> {
         self.current_token.as_ref().map(|x| x.to_owned())
     }

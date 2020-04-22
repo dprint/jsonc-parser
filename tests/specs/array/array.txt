@@ -2,7 +2,7 @@
   "value": {
     "type": "array",
     "range": {
-      "pos": 0,
+      "start": 0,
       "end": 55,
       "startLine": 0,
       "endLine": 0
@@ -11,7 +11,7 @@
       {
         "type": "string",
         "range": {
-          "pos": 1,
+          "start": 1,
           "end": 7,
           "startLine": 0,
           "endLine": 0
@@ -21,7 +21,7 @@
       {
         "type": "number",
         "range": {
-          "pos": 9,
+          "start": 9,
           "end": 10,
           "startLine": 0,
           "endLine": 0
@@ -31,7 +31,7 @@
       {
         "type": "object",
         "range": {
-          "pos": 12,
+          "start": 12,
           "end": 25,
           "startLine": 0,
           "endLine": 0
@@ -40,7 +40,7 @@
           {
             "type": "objectProp",
             "range": {
-              "pos": 14,
+              "start": 14,
               "end": 23,
               "startLine": 0,
               "endLine": 0
@@ -48,7 +48,7 @@
             "name": {
               "type": "string",
               "range": {
-                "pos": 14,
+                "start": 14,
                 "end": 20,
                 "startLine": 0,
                 "endLine": 0
@@ -58,7 +58,7 @@
             "value": {
               "type": "number",
               "range": {
-                "pos": 22,
+                "start": 22,
                 "end": 23,
                 "startLine": 0,
                 "endLine": 0
@@ -71,7 +71,7 @@
       {
         "type": "array",
         "range": {
-          "pos": 27,
+          "start": 27,
           "end": 35,
           "startLine": 0,
           "endLine": 0
@@ -80,7 +80,7 @@
           {
             "type": "string",
             "range": {
-              "pos": 28,
+              "start": 28,
               "end": 34,
               "startLine": 0,
               "endLine": 0
@@ -92,7 +92,7 @@
       {
         "type": "boolean",
         "range": {
-          "pos": 37,
+          "start": 37,
           "end": 41,
           "startLine": 0,
           "endLine": 0
@@ -102,7 +102,7 @@
       {
         "type": "boolean",
         "range": {
-          "pos": 43,
+          "start": 43,
           "end": 48,
           "startLine": 0,
           "endLine": 0
@@ -112,7 +112,7 @@
       {
         "type": "null",
         "range": {
-          "pos": 50,
+          "start": 50,
           "end": 54,
           "startLine": 0,
           "endLine": 0
