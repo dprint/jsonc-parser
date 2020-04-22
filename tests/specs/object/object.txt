@@ -1,0 +1,248 @@
+{
+  "value": {
+    "type": "object",
+    "range": {
+      "pos": 0,
+      "end": 153,
+      "startLine": 0,
+      "endLine": 10
+    },
+    "properties": [
+      {
+        "type": "objectProp",
+        "range": {
+          "pos": 6,
+          "end": 17,
+          "startLine": 1,
+          "endLine": 1
+        },
+        "name": {
+          "type": "string",
+          "range": {
+            "pos": 6,
+            "end": 14,
+            "startLine": 1,
+            "endLine": 1
+          },
+          "value": "number"
+        },
+        "value": {
+          "type": "number",
+          "range": {
+            "pos": 16,
+            "end": 17,
+            "startLine": 1,
+            "endLine": 1
+          },
+          "value": "5"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "pos": 23,
+          "end": 38,
+          "startLine": 2,
+          "endLine": 2
+        },
+        "name": {
+          "type": "string",
+          "range": {
+            "pos": 23,
+            "end": 31,
+            "startLine": 2,
+            "endLine": 2
+          },
+          "value": "string"
+        },
+        "value": {
+          "type": "string",
+          "range": {
+            "pos": 33,
+            "end": 38,
+            "startLine": 2,
+            "endLine": 2
+          },
+          "value": "str"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "pos": 44,
+          "end": 78,
+          "startLine": 3,
+          "endLine": 5
+        },
+        "name": {
+          "type": "string",
+          "range": {
+            "pos": 44,
+            "end": 52,
+            "startLine": 3,
+            "endLine": 3
+          },
+          "value": "object"
+        },
+        "value": {
+          "type": "object",
+          "range": {
+            "pos": 54,
+            "end": 78,
+            "startLine": 3,
+            "endLine": 5
+          },
+          "properties": [
+            {
+              "type": "objectProp",
+              "range": {
+                "pos": 64,
+                "end": 72,
+                "startLine": 4,
+                "endLine": 4
+              },
+              "name": {
+                "type": "string",
+                "range": {
+                  "pos": 64,
+                  "end": 69,
+                  "startLine": 4,
+                  "endLine": 4
+                },
+                "value": "obj"
+              },
+              "value": {
+                "type": "number",
+                "range": {
+                  "pos": 71,
+                  "end": 72,
+                  "startLine": 4,
+                  "endLine": 4
+                },
+                "value": "5"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "pos": 84,
+          "end": 95,
+          "startLine": 6,
+          "endLine": 6
+        },
+        "name": {
+          "type": "string",
+          "range": {
+            "pos": 84,
+            "end": 91,
+            "startLine": 6,
+            "endLine": 6
+          },
+          "value": "array"
+        },
+        "value": {
+          "type": "array",
+          "range": {
+            "pos": 93,
+            "end": 95,
+            "startLine": 6,
+            "endLine": 6
+          },
+          "elements": [
+          ]
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "pos": 101,
+          "end": 113,
+          "startLine": 7,
+          "endLine": 7
+        },
+        "name": {
+          "type": "string",
+          "range": {
+            "pos": 101,
+            "end": 107,
+            "startLine": 7,
+            "endLine": 7
+          },
+          "value": "true"
+        },
+        "value": {
+          "type": "boolean",
+          "range": {
+            "pos": 109,
+            "end": 113,
+            "startLine": 7,
+            "endLine": 7
+          },
+          "value": "true"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "pos": 119,
+          "end": 133,
+          "startLine": 8,
+          "endLine": 8
+        },
+        "name": {
+          "type": "string",
+          "range": {
+            "pos": 119,
+            "end": 126,
+            "startLine": 8,
+            "endLine": 8
+          },
+          "value": "false"
+        },
+        "value": {
+          "type": "boolean",
+          "range": {
+            "pos": 128,
+            "end": 133,
+            "startLine": 8,
+            "endLine": 8
+          },
+          "value": "false"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "pos": 139,
+          "end": 151,
+          "startLine": 9,
+          "endLine": 9
+        },
+        "name": {
+          "type": "string",
+          "range": {
+            "pos": 139,
+            "end": 145,
+            "startLine": 9,
+            "endLine": 9
+          },
+          "value": "null"
+        },
+        "value": {
+          "type": "null",
+          "range": {
+            "pos": 147,
+            "end": 151,
+            "startLine": 9,
+            "endLine": 9
+          }
+        }
+      }
+    ]
+  },
+  "comments": [
+  ]
+}

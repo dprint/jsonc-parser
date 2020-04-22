@@ -1,5 +1,9 @@
+pub mod common;
+pub mod ast;
+pub mod errors;
+pub mod tokens;
+mod parser;
 mod scanner;
-mod types;
 
-pub use scanner::Scanner;
-pub use types::*;
+pub use parser::*;
+pub use scanner::*;

@@ -1,40 +1,32 @@
-use super::types::*;
-
-#[derive(Debug)]
-pub struct TokenError {
-    pub pos: usize,
-    pub message: String,
-}
-
-impl TokenError {
-    fn new(pos: usize, message: &str) -> TokenError {
-        TokenError {
-            pos,
-            message: String::from(message),
-        }
-    }
-}
+use super::tokens::Token;
+use super::errors::*;
+use super::common::ImmutableString;
 
 pub struct Scanner {
     pos: usize,
     line_number: usize,
     token_start: usize,
+    token_start_line: usize,
     chars: Vec<char>, // todo: use an iterator instead?
+    current_token: Option<Token>,
 }
 
 impl Scanner {
     pub fn new(text: &str) -> Scanner {
         Scanner {
             pos: 0,
-            token_start: 0,
             line_number: 0,
+            token_start: 0,
+            token_start_line: 0,
             chars: text.chars().collect(),
+            current_token: None,
         }
     }
 
-    pub fn move_next(&mut self) -> Result<Option<Token>, TokenError> {
+    pub fn scan(&mut self) -> Result<Option<Token>, ParseError> {
         self.skip_whitespace();
         self.token_start = self.pos;
+        self.token_start_line = self.line_number;
         if let Some(current_char) = self.current_char() {
             let token_result = match current_char {
                 '{' => {
@@ -66,7 +58,7 @@ impl Scanner {
                     match self.peek_char() {
                         Some('/') => Ok(self.parse_comment_line()),
                         Some('*') => self.parse_comment_block(),
-                        _ => Err(TokenError::new(self.token_start, "Unexpected token.")),
+                        _ => Err(ParseError::new(self.token_start, "Unexpected token.")),
                     }
                 },
                 _ => {
@@ -79,23 +71,44 @@ impl Scanner {
                     } else if self.try_move_word("null") {
                         Ok(Token::Null)
                     } else {
-                        Err(TokenError {
-                            pos: self.token_start,
-                            message: String::from("Unexpected token."),
-                        })
+                        Err(ParseError::new(self.token_start, "Unexpected token."))
                     }
                 }
             };
             match token_result {
-                Ok(token) => Ok(Some(token)),
+                Ok(token) => {
+                    self.current_token = Some(token.clone());
+                    Ok(Some(token))
+                },
                 Err(err) => Err(err),
             }
         } else {
+            self.current_token = None;
             Ok(None)
         }
     }
 
-    fn parse_string(&mut self) -> Result<Token, TokenError> {
+    pub fn token_start(&self) -> usize {
+        self.token_start
+    }
+
+    pub fn token_end(&self) -> usize {
+        self.pos
+    }
+
+    pub fn token_start_line(&self) -> usize {
+        self.token_start_line
+    }
+
+    pub fn token_end_line(&self) -> usize {
+        self.line_number
+    }
+
+    pub fn token(&self) -> Option<Token> {
+        self.current_token.as_ref().map(|x| x.to_owned())
+    }
+
+    fn parse_string(&mut self) -> Result<Token, ParseError> {
         #[cfg(debug_assertions)]
         self.assert_char('"');
         let start_pos = self.pos;
@@ -118,11 +131,11 @@ impl Scanner {
                                 text.push(current_char);
                             }
                             if !self.is_hex() {
-                                return Err(TokenError::new(hex_start_pos, "Expected four hex digits."));
+                                return Err(ParseError::new(hex_start_pos, "Expected four hex digits."));
                             }
                         }
                     },
-                    _ => return Err(TokenError::new(start_pos, "Invalid escape.")),
+                    _ => return Err(ParseError::new(start_pos, "Invalid escape.")),
                 }
                 last_was_backslash = false;
             } else if current_char == '"' {
@@ -135,13 +148,14 @@ impl Scanner {
         }
 
         if found_end_string {
-            Ok(Token::String(text))
+            self.move_next_char();
+            Ok(Token::String(ImmutableString::new(text)))
         } else {
-            Err(TokenError::new(start_pos, "Unterminated string literal"))
+            Err(ParseError::new(start_pos, "Unterminated string literal"))
         }
     }
 
-    fn parse_number(&mut self) -> Result<Token, TokenError> {
+    fn parse_number(&mut self) -> Result<Token, ParseError> {
         let mut text = String::new();
 
         if self.is_negative_sign() {
@@ -160,7 +174,7 @@ impl Scanner {
                 self.move_next_char();
             }
         } else {
-            return Err(TokenError::new(self.pos, "Expected a digit to follow a negative sign."));
+            return Err(ParseError::new(self.pos, "Expected a digit to follow a negative sign."));
         }
 
         if self.is_decimal_point() {
@@ -168,7 +182,7 @@ impl Scanner {
             self.move_next_char();
 
             if !self.is_digit() {
-                return Err(TokenError::new(self.pos, "Expected a digit."));
+                return Err(ParseError::new(self.pos, "Expected a digit."));
             }
 
             while self.is_digit() {
@@ -185,7 +199,7 @@ impl Scanner {
                         text.push(self.current_char().unwrap());
                         self.move_next_char();
                         if !self.is_digit() {
-                            return Err(TokenError::new(self.pos, "Expected a digit."));
+                            return Err(ParseError::new(self.pos, "Expected a digit."));
                         }
                         while self.is_digit() {
                             text.push(self.current_char().unwrap());
@@ -193,7 +207,7 @@ impl Scanner {
                         }
                     }
                     _ => {
-                        return Err(TokenError::new(self.pos, "Expected plus or minus symbol in number literal."));
+                        return Err(ParseError::new(self.pos, "Expected plus or minus symbol in number literal."));
                     }
                 }
             }
@@ -201,7 +215,7 @@ impl Scanner {
         }
 
 
-        Ok(Token::Number(text))
+        Ok(Token::Number(ImmutableString::new(text)))
     }
 
     fn parse_comment_line(&mut self) -> Token {
@@ -217,10 +231,10 @@ impl Scanner {
             text.push(current_char);
         }
 
-        Token::CommentLine(text)
+        Token::CommentLine(ImmutableString::new(text))
     }
 
-    fn parse_comment_block(&mut self) -> Result<Token, TokenError> {
+    fn parse_comment_block(&mut self) -> Result<Token, ParseError> {
         let token_start = self.pos;
         let mut text = String::new();
         self.assert_then_move_char('/');
@@ -239,9 +253,9 @@ impl Scanner {
         if found_end {
             self.assert_then_move_char('*');
             self.assert_then_move_char('/');
-            Ok(Token::CommentBlock(text))
+            Ok(Token::CommentBlock(ImmutableString::new(text)))
         } else {
-            Err(TokenError::new(token_start, "Unterminated comment block."))
+            Err(ParseError::new(token_start, "Unterminated comment block."))
         }
     }
 
@@ -293,12 +307,11 @@ impl Scanner {
     }
 
     fn move_next_char(&mut self) -> Option<char> {
-        self.pos += 1;
-        let result = self.current_char();
-        if result == Some('\n') {
+        if self.current_char() == Some('\n') {
             self.line_number += 1;
         }
-        result
+        self.pos += 1;
+        self.current_char()
     }
 
     fn peek_char(&self) -> Option<char> {
@@ -352,16 +365,17 @@ impl Scanner {
 #[cfg(test)]
 mod tests {
     use super::Scanner;
-    use super::super::types::Token;
+    use super::super::common::{ImmutableString};
+    use super::super::tokens::{Token};
 
     #[test]
     fn it_tokenizes_string() {
         assert_has_tokens(
-            "\"t\\\"est\", \"\\r\\n\\n\\ua0B9\",",
+            r#""t\"est", "\r\n\n\ua0B9","#,
             vec![
-                Token::String(String::from("t\\\"est")),
+                Token::String(ImmutableString::from(r#"t\"est"#)),
                 Token::Comma,
-                Token::String(String::from("\\r\\n\\n\\ua0B9")),
+                Token::String(ImmutableString::from("\\r\\n\\n\\ua0B9")),
                 Token::Comma,
             ]
         );
@@ -372,15 +386,15 @@ mod tests {
         assert_has_tokens(
             "0, 0.123, -198, 0e-345, 0.3e+025,",
             vec![
-                Token::Number(String::from("0")),
+                Token::Number(ImmutableString::from("0")),
                 Token::Comma,
-                Token::Number(String::from("0.123")),
+                Token::Number(ImmutableString::from("0.123")),
                 Token::Comma,
-                Token::Number(String::from("-198")),
+                Token::Number(ImmutableString::from("-198")),
                 Token::Comma,
-                Token::Number(String::from("0e-345")),
+                Token::Number(ImmutableString::from("0e-345")),
                 Token::Comma,
-                Token::Number(String::from("0.3e+025")),
+                Token::Number(ImmutableString::from("0.3e+025")),
                 Token::Comma,
             ]
         );
@@ -411,9 +425,9 @@ mod tests {
         assert_has_tokens(
             "//test\n//t\r\n// test\n,",
             vec![
-                Token::CommentLine(String::from("test")),
-                Token::CommentLine(String::from("t")),
-                Token::CommentLine(String::from(" test")),
+                Token::CommentLine(ImmutableString::from("test")),
+                Token::CommentLine(ImmutableString::from("t")),
+                Token::CommentLine(ImmutableString::from(" test")),
                 Token::Comma,
             ]);
     }
@@ -423,8 +437,8 @@ mod tests {
         assert_has_tokens(
             "/*test\n *//* test*/,",
             vec![
-                Token::CommentBlock(String::from("test\n ")),
-                Token::CommentBlock(String::from(" test")),
+                Token::CommentBlock(ImmutableString::from("test\n ")),
+                Token::CommentBlock(ImmutableString::from(" test")),
                 Token::Comma,
             ]);
     }
@@ -434,7 +448,7 @@ mod tests {
         let mut scanned_tokens = Vec::new();
 
         loop {
-            match scanner.move_next() {
+            match scanner.scan() {
                 Ok(Some(token)) => scanned_tokens.push(token),
                 Ok(None) => break,
                 Err(err) => panic!("Error parsing: {:?}", err),
