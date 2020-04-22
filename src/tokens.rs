@@ -1,5 +1,6 @@
-use super::common::ImmutableString;
+use super::common::{ImmutableString, Range};
 
+/// A token found while scanning.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     OpenBrace,
@@ -14,4 +15,10 @@ pub enum Token {
     Null,
     CommentLine(ImmutableString),
     CommentBlock(ImmutableString),
+}
+
+/// A token with positional information.
+pub struct TokenAndRange {
+    pub range: Range,
+    pub token: Token,
 }

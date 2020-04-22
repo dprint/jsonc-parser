@@ -1,30 +1,30 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use super::scanner::Scanner;
-use super::common::ImmutableString;
-use super::tokens::Token;
+use super::common::{ImmutableString, Range};
+use super::tokens::{Token, TokenAndRange};
 use super::ast::*;
 use super::errors::*;
 
-pub type CommentCollection = HashMap<usize, Rc<Vec<Comment>>>;
-
-/// Result of parsing the file.
+/// Result of parsing the text.
 pub struct ParseResult {
-    /// Collection of comments in the file. The key is the start and end position of tokens.
-    pub comments: CommentCollection,
+    /// Collection of comments in the text.
+    ///
+    /// Remarks: The key is the start and end position of the tokens.
+    pub comments: HashMap<usize, Rc<Vec<Comment>>>,
     /// The JSON value the text contained.
     pub value: Option<Value>,
     /// Collection of tokens (excluding any comments).
-    pub tokens: Vec<Token>,
+    pub tokens: Vec<TokenAndRange>,
 }
 
 struct Context {
     scanner: Scanner,
-    comments: CommentCollection,
+    comments: HashMap<usize, Rc<Vec<Comment>>>,
     current_comments: Option<Vec<Comment>>,
     last_token_end: usize,
-    ranges: Vec<Range>,
-    tokens: Vec<Token>,
+    range_stack: Vec<Range>,
+    tokens: Vec<TokenAndRange>,
 }
 
 impl Context {
@@ -42,7 +42,10 @@ impl Context {
 
         // capture the token
         if let Some(token) = &token {
-            self.tokens.push(token.clone());
+            self.tokens.push(TokenAndRange {
+                token: token.clone(),
+                range: self.create_range_from_last_token(),
+            });
         }
 
         Ok(token)
@@ -53,7 +56,7 @@ impl Context {
     }
 
     pub fn start_range(&mut self) {
-        self.ranges.push(Range {
+        self.range_stack.push(Range {
             pos: self.scanner.token_start(),
             start_line: self.scanner.token_start_line(),
             end: 0,
@@ -62,7 +65,7 @@ impl Context {
     }
 
     pub fn end_range(&mut self) -> Range {
-        let mut range = self.ranges.pop().expect("Range was popped from the stack, but the stack was empty.");
+        let mut range = self.range_stack.pop().expect("Range was popped from the stack, but the stack was empty.");
         range.end = self.scanner.token_end();
         range.end_line = self.scanner.token_end_line();
         range
@@ -111,7 +114,7 @@ impl Context {
     }
 }
 
-/// Parses JSONC to an AST with comments.
+/// Parses a string containing JSONC to an AST with comments and tokens.
 ///
 /// # Example
 ///
@@ -127,7 +130,7 @@ pub fn parse_text(text: &str) -> Result<ParseResult, ParseError> {
         comments: HashMap::new(),
         current_comments: None,
         last_token_end: 0,
-        ranges: Vec::new(),
+        range_stack: Vec::new(),
         tokens: Vec::new(),
     };
     context.scan()?;
@@ -136,6 +139,8 @@ pub fn parse_text(text: &str) -> Result<ParseResult, ParseError> {
     if context.scan()?.is_some() {
         return Err(context.create_parse_error("Text cannot contain more than one JSON value."));
     }
+
+    debug_assert!(context.range_stack.is_empty());
 
     Ok(ParseResult {
         comments: context.comments,

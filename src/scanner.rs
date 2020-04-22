@@ -293,9 +293,9 @@ impl Scanner {
         true
     }
 
-    fn assert_then_move_char(&mut self, character: char) {
+    fn assert_then_move_char(&mut self, _character: char) {
         #[cfg(debug_assertions)]
-        self.assert_char(character);
+        self.assert_char(_character);
 
         self.move_next_char();
     }

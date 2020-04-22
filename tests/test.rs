@@ -5,6 +5,7 @@ use std::fs::{self};
 use std::path::{Path, PathBuf};
 use jsonc_parser::*;
 use jsonc_parser::ast::*;
+use jsonc_parser::common::*;
 
 #[test]
 fn test_specs() {

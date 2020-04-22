@@ -24,3 +24,16 @@ impl ImmutableString {
         }
     }
 }
+
+/// Positional information about a start and end point in the text.
+#[derive(Debug, PartialEq, Clone)]
+pub struct Range {
+    /// Start position of the node in the text.
+    pub pos: usize,
+    /// End position of the node in the text.
+    pub end: usize,
+    /// Line of the start position of the node in the text.
+    pub start_line: usize,
+    /// Line of the end position of the node in the text.
+    pub end_line: usize,
+}
