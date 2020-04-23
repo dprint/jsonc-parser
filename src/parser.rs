@@ -182,8 +182,8 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
             Some(Token::String(prop_name)) => {
                 properties.push(parse_object_property(context, prop_name)?);
             }
-            None => return Err(context.create_parse_error("Unterminated array literal.")),
-            _ => return Err(context.create_parse_error("Unexpected token in array literal.")),
+            None => return Err(context.create_parse_error("Unterminated object.")),
+            _ => return Err(context.create_parse_error("Unexpected token in object.")),
         }
 
         // skip the comma
@@ -232,10 +232,10 @@ fn parse_array(context: &mut Context) -> Result<Array, ParseError> {
     loop {
         match context.token() {
             Some(Token::CloseBracket) => break,
-            None => return Err(context.create_parse_error("Unterminated array literal.")),
+            None => return Err(context.create_parse_error("Unterminated array.")),
             _ => match parse_value(context)? {
                 Some(value) => elements.push(value),
-                None => return Err(context.create_parse_error("Unterminated array literal.")),
+                None => return Err(context.create_parse_error("Unterminated array.")),
             }
         }
 
@@ -278,5 +278,43 @@ fn create_number_lit(context: &Context, value: ImmutableString) -> NumberLit {
 fn create_null_keyword(context: &Context) -> NullKeyword {
     NullKeyword {
         range: context.create_range_from_last_token(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_text;
+
+    #[test]
+    fn it_should_error_when_has_multiple_values() {
+        assert_has_error("[][]", "Text cannot contain more than one JSON value.");
+    }
+
+    #[test]
+    fn it_should_error_when_object_is_not_terminated() {
+        assert_has_error("{", "Unterminated object.");
+    }
+
+    #[test]
+    fn it_should_error_when_object_has_unexpected_token() {
+        assert_has_error("{ 2 }", "Unexpected token in object.");
+    }
+
+    #[test]
+    fn it_should_error_when_array_is_not_terminated() {
+        assert_has_error("[", "Unterminated array.");
+    }
+
+    #[test]
+    fn it_should_error_when_array_has_unexpected_token() {
+        assert_has_error("[:]", "Unexpected colon.");
+    }
+
+    fn assert_has_error(text: &str, message: &str) {
+        let result = parse_text(text);
+        match result {
+            Ok(_) => panic!("Expected error, but did not find one."),
+            Err(err) => assert_eq!(err.message, message),
+        }
     }
 }
