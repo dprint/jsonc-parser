@@ -6,12 +6,17 @@ use super::tokens::{Token, TokenAndRange};
 use super::ast::*;
 use super::errors::*;
 
+/// Map where the comments are stored in collections where
+/// the key is the previous token end or start of file or
+/// next token start or end of the file.
+pub type CommentMap = HashMap<usize, Rc<Vec<Comment>>>;
+
 /// Result of parsing the text.
 pub struct ParseResult {
     /// Collection of comments in the text.
     ///
     /// Remarks: The key is the start and end position of the tokens.
-    pub comments: HashMap<usize, Rc<Vec<Comment>>>,
+    pub comments: CommentMap,
     /// The JSON value the text contained.
     pub value: Option<Value>,
     /// Collection of tokens (excluding any comments).
@@ -20,7 +25,7 @@ pub struct ParseResult {
 
 struct Context {
     scanner: Scanner,
-    comments: HashMap<usize, Rc<Vec<Comment>>>,
+    comments: CommentMap,
     current_comments: Option<Vec<Comment>>,
     last_token_end: usize,
     range_stack: Vec<Range>,

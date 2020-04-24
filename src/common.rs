@@ -37,3 +37,20 @@ pub struct Range {
     /// Line of the end position of the node in the text.
     pub end_line: usize,
 }
+
+/// Represents an object that has a range in the text.
+pub trait Ranged {
+    /// Gets the range.
+    fn range(&self) -> &Range;
+
+    /// Gets the index of the first character in the text.
+    fn start(&self) -> usize { self.range().start }
+    /// Gets the line number of the start position in the text.
+    fn start_line(&self) -> usize { self.range().start_line }
+    /// Gets the index after the last character in the text.
+    fn end(&self) -> usize { self.range().end }
+    /// Gets the line number of the end position in the text.
+    fn end_line(&self) -> usize { self.range().end_line }
+    /// Gets the text from the provided string.
+    fn text<'a>(&self, text: &'a str) -> &'a str { &text[self.start()..self.end()] }
+}

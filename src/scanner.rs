@@ -4,7 +4,8 @@ use super::common::ImmutableString;
 
 /// Converts text into a stream of tokens.
 pub struct Scanner {
-    pos: usize,
+    char_index: usize,
+    byte_index: usize,
     line_number: usize,
     token_start: usize,
     token_start_line: usize,
@@ -16,7 +17,8 @@ impl Scanner {
     /// Creates a new scanner based on the provided text.
     pub fn new(text: &str) -> Scanner {
         Scanner {
-            pos: 0,
+            char_index: 0,
+            byte_index: 0,
             line_number: 0,
             token_start: 0,
             token_start_line: 0,
@@ -28,7 +30,7 @@ impl Scanner {
     /// Moves to and returns the next token.
     pub fn scan(&mut self) -> Result<Option<Token>, ParseError> {
         self.skip_whitespace();
-        self.token_start = self.pos;
+        self.token_start = self.byte_index;
         self.token_start_line = self.line_number;
         if let Some(current_char) = self.current_char() {
             let token_result = match current_char {
@@ -98,7 +100,7 @@ impl Scanner {
 
     /// Gets the end position of the token.
     pub fn token_end(&self) -> usize {
-        self.pos
+        self.byte_index
     }
 
     /// Gets the line the token starts on.
@@ -119,7 +121,7 @@ impl Scanner {
     fn parse_string(&mut self) -> Result<Token, ParseError> {
         #[cfg(debug_assertions)]
         self.assert_char('"');
-        let start_pos = self.pos;
+        let start_byte_index = self.byte_index;
         let mut text = String::new();
         let mut last_was_backslash = false;
         let mut found_end_string = false;
@@ -132,7 +134,7 @@ impl Scanner {
                     },
                     'u' => {
                         text.push(current_char);
-                        let hex_start_pos = self.pos - 1;
+                        let hex_start_pos = self.byte_index - '\\'.len_utf8();
                         // expect four hex values
                         for _ in 0..4 {
                             if let Some(current_char) = self.move_next_char() {
@@ -143,7 +145,7 @@ impl Scanner {
                             }
                         }
                     },
-                    _ => return Err(ParseError::new(start_pos, "Invalid escape.")),
+                    _ => return Err(ParseError::new(start_byte_index, "Invalid escape.")),
                 }
                 last_was_backslash = false;
             } else if current_char == '"' {
@@ -159,7 +161,7 @@ impl Scanner {
             self.move_next_char();
             Ok(Token::String(ImmutableString::new(text)))
         } else {
-            Err(ParseError::new(start_pos, "Unterminated string literal"))
+            Err(ParseError::new(start_byte_index, "Unterminated string literal"))
         }
     }
 
@@ -182,7 +184,7 @@ impl Scanner {
                 self.move_next_char();
             }
         } else {
-            return Err(ParseError::new(self.pos, "Expected a digit to follow a negative sign."));
+            return Err(ParseError::new(self.byte_index, "Expected a digit to follow a negative sign."));
         }
 
         if self.is_decimal_point() {
@@ -190,7 +192,7 @@ impl Scanner {
             self.move_next_char();
 
             if !self.is_digit() {
-                return Err(ParseError::new(self.pos, "Expected a digit."));
+                return Err(ParseError::new(self.byte_index, "Expected a digit."));
             }
 
             while self.is_digit() {
@@ -207,7 +209,7 @@ impl Scanner {
                         text.push(self.current_char().unwrap());
                         self.move_next_char();
                         if !self.is_digit() {
-                            return Err(ParseError::new(self.pos, "Expected a digit."));
+                            return Err(ParseError::new(self.byte_index, "Expected a digit."));
                         }
                         while self.is_digit() {
                             text.push(self.current_char().unwrap());
@@ -215,7 +217,7 @@ impl Scanner {
                         }
                     }
                     _ => {
-                        return Err(ParseError::new(self.pos, "Expected plus or minus symbol in number literal."));
+                        return Err(ParseError::new(self.byte_index, "Expected plus or minus symbol in number literal."));
                     }
                 }
             }
@@ -243,7 +245,7 @@ impl Scanner {
     }
 
     fn parse_comment_block(&mut self) -> Result<Token, ParseError> {
-        let token_start = self.pos;
+        let token_start = self.byte_index;
         let mut text = String::new();
         self.assert_then_move_char('/');
         #[cfg(debug_assertions)]
@@ -279,25 +281,29 @@ impl Scanner {
 
     fn try_move_word(&mut self, text: &str) -> bool {
         // todo: debug assert no newlines
-        let mut i = self.pos;
+        let mut char_index = self.char_index;
+        let mut byte_index = self.byte_index;
         for c in text.chars() {
-            if let Some(current_char) = self.chars.get(i) {
+            if let Some(current_char) = self.chars.get(char_index) {
                 if *current_char != c {
                     return false;
                 }
+
+                char_index += 1;
+                byte_index += current_char.len_utf8();
             } else {
                 return false;
             }
-            i += 1;
         }
 
-        if let Some(next_char) = self.chars.get(i) {
+        if let Some(next_char) = self.chars.get(char_index) {
             if next_char.is_alphanumeric() {
                 return false;
             }
         }
 
-        self.pos = i;
+        self.char_index = char_index;
+        self.byte_index = byte_index;
         true
     }
 
@@ -315,19 +321,22 @@ impl Scanner {
     }
 
     fn move_next_char(&mut self) -> Option<char> {
-        if self.current_char() == Some('\n') {
-            self.line_number += 1;
+        if let Some(current_char) = self.current_char() {
+            if current_char == '\n' {
+                self.line_number += 1;
+            }
+            self.char_index += 1;
+            self.byte_index += current_char.len_utf8();
         }
-        self.pos += 1;
         self.current_char()
     }
 
     fn peek_char(&self) -> Option<char> {
-        self.chars.get(self.pos + 1).map(|x| x.to_owned())
+        self.chars.get(self.char_index + 1).map(|x| x.to_owned())
     }
 
     fn current_char(&self) -> Option<char> {
-        self.chars.get(self.pos).map(|x| x.to_owned())
+        self.chars.get(self.char_index).map(|x| x.to_owned())
     }
 
     fn is_new_line(&self) -> bool {

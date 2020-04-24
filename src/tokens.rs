@@ -1,4 +1,4 @@
-use super::common::{ImmutableString, Range};
+use super::common::{ImmutableString, Range, Ranged};
 
 /// A token found while scanning.
 #[derive(Debug, PartialEq, Clone)]
@@ -21,4 +21,10 @@ pub enum Token {
 pub struct TokenAndRange {
     pub range: Range,
     pub token: Token,
+}
+
+impl Ranged for TokenAndRange {
+    fn range(&self) -> &Range {
+        &self.range
+    }
 }
