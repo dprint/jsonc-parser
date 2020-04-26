@@ -58,7 +58,7 @@ impl Scanner {
                     self.move_next_char();
                     Ok(Token::Colon)
                 },
-                '"' => self.parse_string(),
+                '\'' | '"' => self.parse_string(),
                 '/' => {
                     match self.peek_char() {
                         Some('/') => Ok(self.parse_comment_line()),
@@ -137,21 +137,37 @@ impl Scanner {
     }
 
     fn parse_string(&mut self) -> Result<Token, ParseError> {
-        #[cfg(debug_assertions)]
-        self.assert_char('"');
+        debug_assert!(self.current_char() == Some('\'') || self.current_char() == Some('"'), "Expected \", was {:?}", self.current_char());
+        let is_double_quote = self.current_char() == Some('"');
         let mut text = String::new();
         let mut last_was_backslash = false;
         let mut found_end_string = false;
 
         while let Some(current_char) = self.move_next_char() {
             if last_was_backslash {
-                let escape_start = self.byte_index;
+                let escape_start = self.byte_index - 1; // -1 for backslash
                 let escape_start_line = self.line_number;
                 match current_char {
-                    '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' => {
+                    '"' => {
+                        if !is_double_quote {
+                            return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape in single quote string"));
+                        } else {
+                            text.push(current_char);
+                        }
+                    }
+                    '\'' => {
+                        if is_double_quote {
+                            return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape in double quote string"));
+                        } else {
+                            text.push(current_char);
+                        }
+                    }
+                    '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' => {
+                        text.push('\\');
                         text.push(current_char);
                     },
                     'u' => {
+                        text.push('\\');
                         text.push(current_char);
                         // expect four hex values
                         for _ in 0..4 {
@@ -166,12 +182,14 @@ impl Scanner {
                     _ => return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape")),
                 }
                 last_was_backslash = false;
-            } else if current_char == '"' {
+            } else if is_double_quote && current_char == '"' || !is_double_quote && current_char == '\'' {
                 found_end_string = true;
                 break;
             } else {
                 last_was_backslash = current_char == '\\';
-                text.push(current_char);
+                if !last_was_backslash {
+                    text.push(current_char);
+                }
             }
         }
 
@@ -407,12 +425,35 @@ mod tests {
         assert_has_tokens(
             r#""t\"est", "\r\n\n\ua0B9","#,
             vec![
-                Token::String(ImmutableString::from(r#"t\"est"#)),
+                Token::String(ImmutableString::from(r#"t"est"#)),
                 Token::Comma,
                 Token::String(ImmutableString::from("\\r\\n\\n\\ua0B9")),
                 Token::Comma,
             ]
         );
+    }
+
+    #[test]
+    fn it_errors_escaping_single_quote_in_double_quote() {
+        assert_has_error(r#""t\'est""#, "Invalid escape in double quote string on line 1 column 3.");
+    }
+
+    #[test]
+    fn it_tokenizes_single_quote_string() {
+        assert_has_tokens(
+            r#"'t\'est','a',"#,
+            vec![
+                Token::String(ImmutableString::from(r#"t'est"#)),
+                Token::Comma,
+                Token::String(ImmutableString::from("a")),
+                Token::Comma,
+            ]
+        );
+    }
+
+    #[test]
+    fn it_errors_escaping_double_quote_in_single_quote() {
+        assert_has_error(r#"'t\"est'"#, "Invalid escape in single quote string on line 1 column 3.");
     }
 
     #[test]
@@ -490,5 +531,23 @@ mod tests {
         }
 
         assert_eq!(scanned_tokens, tokens);
+    }
+
+    fn assert_has_error(text: &str, message: &str) {
+        let mut scanner = Scanner::new(text);
+        let mut error_message = String::new();
+
+        loop {
+            match scanner.scan() {
+                Ok(Some(_)) => {},
+                Ok(None) => break,
+                Err(err) => {
+                    error_message = err.get_message_with_range(text);
+                    break;
+                },
+            }
+        }
+
+        assert_eq!(error_message, message);
     }
 }
