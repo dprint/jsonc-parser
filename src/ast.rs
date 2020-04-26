@@ -1,6 +1,6 @@
 use super::common::{ImmutableString, Range, Ranged};
 
-/// Different kinds of JSON values.
+/// JSON value.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     StringLit(StringLit),
@@ -11,7 +11,7 @@ pub enum Value {
     NullKeyword(NullKeyword),
 }
 
-/// Different nodes that can appear in the AST.
+/// Node that can appear in the AST.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node<'a> {
     StringLit(&'a StringLit),
@@ -21,6 +21,33 @@ pub enum Node<'a> {
     ObjectProp(&'a ObjectProp),
     Array(&'a Array),
     NullKeyword(&'a NullKeyword),
+}
+
+impl<'a> Node<'a> {
+    /// Gets the node kind.
+    pub fn kind(&self) -> NodeKind {
+        match self {
+            Node::StringLit(_) => NodeKind::StringLit,
+            Node::NumberLit(_) => NodeKind::NumberLit,
+            Node::BooleanLit(_) => NodeKind::BooleanLit,
+            Node::Object(_) => NodeKind::Object,
+            Node::ObjectProp(_) => NodeKind::ObjectProp,
+            Node::Array(_) => NodeKind::Array,
+            Node::NullKeyword(_) => NodeKind::NullKeyword,
+        }
+    }
+}
+
+/// Kind of AST node.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum NodeKind {
+    StringLit,
+    NumberLit,
+    BooleanLit,
+    Object,
+    ObjectProp,
+    Array,
+    NullKeyword,
 }
 
 /// Node surrounded in double quotes (ex. `"my string"`).
@@ -72,7 +99,14 @@ pub struct Array {
     pub elements: Vec<Value>,
 }
 
-/// Different kinds of JSONC comments.
+/// Kind of JSONC comment.
+#[derive(Debug, PartialEq, Clone)]
+pub enum CommentKind {
+    Line,
+    Block,
+}
+
+/// JSONC comment.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Comment {
     Line(CommentLine),
@@ -85,6 +119,23 @@ impl Comment {
         match self {
             Comment::Line(line) => line.text.as_ref(),
             Comment::Block(line) => line.text.as_ref(),
+        }
+    }
+
+    /// Gets the comment kind.
+    pub fn kind(&self) -> CommentKind {
+        match self {
+            Comment::Line(_) => CommentKind::Line,
+            Comment::Block(_) => CommentKind::Block,
+        }
+    }
+}
+
+impl Ranged for Comment {
+    fn range(&self) -> &Range {
+        match self {
+            Comment::Line(line) => line.range(),
+            Comment::Block(line) => line.range(),
         }
     }
 }

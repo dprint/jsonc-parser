@@ -53,4 +53,39 @@ pub trait Ranged {
     fn end_line(&self) -> usize { self.range().end_line }
     /// Gets the text from the provided string.
     fn text<'a>(&self, text: &'a str) -> &'a str { &text[self.start()..self.end()] }
+    /// Gets the start position.
+    fn start_position(&self) -> Position {
+        let range = self.range();
+        Position::new(range.start, range.start_line)
+    }
+    /// Gets the end position.
+    fn end_position(&self) -> Position {
+        let range = self.range();
+        Position::new(range.end, range.end_line)
+    }
+}
+
+/// Ranged value that specifies a specific position in the file.
+pub struct Position {
+    pub range: Range,
+}
+
+impl Position {
+    /// Creates a new position at the specified position and line.
+    pub fn new(pos: usize, line: usize) -> Position {
+        Position {
+            range: Range {
+                start: pos,
+                end: pos,
+                start_line: line,
+                end_line: line,
+            },
+        }
+    }
+}
+
+impl Ranged for Position {
+    fn range(&self) -> &Range {
+        &self.range
+    }
 }

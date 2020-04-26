@@ -1,6 +1,6 @@
 use super::tokens::Token;
 use super::errors::*;
-use super::common::ImmutableString;
+use super::common::{ImmutableString, Range};
 
 /// Converts text into a stream of tokens.
 pub struct Scanner {
@@ -63,7 +63,7 @@ impl Scanner {
                     match self.peek_char() {
                         Some('/') => Ok(self.parse_comment_line()),
                         Some('*') => self.parse_comment_block(),
-                        _ => Err(ParseError::new(self.token_start, "Unexpected token.")),
+                        _ => Err(self.create_error_for_current_token("Unexpected token")),
                     }
                 },
                 _ => {
@@ -76,7 +76,7 @@ impl Scanner {
                     } else if self.try_move_word("null") {
                         Ok(Token::Null)
                     } else {
-                        Err(ParseError::new(self.token_start, "Unexpected token."))
+                        Err(self.create_error_for_current_token("Unexpected token"))
                     }
                 }
             };
@@ -118,34 +118,52 @@ impl Scanner {
         self.current_token.as_ref().map(|x| x.to_owned())
     }
 
+    pub(super) fn create_error_for_current_token(&self, message: &str) -> ParseError {
+        self.create_error_for_start_and_line(self.token_start, self.token_start_line, message)
+    }
+
+    pub(super) fn create_error_for_current_char(&self, message: &str) -> ParseError {
+        self.create_error_for_start_and_line(self.byte_index, self.line_number, message)
+    }
+
+    pub(super) fn create_error_for_start_and_line(&self, start: usize, start_line: usize, message: &str) -> ParseError {
+        let range = Range {
+            start,
+            start_line,
+            end: self.byte_index + 1,
+            end_line: self.line_number,
+        };
+        ParseError::new(range, message)
+    }
+
     fn parse_string(&mut self) -> Result<Token, ParseError> {
         #[cfg(debug_assertions)]
         self.assert_char('"');
-        let start_byte_index = self.byte_index;
         let mut text = String::new();
         let mut last_was_backslash = false;
         let mut found_end_string = false;
 
         while let Some(current_char) = self.move_next_char() {
             if last_was_backslash {
+                let escape_start = self.byte_index;
+                let escape_start_line = self.line_number;
                 match current_char {
                     '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' => {
                         text.push(current_char);
                     },
                     'u' => {
                         text.push(current_char);
-                        let hex_start_pos = self.byte_index - '\\'.len_utf8();
                         // expect four hex values
                         for _ in 0..4 {
                             if let Some(current_char) = self.move_next_char() {
                                 text.push(current_char);
                             }
                             if !self.is_hex() {
-                                return Err(ParseError::new(hex_start_pos, "Expected four hex digits."));
+                                return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Expected four hex digits"));
                             }
                         }
                     },
-                    _ => return Err(ParseError::new(start_byte_index, "Invalid escape.")),
+                    _ => return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape")),
                 }
                 last_was_backslash = false;
             } else if current_char == '"' {
@@ -161,7 +179,7 @@ impl Scanner {
             self.move_next_char();
             Ok(Token::String(ImmutableString::new(text)))
         } else {
-            Err(ParseError::new(start_byte_index, "Unterminated string literal"))
+            Err(self.create_error_for_current_token("Unterminated string literal"))
         }
     }
 
@@ -184,7 +202,7 @@ impl Scanner {
                 self.move_next_char();
             }
         } else {
-            return Err(ParseError::new(self.byte_index, "Expected a digit to follow a negative sign."));
+            return Err(self.create_error_for_current_char("Expected a digit to follow a negative sign"));
         }
 
         if self.is_decimal_point() {
@@ -192,7 +210,7 @@ impl Scanner {
             self.move_next_char();
 
             if !self.is_digit() {
-                return Err(ParseError::new(self.byte_index, "Expected a digit."));
+                return Err(self.create_error_for_current_char("Expected a digit"));
             }
 
             while self.is_digit() {
@@ -209,7 +227,7 @@ impl Scanner {
                         text.push(self.current_char().unwrap());
                         self.move_next_char();
                         if !self.is_digit() {
-                            return Err(ParseError::new(self.byte_index, "Expected a digit."));
+                            return Err(self.create_error_for_current_char("Expected a digit"));
                         }
                         while self.is_digit() {
                             text.push(self.current_char().unwrap());
@@ -217,7 +235,7 @@ impl Scanner {
                         }
                     }
                     _ => {
-                        return Err(ParseError::new(self.byte_index, "Expected plus or minus symbol in number literal."));
+                        return Err(self.create_error_for_current_char("Expected plus or minus symbol in number literal"));
                     }
                 }
             }
@@ -245,7 +263,6 @@ impl Scanner {
     }
 
     fn parse_comment_block(&mut self) -> Result<Token, ParseError> {
-        let token_start = self.byte_index;
         let mut text = String::new();
         self.assert_then_move_char('/');
         #[cfg(debug_assertions)]
@@ -265,7 +282,7 @@ impl Scanner {
             self.assert_then_move_char('/');
             Ok(Token::CommentBlock(ImmutableString::new(text)))
         } else {
-            Err(ParseError::new(token_start, "Unterminated comment block."))
+            Err(self.create_error_for_current_token("Unterminated comment block"))
         }
     }
 

@@ -86,7 +86,11 @@ impl Context {
     }
 
     pub fn create_parse_error(&self, text: &str) -> ParseError {
-        ParseError::new(self.scanner.token_start(), text)
+        self.scanner.create_error_for_current_token(text)
+    }
+
+    pub fn create_parse_error_for_current_range(&mut self, text: &str) -> ParseError {
+        ParseError::new(self.end_range(), text)
     }
 
     fn scan_handling_comments(&mut self) -> Result<Option<Token>, ParseError> {
@@ -142,7 +146,7 @@ pub fn parse_text(text: &str) -> Result<ParseResult, ParseError> {
     let value = parse_value(&mut context)?;
 
     if context.scan()?.is_some() {
-        return Err(context.create_parse_error("Text cannot contain more than one JSON value."));
+        return Err(context.create_parse_error("Text cannot contain more than one JSON value"));
     }
 
     debug_assert!(context.range_stack.is_empty());
@@ -164,10 +168,10 @@ fn parse_value(context: &mut Context) -> Result<Option<Value>, ParseError> {
             Token::Boolean(value) => return Ok(Some(Value::BooleanLit(create_boolean_lit(context, value)))),
             Token::Number(value) => return Ok(Some(Value::NumberLit(create_number_lit(context, value)))),
             Token::Null => return Ok(Some(Value::NullKeyword(create_null_keyword(context)))),
-            Token::CloseBracket => return Err(context.create_parse_error("Unexpected close bracket.")),
-            Token::CloseBrace => return Err(context.create_parse_error("Unexpected close brace.")),
-            Token::Comma => return Err(context.create_parse_error("Unexpected comma.")),
-            Token::Colon => return Err(context.create_parse_error("Unexpected colon.")),
+            Token::CloseBracket => return Err(context.create_parse_error("Unexpected close bracket")),
+            Token::CloseBrace => return Err(context.create_parse_error("Unexpected close brace")),
+            Token::Comma => return Err(context.create_parse_error("Unexpected comma")),
+            Token::Colon => return Err(context.create_parse_error("Unexpected colon")),
             Token::CommentLine(_) => unreachable!(),
             Token::CommentBlock(_) => unreachable!(),
         }
@@ -187,8 +191,8 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
             Some(Token::String(prop_name)) => {
                 properties.push(parse_object_property(context, prop_name)?);
             }
-            None => return Err(context.create_parse_error("Unterminated object.")),
-            _ => return Err(context.create_parse_error("Unexpected token in object.")),
+            None => return Err(context.create_parse_error_for_current_range("Unterminated object")),
+            _ => return Err(context.create_parse_error("Unexpected token in object")),
         }
 
         // skip the comma
@@ -211,7 +215,7 @@ fn parse_object_property(context: &mut Context, prop_name: ImmutableString) -> R
 
     match context.scan()? {
         Some(Token::Colon) => {},
-        _ => return Err(context.create_parse_error("Expected a colon after the string in an object property.")),
+        _ => return Err(context.create_parse_error("Expected a colon after the string in an object property")),
     }
 
     context.scan()?;
@@ -223,7 +227,7 @@ fn parse_object_property(context: &mut Context, prop_name: ImmutableString) -> R
             name,
             value,
         }),
-        None => Err(context.create_parse_error("Expected value after colon in object property.")),
+        None => Err(context.create_parse_error("Expected value after colon in object property")),
     }
 }
 
@@ -237,10 +241,10 @@ fn parse_array(context: &mut Context) -> Result<Array, ParseError> {
     loop {
         match context.token() {
             Some(Token::CloseBracket) => break,
-            None => return Err(context.create_parse_error("Unterminated array.")),
+            None => return Err(context.create_parse_error_for_current_range("Unterminated array")),
             _ => match parse_value(context)? {
                 Some(value) => elements.push(value),
-                None => return Err(context.create_parse_error("Unterminated array.")),
+                None => return Err(context.create_parse_error_for_current_range("Unterminated array")),
             }
         }
 
@@ -292,34 +296,44 @@ mod tests {
 
     #[test]
     fn it_should_error_when_has_multiple_values() {
-        assert_has_error("[][]", "Text cannot contain more than one JSON value.");
+        assert_has_error("[][]", "Text cannot contain more than one JSON value on line 1 column 3.");
     }
 
     #[test]
     fn it_should_error_when_object_is_not_terminated() {
-        assert_has_error("{", "Unterminated object.");
+        assert_has_error("{", "Unterminated object on line 1 column 1.");
     }
 
     #[test]
     fn it_should_error_when_object_has_unexpected_token() {
-        assert_has_error("{ 2 }", "Unexpected token in object.");
+        assert_has_error("{ 2 }", "Unexpected token in object on line 1 column 3.");
     }
 
     #[test]
     fn it_should_error_when_array_is_not_terminated() {
-        assert_has_error("[", "Unterminated array.");
+        assert_has_error("[", "Unterminated array on line 1 column 1.");
     }
 
     #[test]
     fn it_should_error_when_array_has_unexpected_token() {
-        assert_has_error("[:]", "Unexpected colon.");
+        assert_has_error("[:]", "Unexpected colon on line 1 column 2.");
+    }
+
+    #[test]
+    fn it_should_error_when_comment_block_not_closed() {
+        assert_has_error("/* test", "Unterminated comment block on line 1 column 1.");
+    }
+
+    #[test]
+    fn it_should_error_when_string_lit_not_closed() {
+        assert_has_error("\" test", "Unterminated string literal on line 1 column 1.");
     }
 
     fn assert_has_error(text: &str, message: &str) {
         let result = parse_text(text);
         match result {
             Ok(_) => panic!("Expected error, but did not find one."),
-            Err(err) => assert_eq!(err.message, message),
+            Err(err) => assert_eq!(err.get_message_with_range(text), message),
         }
     }
 }
