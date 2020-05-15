@@ -11,6 +11,13 @@ impl ImmutableString {
         &self.inner
     }
 
+    pub fn to_string(self) -> String {
+        match Rc::try_unwrap(self.inner) {
+            Ok(inner) => inner,
+            Err(value) => String::from(value.as_ref()),
+        }
+    }
+
     pub(super) fn new(text: String) -> ImmutableString {
         ImmutableString {
             inner: Rc::new(text),

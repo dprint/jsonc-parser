@@ -12,7 +12,7 @@ fn test_specs() {
     for json_path in get_json_file_paths_in_dir(&Path::new("./tests/specs")) {
         let text_file_path = json_path.with_extension("txt");
         let json_file_text = fs::read_to_string(&json_path).expect("Expected to read file.").replace("\r\n", "\n");
-        let result = parse_text(&json_file_text).expect("Expected no error.");
+        let result = parse_to_ast(&json_file_text).expect("Expected no error.");
         let result_text = parse_result_to_test_str(&result);
         let expected_text = fs::read_to_string(&text_file_path).expect("Expected to read expected file.").replace("\r\n", "\n");
         // fs::write(&text_file_path, result_text.clone()).unwrap();

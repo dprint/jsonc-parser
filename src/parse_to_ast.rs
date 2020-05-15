@@ -128,12 +128,12 @@ impl Context {
 /// # Example
 ///
 /// ```
-/// use jsonc_parser::parse_text;
+/// use jsonc_parser::parse_to_ast;
 ///
-/// let parse_result = parse_text(r#"{ "test": 5 } // test"#);
+/// let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#).expect("Should parse.");
 /// // ...inspect parse_result for value, tokens, and comments here...
 /// ```
-pub fn parse_text(text: &str) -> Result<ParseResult, ParseError> {
+pub fn parse_to_ast(text: &str) -> Result<ParseResult, ParseError> {
     let mut context = Context {
         scanner: Scanner::new(text),
         comments: HashMap::new(),
@@ -292,7 +292,7 @@ fn create_null_keyword(context: &Context) -> NullKeyword {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_text;
+    use super::parse_to_ast;
 
     #[test]
     fn it_should_error_when_has_multiple_values() {
@@ -330,7 +330,7 @@ mod tests {
     }
 
     fn assert_has_error(text: &str, message: &str) {
-        let result = parse_text(text);
+        let result = parse_to_ast(text);
         match result {
             Ok(_) => panic!("Expected error, but did not find one."),
             Err(err) => assert_eq!(err.get_message_with_range(text), message),

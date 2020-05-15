@@ -6,9 +6,20 @@ JSONC to AST parser implemented in Rust.
 
 ## Example
 
-```rust
-use jsonc_parser::parse_text;
+To a simple `JsonValue`:
 
-let parse_result = parse_text(r#"{ "test": 5 } // test"#);
+```rust
+use jsonc_parser::parse_to_value;
+
+let json_value = parse_to_value(r#"{ "test": 5 } // test"#)?;
+// check the json_value here
+```
+
+Or an AST:
+
+```rust
+use jsonc_parser::parse_to_ast;
+
+let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#)?;
 // ...inspect parse_result for value, tokens, and comments here...
 ```
