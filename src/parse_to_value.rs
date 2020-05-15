@@ -8,7 +8,7 @@ use super::parse_to_ast;
 pub enum JsonValue {
     String(String),
     Number(String),
-    Bool(bool),
+    Boolean(bool),
     Object(JsonObject),
     Array(JsonArray),
     Null,
@@ -38,7 +38,7 @@ fn handle_value(value: ast::Value) -> JsonValue {
     match value {
         ast::Value::StringLit(lit) => JsonValue::String(lit.value.to_string()),
         ast::Value::NumberLit(lit) => JsonValue::Number(lit.value.to_string()),
-        ast::Value::BooleanLit(lit) => JsonValue::Bool(lit.value),
+        ast::Value::BooleanLit(lit) => JsonValue::Boolean(lit.value),
         ast::Value::Object(obj) => JsonValue::Object(handle_object(obj)),
         ast::Value::Array(arr) => JsonValue::Array(handle_array(arr)),
         ast::Value::NullKeyword(_) => JsonValue::Null,
@@ -77,7 +77,7 @@ mod tests {
         let mut object_map = HashMap::new();
         object_map.insert(String::from("a"), JsonValue::Null);
         object_map.insert(String::from("b"), JsonValue::Array(vec![JsonValue::Null, JsonValue::String(String::from("text"))]));
-        object_map.insert(String::from("c"), JsonValue::Bool(true));
+        object_map.insert(String::from("c"), JsonValue::Boolean(true));
         object_map.insert(String::from("d"), JsonValue::Number(String::from("25.55")));
         assert_eq!(value, JsonValue::Object(object_map));
     }
@@ -85,15 +85,15 @@ mod tests {
     #[test]
     fn it_should_parse_boolean_false() {
         let value = parse_to_value("false").unwrap().unwrap();
-        assert_eq!(value, JsonValue::Bool(false));
+        assert_eq!(value, JsonValue::Boolean(false));
         let value = parse_to_value("true").unwrap().unwrap();
-        assert_eq!(value, JsonValue::Bool(true));
+        assert_eq!(value, JsonValue::Boolean(true));
     }
 
     #[test]
     fn it_should_parse_boolean_true() {
         let value = parse_to_value("true").unwrap().unwrap();
-        assert_eq!(value, JsonValue::Bool(true));
+        assert_eq!(value, JsonValue::Boolean(true));
     }
 
     #[test]
@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn it_should_parse_array() {
         let value = parse_to_value(r#"[false, true]"#).unwrap().unwrap();
-        assert_eq!(value, JsonValue::Array(vec![JsonValue::Bool(false), JsonValue::Bool(true)]));
+        assert_eq!(value, JsonValue::Array(vec![JsonValue::Boolean(false), JsonValue::Boolean(true)]));
     }
 
     #[test]
