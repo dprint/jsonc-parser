@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use super::ast;
 use super::errors::ParseError;
-use super::parse_to_ast;
+use super::{parse_to_ast, ParseOptions};
 
 /// A JSON value.
 #[derive(Clone, PartialEq, Debug)]
@@ -29,8 +29,10 @@ pub type JsonArray = Vec<JsonValue>;
 /// let json_value = parse_to_value(r#"{ "test": 5 } // test"#).expect("Should parse.");
 /// ```
 pub fn parse_to_value(text: &str) -> Result<Option<JsonValue>, ParseError> {
-    // todo: disable collecting tokens and comments
-    let value = parse_to_ast(text)?.value;
+    let value = parse_to_ast(text, &ParseOptions {
+        comments: false,
+        tokens: false,
+    })?.value;
     Ok(value.map(handle_value))
 }
 

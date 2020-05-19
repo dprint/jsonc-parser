@@ -12,7 +12,7 @@ fn test_specs() {
     for json_path in get_json_file_paths_in_dir(&Path::new("./tests/specs")) {
         let text_file_path = json_path.with_extension("txt");
         let json_file_text = fs::read_to_string(&json_path).expect("Expected to read file.").replace("\r\n", "\n");
-        let result = parse_to_ast(&json_file_text).expect("Expected no error.");
+        let result = parse_to_ast(&json_file_text, &ParseOptions { tokens: true, comments: true }).expect("Expected no error.");
         let result_text = parse_result_to_test_str(&result);
         let expected_text = fs::read_to_string(&text_file_path).expect("Expected to read expected file.").replace("\r\n", "\n");
         // fs::write(&text_file_path, result_text.clone()).unwrap();
@@ -55,8 +55,9 @@ fn parse_result_to_test_str(parse_result: &ParseResult) -> String {
         None => String::from("null"),
     }));
     text.push_str("  \"comments\": [");
-    let collection_count = parse_result.comments.len();
-    let mut comments = parse_result.comments.iter().collect::<Vec<_>>();
+    let comments = parse_result.comments.as_ref().expect("Expected comments.");
+    let collection_count = comments.len();
+    let mut comments = comments.iter().collect::<Vec<_>>();
     comments.sort_by(|a, b|a.0.cmp(&b.0));
     for (i, comment_collection) in comments.into_iter().enumerate() {
         text.push_str("\n    ");

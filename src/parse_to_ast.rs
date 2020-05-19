@@ -11,25 +11,38 @@ use super::errors::*;
 /// next token start or end of the file.
 pub type CommentMap = HashMap<usize, Rc<Vec<Comment>>>;
 
+/// Options for parsing.
+#[derive(Default)]
+pub struct ParseOptions {
+    /// Whether to include tokens in the result.
+    pub tokens: bool,
+    /// Whether to include comments in the result.
+    pub comments: bool,
+}
+
 /// Result of parsing the text.
 pub struct ParseResult {
     /// Collection of comments in the text.
     ///
+    /// Provide `comments: true` to the `ParseOptions` for this to have a value.
+    ///
     /// Remarks: The key is the start and end position of the tokens.
-    pub comments: CommentMap,
+    pub comments: Option<CommentMap>,
     /// The JSON value the text contained.
     pub value: Option<Value>,
     /// Collection of tokens (excluding any comments).
-    pub tokens: Vec<TokenAndRange>,
+    ///
+    /// Provide `tokens: true` to the `ParseOptions` for this to have a value.
+    pub tokens: Option<Vec<TokenAndRange>>,
 }
 
 struct Context {
     scanner: Scanner,
-    comments: CommentMap,
+    comments: Option<CommentMap>,
     current_comments: Option<Vec<Comment>>,
     last_token_end: usize,
     range_stack: Vec<Range>,
-    tokens: Vec<TokenAndRange>,
+    tokens: Option<Vec<TokenAndRange>>,
 }
 
 impl Context {
@@ -39,18 +52,25 @@ impl Context {
         self.last_token_end = self.scanner.token_end();
 
         // store the comment for the previous token end, and current token start
-        if let Some(comments) = self.current_comments.take() {
-            let comments = Rc::new(comments);
-            self.comments.insert(previous_end, comments.clone());
-            self.comments.insert(self.scanner.token_start(), comments);
+        if let Some(comments) = self.comments.as_mut() {
+            if let Some(current_comments) = self.current_comments.take() {
+                let current_comments = Rc::new(current_comments);
+                comments.insert(previous_end, current_comments.clone());
+                comments.insert(self.scanner.token_start(), current_comments);
+            }
         }
 
         // capture the token
         if let Some(token) = &token {
-            self.tokens.push(TokenAndRange {
-                token: token.clone(),
-                range: self.create_range_from_last_token(),
-            });
+            if self.tokens.is_some() {
+                let range = self.create_range_from_last_token();
+                if let Some(tokens) = self.tokens.as_mut() {
+                    tokens.push(TokenAndRange {
+                        token: token.clone(),
+                        range,
+                    });
+                }
+            }
         }
 
         Ok(token)
@@ -115,10 +135,12 @@ impl Context {
     }
 
     fn handle_comment(&mut self, comment: Comment) {
-        if let Some(comments) = self.current_comments.as_mut() {
-            comments.push(comment);
-        } else {
-            self.current_comments = Some(vec![comment]);
+        if self.comments.is_some() {
+            if let Some(comments) = self.current_comments.as_mut() {
+                comments.push(comment);
+            } else {
+                self.current_comments = Some(vec![comment]);
+            }
         }
     }
 }
@@ -128,19 +150,22 @@ impl Context {
 /// # Example
 ///
 /// ```
-/// use jsonc_parser::parse_to_ast;
+/// use jsonc_parser::{parse_to_ast, ParseOptions};
 ///
-/// let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#).expect("Should parse.");
+/// let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &ParseOptions {
+///     comments: true, // include comments in result
+///     tokens: true, // include tokens in result
+/// }).expect("Should parse.");
 /// // ...inspect parse_result for value, tokens, and comments here...
 /// ```
-pub fn parse_to_ast(text: &str) -> Result<ParseResult, ParseError> {
+pub fn parse_to_ast(text: &str, options: &ParseOptions) -> Result<ParseResult, ParseError> {
     let mut context = Context {
         scanner: Scanner::new(text),
-        comments: HashMap::new(),
+        comments: if options.comments { Some(HashMap::new()) } else { None },
         current_comments: None,
         last_token_end: 0,
         range_stack: Vec::new(),
-        tokens: Vec::new(),
+        tokens: if options.tokens { Some(Vec::new()) } else { None },
     };
     context.scan()?;
     let value = parse_value(&mut context)?;
@@ -292,7 +317,7 @@ fn create_null_keyword(context: &Context) -> NullKeyword {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_to_ast;
+    use super::*;
 
     #[test]
     fn it_should_error_when_has_multiple_values() {
@@ -330,10 +355,36 @@ mod tests {
     }
 
     fn assert_has_error(text: &str, message: &str) {
-        let result = parse_to_ast(text);
+        let result = parse_to_ast(text, &Default::default());
         match result {
             Ok(_) => panic!("Expected error, but did not find one."),
             Err(err) => assert_eq!(err.get_message_with_range(text), message),
         }
+    }
+
+    #[test]
+    fn it_should_not_include_tokens_by_default() {
+        let result = parse_to_ast("{}", &Default::default()).unwrap();
+        assert_eq!(result.tokens.is_none(), true);
+    }
+
+    #[test]
+    fn it_should_include_tokens_when_specified() {
+        let result = parse_to_ast("{}", &ParseOptions { tokens: true, ..Default::default() }).unwrap();
+        let tokens = result.tokens.unwrap();
+        assert_eq!(tokens.len(), 2);
+    }
+
+    #[test]
+    fn it_should_not_include_comments_by_default() {
+        let result = parse_to_ast("{}", &Default::default()).unwrap();
+        assert_eq!(result.comments.is_none(), true);
+    }
+
+    #[test]
+    fn it_should_include_comments_when_specified() {
+        let result = parse_to_ast("{} // 2", &ParseOptions { comments: true, ..Default::default() }).unwrap();
+        let comments = result.comments.unwrap();
+        assert_eq!(comments.len(), 2); // for both positions, but it's the same comment
     }
 }

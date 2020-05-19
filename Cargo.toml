@@ -1,10 +1,10 @@
 [package]
 name = "jsonc-parser"
-version = "0.7.0"
+version = "0.8.0"
 authors = ["David Sherret <dsherret@gmail.com>"]
 edition = "2018"
 license = "MIT"
-description = "JSONC to AST parser."
+description = "JSONC parser."
 repository = "https://github.com/dsherret/jsonc-parser"
 
 [dependencies]
