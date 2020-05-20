@@ -2,22 +2,7 @@ use std::collections::HashMap;
 use super::ast;
 use super::errors::ParseError;
 use super::{parse_to_ast, ParseOptions};
-
-/// A JSON value.
-#[derive(Clone, PartialEq, Debug)]
-pub enum JsonValue {
-    String(String),
-    Number(String),
-    Boolean(bool),
-    Object(JsonObject),
-    Array(JsonArray),
-    Null,
-}
-
-/// A JSON object.
-pub type JsonObject = HashMap<String, JsonValue>;
-/// A JSON array.
-pub type JsonArray = Vec<JsonValue>;
+use super::value::*;
 
 /// Parses a string containing JSONC to a `JsonValue`.
 ///
@@ -48,9 +33,11 @@ fn handle_value(value: ast::Value) -> JsonValue {
 }
 
 fn handle_array(arr: ast::Array) -> JsonArray {
-    arr.elements.into_iter().map(|element| {
+    let elements = arr.elements.into_iter().map(|element| {
         handle_value(element)
-    }).collect()
+    }).collect();
+
+    JsonArray::new(elements)
 }
 
 fn handle_object(obj: ast::Object) -> JsonObject {
@@ -60,7 +47,7 @@ fn handle_object(obj: ast::Object) -> JsonObject {
         let prop_value = handle_value(prop.value);
         props.insert(prop_name, prop_value);
     }
-    props
+    JsonObject::new(props)
 }
 
 #[cfg(test)]
@@ -78,10 +65,10 @@ mod tests {
 
         let mut object_map = HashMap::new();
         object_map.insert(String::from("a"), JsonValue::Null);
-        object_map.insert(String::from("b"), JsonValue::Array(vec![JsonValue::Null, JsonValue::String(String::from("text"))]));
+        object_map.insert(String::from("b"), JsonValue::Array(vec![JsonValue::Null, JsonValue::String(String::from("text"))].into()));
         object_map.insert(String::from("c"), JsonValue::Boolean(true));
         object_map.insert(String::from("d"), JsonValue::Number(String::from("25.55")));
-        assert_eq!(value, JsonValue::Object(object_map));
+        assert_eq!(value, JsonValue::Object(object_map.into()));
     }
 
     #[test]
@@ -113,7 +100,7 @@ mod tests {
     #[test]
     fn it_should_parse_array() {
         let value = parse_to_value(r#"[false, true]"#).unwrap().unwrap();
-        assert_eq!(value, JsonValue::Array(vec![JsonValue::Boolean(false), JsonValue::Boolean(true)]));
+        assert_eq!(value, JsonValue::Array(vec![JsonValue::Boolean(false), JsonValue::Boolean(true)].into()));
     }
 
     #[test]
