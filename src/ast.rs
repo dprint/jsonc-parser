@@ -182,6 +182,28 @@ pub struct CommentBlock {
     pub text: ImmutableString,
 }
 
+// Object Property Name
+
+impl<'a> From<&'a ObjectPropName> for Node<'a> {
+    fn from(object_prop_name: &'a ObjectPropName) -> Node<'a> {
+        match object_prop_name {
+            ObjectPropName::String(lit) => lit.into(),
+            ObjectPropName::Word(lit) => lit.into(),
+        }
+    }
+}
+
+impl Ranged for ObjectPropName {
+    fn range(&self) -> &Range {
+        match self {
+            ObjectPropName::String(lit) => lit.range(),
+            ObjectPropName::Word(lit) => lit.range(),
+        }
+    }
+}
+
+// Implement Traits
+
 macro_rules! impl_ranged {
     ($($node_name:ident),*) => {
         $(
@@ -193,8 +215,6 @@ macro_rules! impl_ranged {
         )*
     };
 }
-
-// Implement Traits
 
 impl_ranged![StringLit, WordLit, NumberLit, BooleanLit, NullKeyword, Object, ObjectProp, Array, CommentLine, CommentBlock];
 
