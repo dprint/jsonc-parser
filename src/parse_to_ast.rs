@@ -197,6 +197,7 @@ fn parse_value(context: &mut Context) -> Result<Option<Value>, ParseError> {
             Token::CloseBrace => return Err(context.create_parse_error("Unexpected close brace")),
             Token::Comma => return Err(context.create_parse_error("Unexpected comma")),
             Token::Colon => return Err(context.create_parse_error("Unexpected colon")),
+            Token::Word(_) => return Err(context.create_parse_error("Unexpected word")),
             Token::CommentLine(_) => unreachable!(),
             Token::CommentBlock(_) => unreachable!(),
         }
@@ -214,7 +215,10 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
         match context.token() {
             Some(Token::CloseBrace) => break,
             Some(Token::String(prop_name)) => {
-                properties.push(parse_object_property(context, prop_name)?);
+                properties.push(parse_object_property(context, prop_name, true)?);
+            }
+            Some(Token::Word(prop_name)) | Some(Token::Number(prop_name)) => {
+                properties.push(parse_object_property(context, prop_name, false)?);
             }
             None => return Err(context.create_parse_error_for_current_range("Unterminated object")),
             _ => return Err(context.create_parse_error("Unexpected token in object")),
@@ -233,14 +237,18 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
     })
 }
 
-fn parse_object_property(context: &mut Context, prop_name: ImmutableString) -> Result<ObjectProp, ParseError> {
+fn parse_object_property(context: &mut Context, prop_name: ImmutableString, is_string: bool) -> Result<ObjectProp, ParseError> {
     context.start_range();
 
-    let name = create_string_lit(context, prop_name);
+    let name = if is_string {
+        ObjectPropName::String(create_string_lit(context, prop_name))
+    } else {
+        ObjectPropName::Word(create_word(context, prop_name))
+    };
 
     match context.scan()? {
         Some(Token::Colon) => {},
-        _ => return Err(context.create_parse_error("Expected a colon after the string in an object property")),
+        _ => return Err(context.create_parse_error("Expected a colon after the string or word in an object property")),
     }
 
     context.scan()?;
@@ -295,6 +303,13 @@ fn create_string_lit(context: &Context, value: ImmutableString) -> StringLit {
     }
 }
 
+fn create_word(context: &Context, value: ImmutableString) -> WordLit {
+    WordLit {
+        range: context.create_range_from_last_token(),
+        value,
+    }
+}
+
 fn create_boolean_lit(context: &Context, value: bool) -> BooleanLit {
     BooleanLit {
         range: context.create_range_from_last_token(),
@@ -331,7 +346,12 @@ mod tests {
 
     #[test]
     fn it_should_error_when_object_has_unexpected_token() {
-        assert_has_error("{ 2 }", "Unexpected token in object on line 1 column 3.");
+        assert_has_error("{ [] }", "Unexpected token in object on line 1 column 3.");
+    }
+
+    #[test]
+    fn it_should_error_when_object_has_two_non_string_tokens() {
+        assert_has_error("{ asdf asdf: 5 }", "Expected a colon after the string or word in an object property on line 1 column 8.");
     }
 
     #[test]

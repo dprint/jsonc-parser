@@ -1,5 +1,6 @@
 extern crate jsonc_parser;
 
+use pretty_assertions::{assert_eq};
 use std::rc::Rc;
 use std::fs::{self};
 use std::path::{Path, PathBuf};
@@ -97,6 +98,10 @@ fn string_lit_to_test_str(lit: &StringLit) -> String {
     lit_to_test_str("string", lit.value.as_ref(), &lit.range)
 }
 
+fn word_lit_to_test_str(lit: &WordLit) -> String {
+    lit_to_test_str("word", lit.value.as_ref(), &lit.range)
+}
+
 fn number_lit_to_test_str(lit: &NumberLit) -> String {
     lit_to_test_str("number", lit.value.as_ref(), &lit.range)
 }
@@ -110,7 +115,7 @@ fn lit_to_test_str(lit_type: &str, value: &str, range: &Range) -> String {
     text.push_str("{\n");
     text.push_str(&format!("  \"type\": \"{}\",\n", lit_type));
     text.push_str(&format!("  {},\n", range_to_test_str(range).replace("\n", "\n  ")));
-    text.push_str(&format!("  \"value\": \"{}\"\n", value));
+    text.push_str(&format!("  \"value\": \"{}\"\n", escape_json_str(value)));
     text.push_str("}");
     text
 }
@@ -139,10 +144,17 @@ fn object_prop_to_test_str(obj_prop: &ObjectProp) -> String {
     text.push_str("{\n");
     text.push_str("  \"type\": \"objectProp\",\n");
     text.push_str(&format!("  {},\n", range_to_test_str(&obj_prop.range).replace("\n", "\n  ")));
-    text.push_str(&format!("  \"name\": {},\n", string_lit_to_test_str(&obj_prop.name).replace("\n", "\n  ")));
+    text.push_str(&format!("  \"name\": {},\n", object_prop_name_to_test_str(&obj_prop.name).replace("\n", "\n  ")));
     text.push_str(&format!("  \"value\": {}\n", value_to_test_str(&obj_prop.value).replace("\n", "\n  ")));
     text.push_str("}");
     text
+}
+
+fn object_prop_name_to_test_str(obj_prop_name: &ObjectPropName) -> String {
+    match obj_prop_name {
+        ObjectPropName::String(lit) => string_lit_to_test_str(lit),
+        ObjectPropName::Word(word) => word_lit_to_test_str(word),
+    }
 }
 
 fn array_to_test_str(arr: &Array) -> String {
@@ -204,4 +216,14 @@ fn comment_line_to_test_str(line: &CommentLine) -> String {
 
 fn comment_block_to_test_str(block: &CommentBlock) -> String {
     lit_to_test_str("block", &block.text.as_ref(), &block.range)
+}
+
+fn escape_json_str(text: &str) -> String {
+    text
+        .replace("\\", "\\\\")
+        .replace("\x08", "\\b")
+        .replace("\x0C", "\\f")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace("\n", "\\n")
 }

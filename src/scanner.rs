@@ -76,7 +76,7 @@ impl Scanner {
                     } else if self.try_move_word("null") {
                         Ok(Token::Null)
                     } else {
-                        Err(self.create_error_for_current_token("Unexpected token"))
+                        self.parse_word()
                     }
                 }
             };
@@ -162,22 +162,34 @@ impl Scanner {
                             text.push(current_char);
                         }
                     }
-                    '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' => {
-                        text.push('\\');
-                        text.push(current_char);
-                    },
+                    '\\' => { text.push('\\'); }
+                    '/' => { text.push('/'); }
+                    'b' => { text.push('\u{08}'); }
+                    'f' => { text.push('\u{0C}'); }
+                    'n' => { text.push('\n'); }
+                    'r' => { text.push('\r'); }
+                    't' => { text.push('\t'); }
                     'u' => {
-                        text.push('\\');
-                        text.push(current_char);
+                        let mut hex_text = String::new();
                         // expect four hex values
                         for _ in 0..4 {
-                            if let Some(current_char) = self.move_next_char() {
-                                text.push(current_char);
-                            }
+                            let current_char = self.move_next_char();
                             if !self.is_hex() {
                                 return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Expected four hex digits"));
                             }
+                            if let Some(current_char) = current_char {
+                                hex_text.push(current_char);
+                            }
                         }
+                        let decimal = match u8::from_str_radix(&hex_text, 16) {
+                            Ok(decimal) => decimal,
+                            Err(err) => return Err(self.create_error_for_start_and_line(
+                                escape_start,
+                                escape_start_line,
+                                &format!("Error converting hex of {} to u8. {:?}", hex_text, err),
+                            )),
+                        };
+                        text.push(decimal as char);
                     },
                     _ => return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape")),
                 }
@@ -342,6 +354,25 @@ impl Scanner {
         true
     }
 
+    fn parse_word(&mut self) -> Result<Token, ParseError> {
+        let mut text = String::new();
+
+        text.push(*self.current_char().as_ref().unwrap());
+
+        while let Some(current_char) = self.move_next_char() {
+            if current_char.is_whitespace() || current_char == '\r' || current_char == '\n' || current_char == ':' {
+                break;
+            }
+            if !current_char.is_alphanumeric() && current_char != '-' {
+                return Err(self.create_error_for_current_token("Unexpected token"));
+            }
+
+            text.push(current_char);
+        }
+
+        Ok(Token::Word(ImmutableString::new(text)))
+    }
+
     fn assert_then_move_char(&mut self, _character: char) {
         #[cfg(debug_assertions)]
         self.assert_char(_character);
@@ -423,11 +454,11 @@ mod tests {
     #[test]
     fn it_tokenizes_string() {
         assert_has_tokens(
-            r#""t\"est", "\r\n\n\ua0B9","#,
+            r#""t\"est", "\t\r\n\n\u0020","#,
             vec![
                 Token::String(ImmutableString::from(r#"t"est"#)),
                 Token::Comma,
-                Token::String(ImmutableString::from("\\r\\n\\n\\ua0B9")),
+                Token::String(ImmutableString::from("\t\r\n\n ")),
                 Token::Comma,
             ]
         );

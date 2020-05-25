@@ -10,6 +10,7 @@ pub enum Token {
     Comma,
     Colon,
     String(ImmutableString),
+    Word(ImmutableString),
     Boolean(bool),
     Number(ImmutableString),
     Null,

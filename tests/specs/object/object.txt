@@ -3,7 +3,7 @@
     "type": "object",
     "range": {
       "start": 0,
-      "end": 153,
+      "end": 159,
       "startLine": 0,
       "endLine": 10
     },
@@ -41,7 +41,7 @@
         "type": "objectProp",
         "range": {
           "start": 23,
-          "end": 38,
+          "end": 44,
           "startLine": 2,
           "endLine": 2
         },
@@ -59,26 +59,26 @@
           "type": "string",
           "range": {
             "start": 33,
-            "end": 38,
+            "end": 44,
             "startLine": 2,
             "endLine": 2
           },
-          "value": "str"
+          "value": "str\\test"
         }
       },
       {
         "type": "objectProp",
         "range": {
-          "start": 44,
-          "end": 78,
+          "start": 50,
+          "end": 84,
           "startLine": 3,
           "endLine": 5
         },
         "name": {
           "type": "string",
           "range": {
-            "start": 44,
-            "end": 52,
+            "start": 50,
+            "end": 58,
             "startLine": 3,
             "endLine": 3
           },
@@ -87,8 +87,8 @@
         "value": {
           "type": "object",
           "range": {
-            "start": 54,
-            "end": 78,
+            "start": 60,
+            "end": 84,
             "startLine": 3,
             "endLine": 5
           },
@@ -96,16 +96,16 @@
             {
               "type": "objectProp",
               "range": {
-                "start": 64,
-                "end": 72,
+                "start": 70,
+                "end": 78,
                 "startLine": 4,
                 "endLine": 4
               },
               "name": {
                 "type": "string",
                 "range": {
-                  "start": 64,
-                  "end": 69,
+                  "start": 70,
+                  "end": 75,
                   "startLine": 4,
                   "endLine": 4
                 },
@@ -114,8 +114,8 @@
               "value": {
                 "type": "number",
                 "range": {
-                  "start": 71,
-                  "end": 72,
+                  "start": 77,
+                  "end": 78,
                   "startLine": 4,
                   "endLine": 4
                 },
@@ -128,16 +128,16 @@
       {
         "type": "objectProp",
         "range": {
-          "start": 84,
-          "end": 95,
+          "start": 90,
+          "end": 101,
           "startLine": 6,
           "endLine": 6
         },
         "name": {
           "type": "string",
           "range": {
-            "start": 84,
-            "end": 91,
+            "start": 90,
+            "end": 97,
             "startLine": 6,
             "endLine": 6
           },
@@ -146,8 +146,8 @@
         "value": {
           "type": "array",
           "range": {
-            "start": 93,
-            "end": 95,
+            "start": 99,
+            "end": 101,
             "startLine": 6,
             "endLine": 6
           },
@@ -158,16 +158,16 @@
       {
         "type": "objectProp",
         "range": {
-          "start": 101,
-          "end": 113,
+          "start": 107,
+          "end": 119,
           "startLine": 7,
           "endLine": 7
         },
         "name": {
           "type": "string",
           "range": {
-            "start": 101,
-            "end": 107,
+            "start": 107,
+            "end": 113,
             "startLine": 7,
             "endLine": 7
           },
@@ -176,8 +176,8 @@
         "value": {
           "type": "boolean",
           "range": {
-            "start": 109,
-            "end": 113,
+            "start": 115,
+            "end": 119,
             "startLine": 7,
             "endLine": 7
           },
@@ -187,16 +187,16 @@
       {
         "type": "objectProp",
         "range": {
-          "start": 119,
-          "end": 133,
+          "start": 125,
+          "end": 139,
           "startLine": 8,
           "endLine": 8
         },
         "name": {
           "type": "string",
           "range": {
-            "start": 119,
-            "end": 126,
+            "start": 125,
+            "end": 132,
             "startLine": 8,
             "endLine": 8
           },
@@ -205,8 +205,8 @@
         "value": {
           "type": "boolean",
           "range": {
-            "start": 128,
-            "end": 133,
+            "start": 134,
+            "end": 139,
             "startLine": 8,
             "endLine": 8
           },
@@ -216,16 +216,16 @@
       {
         "type": "objectProp",
         "range": {
-          "start": 139,
-          "end": 151,
+          "start": 145,
+          "end": 157,
           "startLine": 9,
           "endLine": 9
         },
         "name": {
           "type": "string",
           "range": {
-            "start": 139,
-            "end": 145,
+            "start": 145,
+            "end": 151,
             "startLine": 9,
             "endLine": 9
           },
@@ -234,8 +234,8 @@
         "value": {
           "type": "null",
           "range": {
-            "start": 147,
-            "end": 151,
+            "start": 153,
+            "end": 157,
             "startLine": 9,
             "endLine": 9
           }

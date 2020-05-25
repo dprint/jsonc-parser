@@ -1,0 +1,189 @@
+{
+  "value": {
+    "type": "object",
+    "range": {
+      "start": 0,
+      "end": 108,
+      "startLine": 0,
+      "endLine": 7
+    },
+    "properties": [
+      {
+        "type": "objectProp",
+        "range": {
+          "start": 6,
+          "end": 20,
+          "startLine": 1,
+          "endLine": 1
+        },
+        "name": {
+          "type": "word",
+          "range": {
+            "start": 6,
+            "end": 12,
+            "startLine": 1,
+            "endLine": 1
+          },
+          "value": "myProp"
+        },
+        "value": {
+          "type": "string",
+          "range": {
+            "start": 14,
+            "end": 20,
+            "startLine": 1,
+            "endLine": 1
+          },
+          "value": "test"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "start": 26,
+          "end": 39,
+          "startLine": 2,
+          "endLine": 2
+        },
+        "name": {
+          "type": "word",
+          "range": {
+            "start": 26,
+            "end": 31,
+            "startLine": 2,
+            "endLine": 2
+          },
+          "value": "other"
+        },
+        "value": {
+          "type": "string",
+          "range": {
+            "start": 33,
+            "end": 39,
+            "startLine": 2,
+            "endLine": 2
+          },
+          "value": "asdf"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "start": 45,
+          "end": 62,
+          "startLine": 3,
+          "endLine": 3
+        },
+        "name": {
+          "type": "word",
+          "range": {
+            "start": 45,
+            "end": 54,
+            "startLine": 3,
+            "endLine": 3
+          },
+          "value": "asdf-test"
+        },
+        "value": {
+          "type": "string",
+          "range": {
+            "start": 56,
+            "end": 62,
+            "startLine": 3,
+            "endLine": 3
+          },
+          "value": "test"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "start": 68,
+          "end": 77,
+          "startLine": 4,
+          "endLine": 4
+        },
+        "name": {
+          "type": "word",
+          "range": {
+            "start": 68,
+            "end": 73,
+            "startLine": 4,
+            "endLine": 4
+          },
+          "value": "oo43o"
+        },
+        "value": {
+          "type": "number",
+          "range": {
+            "start": 76,
+            "end": 77,
+            "startLine": 4,
+            "endLine": 4
+          },
+          "value": "5"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "start": 83,
+          "end": 92,
+          "startLine": 5,
+          "endLine": 5
+        },
+        "name": {
+          "type": "word",
+          "range": {
+            "start": 83,
+            "end": 88,
+            "startLine": 5,
+            "endLine": 5
+          },
+          "value": "jnm44"
+        },
+        "value": {
+          "type": "number",
+          "range": {
+            "start": 91,
+            "end": 92,
+            "startLine": 5,
+            "endLine": 5
+          },
+          "value": "3"
+        }
+      },
+      {
+        "type": "objectProp",
+        "range": {
+          "start": 98,
+          "end": 106,
+          "startLine": 6,
+          "endLine": 6
+        },
+        "name": {
+          "type": "word",
+          "range": {
+            "start": 98,
+            "end": 101,
+            "startLine": 6,
+            "endLine": 6
+          },
+          "value": "456"
+        },
+        "value": {
+          "type": "number",
+          "range": {
+            "start": 104,
+            "end": 106,
+            "startLine": 6,
+            "endLine": 6
+          },
+          "value": "34"
+        }
+      }
+    ]
+  },
+  "comments": [
+  ]
+}

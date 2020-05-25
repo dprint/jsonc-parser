@@ -57,6 +57,14 @@ pub struct StringLit {
     pub value: ImmutableString,
 }
 
+/// A string that's not in quotes.
+/// Usually the appearance of this would be a parsing error.
+#[derive(Debug, PartialEq, Clone)]
+pub struct WordLit {
+    pub range: Range,
+    pub value: ImmutableString,
+}
+
 /// Represents a number (ex. `123`, `99.99`, `-1.2e+2`).
 #[derive(Debug, PartialEq, Clone)]
 pub struct NumberLit {
@@ -88,8 +96,25 @@ pub struct Object {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ObjectProp {
     pub range: Range,
-    pub name: StringLit,
+    pub name: ObjectPropName,
     pub value: Value,
+}
+
+/// Represents an object property name that may or may not be in quotes.
+#[derive(Debug, PartialEq, Clone)]
+pub enum ObjectPropName {
+    String(StringLit),
+    Word(WordLit),
+}
+
+impl ObjectPropName {
+    /// Gets the object property name as a string.
+    pub fn to_string(self) -> String {
+        match self {
+            ObjectPropName::String(lit) => lit.value.to_string(),
+            ObjectPropName::Word(lit) => lit.value.to_string(),
+        }
+    }
 }
 
 /// Represents an array that may contain elements (ex. `[]`, `[5, 6]`).
