@@ -60,7 +60,7 @@ mod tests {
     "a": null,
     "b": [null, "text"],
     "c": true,
-    "d": 25.55
+    d: 25.55
 }"#).unwrap().unwrap();
 
         let mut object_map = HashMap::new();

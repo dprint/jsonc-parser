@@ -21,6 +21,7 @@ pub enum Node<'a> {
     ObjectProp(&'a ObjectProp),
     Array(&'a Array),
     NullKeyword(&'a NullKeyword),
+    WordLit(&'a WordLit),
 }
 
 impl<'a> Node<'a> {
@@ -34,6 +35,7 @@ impl<'a> Node<'a> {
             Node::ObjectProp(_) => NodeKind::ObjectProp,
             Node::Array(_) => NodeKind::Array,
             Node::NullKeyword(_) => NodeKind::NullKeyword,
+            Node::WordLit(_) => NodeKind::WordLit,
         }
     }
 }
@@ -48,6 +50,7 @@ pub enum NodeKind {
     ObjectProp,
     Array,
     NullKeyword,
+    WordLit,
 }
 
 /// Node surrounded in double quotes (ex. `"my string"`).
@@ -193,7 +196,7 @@ macro_rules! impl_ranged {
 
 // Implement Traits
 
-impl_ranged![StringLit, NumberLit, BooleanLit, NullKeyword, Object, ObjectProp, Array, CommentLine, CommentBlock];
+impl_ranged![StringLit, WordLit, NumberLit, BooleanLit, NullKeyword, Object, ObjectProp, Array, CommentLine, CommentBlock];
 
 impl Ranged for Value {
     fn range(&self) -> &Range {
@@ -228,7 +231,7 @@ macro_rules! generate_node {
     };
 }
 
-generate_node![StringLit, NumberLit, BooleanLit, NullKeyword, Object, ObjectProp, Array];
+generate_node![StringLit, WordLit, NumberLit, BooleanLit, NullKeyword, Object, ObjectProp, Array];
 
 impl<'a> From<&'a Value> for Node<'a> {
     fn from(value: &'a Value) -> Node<'a> {
