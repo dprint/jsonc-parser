@@ -357,9 +357,7 @@ impl Scanner {
     fn parse_word(&mut self) -> Result<Token, ParseError> {
         let mut text = String::new();
 
-        text.push(*self.current_char().as_ref().unwrap());
-
-        while let Some(current_char) = self.move_next_char() {
+        while let Some(current_char) = self.current_char() {
             if current_char.is_whitespace() || current_char == '\r' || current_char == '\n' || current_char == ':' {
                 break;
             }
@@ -368,6 +366,12 @@ impl Scanner {
             }
 
             text.push(current_char);
+
+            self.move_next_char();
+        }
+
+        if text.len() == 0 {
+            return Err(self.create_error_for_current_token("Unexpected token"));
         }
 
         Ok(Token::Word(ImmutableString::new(text)))
@@ -485,6 +489,11 @@ mod tests {
     #[test]
     fn it_errors_escaping_double_quote_in_single_quote() {
         assert_has_error(r#"'t\"est'"#, "Invalid escape in single quote string on line 1 column 3.");
+    }
+
+    #[test]
+    fn it_errors_for_word_starting_with_invalid_token() {
+        assert_has_error(r#"{ &test }"#, "Unexpected token on line 1 column 3.");
     }
 
     #[test]
