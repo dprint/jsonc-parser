@@ -11,6 +11,7 @@ pub struct Scanner {
     token_start_line: usize,
     chars: Vec<char>, // todo: use an iterator instead?
     current_token: Option<Token>,
+    text_length: usize,
 }
 
 impl Scanner {
@@ -24,6 +25,7 @@ impl Scanner {
             token_start_line: 0,
             chars: text.chars().collect(),
             current_token: None,
+            text_length: text.len(),
         }
     }
 
@@ -130,7 +132,7 @@ impl Scanner {
         let range = Range {
             start,
             start_line,
-            end: self.byte_index + 1,
+            end: std::cmp::min(self.byte_index + 1, self.text_length),
             end_line: self.line_number,
         };
         ParseError::new(range, message)
