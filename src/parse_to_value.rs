@@ -98,6 +98,12 @@ mod tests {
     }
 
     #[test]
+    fn it_should_parse_string_with_quotes() {
+        let value = parse_to_value(r#""echo \"test\"""#).unwrap().unwrap();
+        assert_eq!(value, JsonValue::String(String::from(r#"echo "test""#)));
+    }
+
+    #[test]
     fn it_should_parse_array() {
         let value = parse_to_value(r#"[false, true]"#).unwrap().unwrap();
         assert_eq!(value, JsonValue::Array(vec![JsonValue::Boolean(false), JsonValue::Boolean(true)].into()));
