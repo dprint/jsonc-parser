@@ -105,12 +105,13 @@ impl Context {
         }
     }
 
-    pub fn create_parse_error(&self, text: &str) -> ParseError {
-        self.scanner.create_error_for_current_token(text)
+    pub fn create_parse_error(&self, message: &str) -> ParseError {
+        self.scanner.create_error_for_current_token(message)
     }
 
-    pub fn create_parse_error_for_current_range(&mut self, text: &str) -> ParseError {
-        ParseError::new(self.end_range(), text)
+    pub fn create_parse_error_for_current_range(&mut self, message: &str) -> ParseError {
+        let range = self.end_range();
+        self.scanner.create_error_for_range(range, message)
     }
 
     fn scan_handling_comments(&mut self) -> Result<Option<Token>, ParseError> {
@@ -378,7 +379,7 @@ mod tests {
         let result = parse_to_ast(text, &Default::default());
         match result {
             Ok(_) => panic!("Expected error, but did not find one."),
-            Err(err) => assert_eq!(err.get_message_with_range(text), message),
+            Err(err) => assert_eq!(err.message, message),
         }
     }
 

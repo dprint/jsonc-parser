@@ -135,7 +135,13 @@ impl Scanner {
             end: std::cmp::min(self.byte_index + 1, self.text_length),
             end_line: self.line_number,
         };
-        ParseError::new(range, message)
+        self.create_error_for_range(range, message)
+    }
+
+    pub(super) fn create_error_for_range(&self, range: Range, message: &str) -> ParseError {
+        use std::iter::FromIterator;
+        let file_text = String::from_iter(&self.chars);
+        ParseError::new(range, message, &file_text)
     }
 
     fn parse_string(&mut self) -> Result<Token, ParseError> {
@@ -584,7 +590,7 @@ mod tests {
                 Ok(Some(_)) => {},
                 Ok(None) => break,
                 Err(err) => {
-                    error_message = err.get_message_with_range(text);
+                    error_message = err.message;
                     break;
                 },
             }
