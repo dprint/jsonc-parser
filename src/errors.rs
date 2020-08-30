@@ -1,3 +1,6 @@
+use std::error::Error;
+use std::fmt;
+
 use super::common::{Range};
 
 /// Error that could occur while parsing or tokenizing.
@@ -10,34 +13,46 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub(super) fn new(range: Range, message: &str) -> ParseError {
+    pub(crate) fn new(range: Range, message: &str, file_text: &str) -> ParseError {
+        let message = get_message_with_range(&range, message, file_text);
         ParseError {
+            message,
             range,
-            message: String::from(message),
         }
     }
+}
 
-    /// Gets the message with a leading range.
-    pub fn get_message_with_range(&self, file_text: &str) -> String {
-        return format!(
-            "{} on line {} column {}.",
-            self.message,
-            self.range.start_line + 1,
-            get_column_number(self.range.start, file_text) + 1,
-        );
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
 
-        fn get_column_number(pos: usize, file_text: &str) -> usize {
-            let mut column_number = 0;
-            for (indice, c) in file_text.char_indices() {
-                if c == '\n' {
-                    column_number = 0;
-                } else if indice >= pos {
-                    break;
-                } else {
-                    column_number += 1;
-                }
+impl Error for ParseError {
+    fn description(&self) -> &str {
+        &self.message
+    }
+}
+
+fn get_message_with_range(range: &Range, message: &str, file_text: &str) -> String {
+    return format!(
+        "{} on line {} column {}.",
+        message,
+        range.start_line + 1,
+        get_column_number(range.start, file_text) + 1,
+    );
+
+    fn get_column_number(pos: usize, file_text: &str) -> usize {
+        let mut column_number = 0;
+        for (indice, c) in file_text.char_indices() {
+            if c == '\n' {
+                column_number = 0;
+            } else if indice >= pos {
+                break;
+            } else {
+                column_number += 1;
             }
-            column_number
         }
+        column_number
     }
 }
