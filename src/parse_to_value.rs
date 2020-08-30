@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use super::ast;
 use super::errors::ParseError;
-use super::{parse_to_ast, ParseOptions};
 use super::value::*;
+use super::{parse_to_ast, ParseOptions};
+use std::collections::HashMap;
 
 /// Parses a string containing JSONC to a `JsonValue`.
 ///
@@ -14,10 +14,14 @@ use super::value::*;
 /// let json_value = parse_to_value(r#"{ "test": 5 } // test"#).expect("Should parse.");
 /// ```
 pub fn parse_to_value(text: &str) -> Result<Option<JsonValue>, ParseError> {
-    let value = parse_to_ast(text, &ParseOptions {
-        comments: false,
-        tokens: false,
-    })?.value;
+    let value = parse_to_ast(
+        text,
+        &ParseOptions {
+            comments: false,
+            tokens: false,
+        },
+    )?
+    .value;
     Ok(value.map(handle_value))
 }
 
@@ -33,9 +37,7 @@ fn handle_value(value: ast::Value) -> JsonValue {
 }
 
 fn handle_array(arr: ast::Array) -> JsonArray {
-    let elements = arr.elements.into_iter().map(|element| {
-        handle_value(element)
-    }).collect();
+    let elements = arr.elements.into_iter().map(|element| handle_value(element)).collect();
 
     JsonArray::new(elements)
 }
@@ -56,16 +58,23 @@ mod tests {
 
     #[test]
     fn it_should_parse_object() {
-        let value = parse_to_value(r#"{
+        let value = parse_to_value(
+            r#"{
     "a": null,
     "b": [null, "text"],
     "c": true,
     d: 25.55
-}"#).unwrap().unwrap();
+}"#,
+        )
+        .unwrap()
+        .unwrap();
 
         let mut object_map = HashMap::new();
         object_map.insert(String::from("a"), JsonValue::Null);
-        object_map.insert(String::from("b"), JsonValue::Array(vec![JsonValue::Null, JsonValue::String(String::from("text"))].into()));
+        object_map.insert(
+            String::from("b"),
+            JsonValue::Array(vec![JsonValue::Null, JsonValue::String(String::from("text"))].into()),
+        );
         object_map.insert(String::from("c"), JsonValue::Boolean(true));
         object_map.insert(String::from("d"), JsonValue::Number(String::from("25.55")));
         assert_eq!(value, JsonValue::Object(object_map.into()));
@@ -106,7 +115,10 @@ mod tests {
     #[test]
     fn it_should_parse_array() {
         let value = parse_to_value(r#"[false, true]"#).unwrap().unwrap();
-        assert_eq!(value, JsonValue::Array(vec![JsonValue::Boolean(false), JsonValue::Boolean(true)].into()));
+        assert_eq!(
+            value,
+            JsonValue::Array(vec![JsonValue::Boolean(false), JsonValue::Boolean(true)].into())
+        );
     }
 
     #[test]

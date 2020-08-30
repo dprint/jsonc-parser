@@ -1,6 +1,6 @@
-use super::tokens::Token;
-use super::errors::*;
 use super::common::{ImmutableString, Range};
+use super::errors::*;
+use super::tokens::Token;
 
 /// Converts text into a stream of tokens.
 pub struct Scanner {
@@ -39,34 +39,32 @@ impl Scanner {
                 '{' => {
                     self.move_next_char();
                     Ok(Token::OpenBrace)
-                },
+                }
                 '}' => {
                     self.move_next_char();
                     Ok(Token::CloseBrace)
-                },
+                }
                 '[' => {
                     self.move_next_char();
                     Ok(Token::OpenBracket)
-                },
+                }
                 ']' => {
                     self.move_next_char();
                     Ok(Token::CloseBracket)
-                },
+                }
                 ',' => {
                     self.move_next_char();
                     Ok(Token::Comma)
-                },
+                }
                 ':' => {
                     self.move_next_char();
                     Ok(Token::Colon)
-                },
+                }
                 '\'' | '"' => self.parse_string(),
-                '/' => {
-                    match self.peek_char() {
-                        Some('/') => Ok(self.parse_comment_line()),
-                        Some('*') => self.parse_comment_block(),
-                        _ => Err(self.create_error_for_current_token("Unexpected token")),
-                    }
+                '/' => match self.peek_char() {
+                    Some('/') => Ok(self.parse_comment_line()),
+                    Some('*') => self.parse_comment_block(),
+                    _ => Err(self.create_error_for_current_token("Unexpected token")),
                 },
                 _ => {
                     if current_char == '-' || self.is_digit() {
@@ -86,7 +84,7 @@ impl Scanner {
                 Ok(token) => {
                     self.current_token = Some(token.clone());
                     Ok(Some(token))
-                },
+                }
                 Err(err) => Err(err),
             }
         } else {
@@ -145,7 +143,11 @@ impl Scanner {
     }
 
     fn parse_string(&mut self) -> Result<Token, ParseError> {
-        debug_assert!(self.current_char() == Some('\'') || self.current_char() == Some('"'), "Expected \", was {:?}", self.current_char());
+        debug_assert!(
+            self.current_char() == Some('\'') || self.current_char() == Some('"'),
+            "Expected \", was {:?}",
+            self.current_char()
+        );
         let is_double_quote = self.current_char() == Some('"');
         let mut text = String::new();
         let mut last_was_backslash = false;
@@ -158,32 +160,58 @@ impl Scanner {
                 match current_char {
                     '"' => {
                         if !is_double_quote {
-                            return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape in single quote string"));
+                            return Err(self.create_error_for_start_and_line(
+                                escape_start,
+                                escape_start_line,
+                                "Invalid escape in single quote string",
+                            ));
                         } else {
                             text.push(current_char);
                         }
                     }
                     '\'' => {
                         if is_double_quote {
-                            return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape in double quote string"));
+                            return Err(self.create_error_for_start_and_line(
+                                escape_start,
+                                escape_start_line,
+                                "Invalid escape in double quote string",
+                            ));
                         } else {
                             text.push(current_char);
                         }
                     }
-                    '\\' => { text.push('\\'); }
-                    '/' => { text.push('/'); }
-                    'b' => { text.push('\u{08}'); }
-                    'f' => { text.push('\u{0C}'); }
-                    'n' => { text.push('\n'); }
-                    'r' => { text.push('\r'); }
-                    't' => { text.push('\t'); }
+                    '\\' => {
+                        text.push('\\');
+                    }
+                    '/' => {
+                        text.push('/');
+                    }
+                    'b' => {
+                        text.push('\u{08}');
+                    }
+                    'f' => {
+                        text.push('\u{0C}');
+                    }
+                    'n' => {
+                        text.push('\n');
+                    }
+                    'r' => {
+                        text.push('\r');
+                    }
+                    't' => {
+                        text.push('\t');
+                    }
                     'u' => {
                         let mut hex_text = String::new();
                         // expect four hex values
                         for _ in 0..4 {
                             let current_char = self.move_next_char();
                             if !self.is_hex() {
-                                return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Expected four hex digits"));
+                                return Err(self.create_error_for_start_and_line(
+                                    escape_start,
+                                    escape_start_line,
+                                    "Expected four hex digits",
+                                ));
                             }
                             if let Some(current_char) = current_char {
                                 hex_text.push(current_char);
@@ -191,15 +219,23 @@ impl Scanner {
                         }
                         let decimal = match u8::from_str_radix(&hex_text, 16) {
                             Ok(decimal) => decimal,
-                            Err(err) => return Err(self.create_error_for_start_and_line(
-                                escape_start,
-                                escape_start_line,
-                                &format!("Error converting hex of {} to u8. {:?}", hex_text, err),
-                            )),
+                            Err(err) => {
+                                return Err(self.create_error_for_start_and_line(
+                                    escape_start,
+                                    escape_start_line,
+                                    &format!("Error converting hex of {} to u8. {:?}", hex_text, err),
+                                ))
+                            }
                         };
                         text.push(decimal as char);
-                    },
-                    _ => return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape")),
+                    }
+                    _ => {
+                        return Err(self.create_error_for_start_and_line(
+                            escape_start,
+                            escape_start_line,
+                            "Invalid escape",
+                        ))
+                    }
                 }
                 last_was_backslash = false;
             } else if is_double_quote && current_char == '"' || !is_double_quote && current_char == '\'' {
@@ -273,13 +309,14 @@ impl Scanner {
                         }
                     }
                     _ => {
-                        return Err(self.create_error_for_current_char("Expected plus or minus symbol in number literal"));
+                        return Err(
+                            self.create_error_for_current_char("Expected plus or minus symbol in number literal")
+                        );
                     }
                 }
             }
-            _ => {},
+            _ => {}
         }
-
 
         Ok(Token::Number(ImmutableString::new(text)))
     }
@@ -395,7 +432,12 @@ impl Scanner {
     #[cfg(debug_assertions)]
     fn assert_char(&mut self, character: char) {
         let current_char = self.current_char();
-        debug_assert!(current_char == Some(character), "Expected {:?}, was {:?}", character, current_char);
+        debug_assert!(
+            current_char == Some(character),
+            "Expected {:?}, was {:?}",
+            character,
+            current_char
+        );
     }
 
     fn move_next_char(&mut self) -> Option<char> {
@@ -426,11 +468,13 @@ impl Scanner {
     }
 
     fn is_hex(&self) -> bool {
-        self.is_digit() || match self.current_char() {
-            Some(current_char) => current_char >= 'a' && current_char <= 'f'
-                || current_char >= 'A' && current_char <= 'F',
-            _ => false,
-        }
+        self.is_digit()
+            || match self.current_char() {
+                Some(current_char) => {
+                    current_char >= 'a' && current_char <= 'f' || current_char >= 'A' && current_char <= 'F'
+                }
+                _ => false,
+            }
     }
 
     fn is_digit(&self) -> bool {
@@ -459,9 +503,9 @@ impl Scanner {
 
 #[cfg(test)]
 mod tests {
+    use super::super::common::ImmutableString;
+    use super::super::tokens::Token;
     use super::Scanner;
-    use super::super::common::{ImmutableString};
-    use super::super::tokens::{Token};
 
     #[test]
     fn it_tokenizes_string() {
@@ -472,13 +516,16 @@ mod tests {
                 Token::Comma,
                 Token::String(ImmutableString::from("\t\r\n\n ")),
                 Token::Comma,
-            ]
+            ],
         );
     }
 
     #[test]
     fn it_errors_escaping_single_quote_in_double_quote() {
-        assert_has_error(r#""t\'est""#, "Invalid escape in double quote string on line 1 column 3.");
+        assert_has_error(
+            r#""t\'est""#,
+            "Invalid escape in double quote string on line 1 column 3.",
+        );
     }
 
     #[test]
@@ -490,13 +537,16 @@ mod tests {
                 Token::Comma,
                 Token::String(ImmutableString::from("a")),
                 Token::Comma,
-            ]
+            ],
         );
     }
 
     #[test]
     fn it_errors_escaping_double_quote_in_single_quote() {
-        assert_has_error(r#"'t\"est'"#, "Invalid escape in single quote string on line 1 column 3.");
+        assert_has_error(
+            r#"'t\"est'"#,
+            "Invalid escape in single quote string on line 1 column 3.",
+        );
     }
 
     #[test]
@@ -519,7 +569,7 @@ mod tests {
                 Token::Comma,
                 Token::Number(ImmutableString::from("0.3e+025")),
                 Token::Comma,
-            ]
+            ],
         );
     }
 
@@ -540,7 +590,8 @@ mod tests {
                 Token::Comma,
                 Token::Null,
                 Token::Comma,
-            ]);
+            ],
+        );
     }
 
     #[test]
@@ -552,7 +603,8 @@ mod tests {
                 Token::CommentLine(ImmutableString::from("t")),
                 Token::CommentLine(ImmutableString::from(" test")),
                 Token::Comma,
-            ]);
+            ],
+        );
     }
 
     #[test]
@@ -563,7 +615,8 @@ mod tests {
                 Token::CommentBlock(ImmutableString::from("test\n ")),
                 Token::CommentBlock(ImmutableString::from(" test")),
                 Token::Comma,
-            ]);
+            ],
+        );
     }
 
     fn assert_has_tokens(text: &str, tokens: Vec<Token>) {
@@ -587,12 +640,12 @@ mod tests {
 
         loop {
             match scanner.scan() {
-                Ok(Some(_)) => {},
+                Ok(Some(_)) => {}
                 Ok(None) => break,
                 Err(err) => {
                     error_message = err.message;
                     break;
-                },
+                }
             }
         }
 

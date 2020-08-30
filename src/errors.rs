@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use super::common::{Range};
+use super::common::Range;
 
 /// Error that could occur while parsing or tokenizing.
 #[derive(Debug, PartialEq)]
@@ -15,10 +15,7 @@ pub struct ParseError {
 impl ParseError {
     pub(crate) fn new(range: Range, message: &str, file_text: &str) -> ParseError {
         let message = get_message_with_range(&range, message, file_text);
-        ParseError {
-            message,
-            range,
-        }
+        ParseError { message, range }
     }
 }
 

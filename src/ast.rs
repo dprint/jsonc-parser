@@ -138,7 +138,7 @@ pub enum CommentKind {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Comment {
     Line(CommentLine),
-    Block(CommentBlock)
+    Block(CommentBlock),
 }
 
 impl Comment {
@@ -216,7 +216,18 @@ macro_rules! impl_ranged {
     };
 }
 
-impl_ranged![StringLit, WordLit, NumberLit, BooleanLit, NullKeyword, Object, ObjectProp, Array, CommentLine, CommentBlock];
+impl_ranged![
+    StringLit,
+    WordLit,
+    NumberLit,
+    BooleanLit,
+    NullKeyword,
+    Object,
+    ObjectProp,
+    Array,
+    CommentLine,
+    CommentBlock
+];
 
 impl Ranged for Value {
     fn range(&self) -> &Range {
@@ -251,7 +262,16 @@ macro_rules! generate_node {
     };
 }
 
-generate_node![StringLit, WordLit, NumberLit, BooleanLit, NullKeyword, Object, ObjectProp, Array];
+generate_node![
+    StringLit,
+    WordLit,
+    NumberLit,
+    BooleanLit,
+    NullKeyword,
+    Object,
+    ObjectProp,
+    Array
+];
 
 impl<'a> From<&'a Value> for Node<'a> {
     fn from(value: &'a Value) -> Node<'a> {

@@ -19,9 +19,7 @@ impl ImmutableString {
     }
 
     pub(super) fn new(text: String) -> ImmutableString {
-        ImmutableString {
-            inner: Rc::new(text),
-        }
+        ImmutableString { inner: Rc::new(text) }
     }
 
     #[cfg(test)]
@@ -51,15 +49,25 @@ pub trait Ranged {
     fn range(&self) -> &Range;
 
     /// Gets the index of the first character in the text.
-    fn start(&self) -> usize { self.range().start }
+    fn start(&self) -> usize {
+        self.range().start
+    }
     /// Gets the line number of the start position in the text.
-    fn start_line(&self) -> usize { self.range().start_line }
+    fn start_line(&self) -> usize {
+        self.range().start_line
+    }
     /// Gets the index after the last character in the text.
-    fn end(&self) -> usize { self.range().end }
+    fn end(&self) -> usize {
+        self.range().end
+    }
     /// Gets the line number of the end position in the text.
-    fn end_line(&self) -> usize { self.range().end_line }
+    fn end_line(&self) -> usize {
+        self.range().end_line
+    }
     /// Gets the text from the provided string.
-    fn text<'a>(&self, text: &'a str) -> &'a str { &text[self.start()..self.end()] }
+    fn text<'a>(&self, text: &'a str) -> &'a str {
+        &text[self.start()..self.end()]
+    }
     /// Gets the start position.
     fn start_position(&self) -> Position {
         let range = self.range();

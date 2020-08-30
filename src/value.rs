@@ -39,7 +39,7 @@ macro_rules! generate_take {
                 // add it back
                 $self.0.insert(key, value);
                 None
-            },
+            }
             _ => None,
         }
     };
@@ -191,8 +191,8 @@ impl JsonArray {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn it_should_take() {

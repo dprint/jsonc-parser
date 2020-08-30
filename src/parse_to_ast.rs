@@ -1,10 +1,10 @@
+use super::ast::*;
+use super::common::{ImmutableString, Range};
+use super::errors::*;
+use super::scanner::Scanner;
+use super::tokens::{Token, TokenAndRange};
 use std::collections::HashMap;
 use std::rc::Rc;
-use super::scanner::Scanner;
-use super::common::{ImmutableString, Range};
-use super::tokens::{Token, TokenAndRange};
-use super::ast::*;
-use super::errors::*;
 
 /// Map where the comments are stored in collections where
 /// the key is the previous token end or start of file or
@@ -90,7 +90,10 @@ impl Context {
     }
 
     pub fn end_range(&mut self) -> Range {
-        let mut range = self.range_stack.pop().expect("Range was popped from the stack, but the stack was empty.");
+        let mut range = self
+            .range_stack
+            .pop()
+            .expect("Range was popped from the stack, but the stack was empty.");
         range.end = self.scanner.token_end();
         range.end_line = self.scanner.token_end_line();
         range
@@ -201,7 +204,7 @@ fn parse_value(context: &mut Context) -> Result<Option<Value>, ParseError> {
             Token::Word(_) => return Err(context.create_parse_error("Unexpected word")),
             Token::CommentLine(_) => unreachable!(),
             Token::CommentBlock(_) => unreachable!(),
-        }
+        },
     }
 }
 
@@ -227,7 +230,9 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
 
         // skip the comma
         match context.scan()? {
-            Some(Token::Comma) => { context.scan()?; },
+            Some(Token::Comma) => {
+                context.scan()?;
+            }
             _ => {}
         }
     }
@@ -238,7 +243,11 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
     })
 }
 
-fn parse_object_property(context: &mut Context, prop_name: ImmutableString, is_string: bool) -> Result<ObjectProp, ParseError> {
+fn parse_object_property(
+    context: &mut Context,
+    prop_name: ImmutableString,
+    is_string: bool,
+) -> Result<ObjectProp, ParseError> {
     context.start_range();
 
     let name = if is_string {
@@ -248,7 +257,7 @@ fn parse_object_property(context: &mut Context, prop_name: ImmutableString, is_s
     };
 
     match context.scan()? {
-        Some(Token::Colon) => {},
+        Some(Token::Colon) => {}
         _ => return Err(context.create_parse_error("Expected a colon after the string or word in an object property")),
     }
 
@@ -279,12 +288,14 @@ fn parse_array(context: &mut Context) -> Result<Array, ParseError> {
             _ => match parse_value(context)? {
                 Some(value) => elements.push(value),
                 None => return Err(context.create_parse_error_for_current_range("Unterminated array")),
-            }
+            },
         }
 
         // skip the comma
         match context.scan()? {
-            Some(Token::Comma) => { context.scan()?; },
+            Some(Token::Comma) => {
+                context.scan()?;
+            }
             _ => {}
         }
     }
@@ -337,7 +348,10 @@ mod tests {
 
     #[test]
     fn it_should_error_when_has_multiple_values() {
-        assert_has_error("[][]", "Text cannot contain more than one JSON value on line 1 column 3.");
+        assert_has_error(
+            "[][]",
+            "Text cannot contain more than one JSON value on line 1 column 3.",
+        );
     }
 
     #[test]
@@ -352,7 +366,10 @@ mod tests {
 
     #[test]
     fn it_should_error_when_object_has_two_non_string_tokens() {
-        assert_has_error("{ asdf asdf: 5 }", "Expected a colon after the string or word in an object property on line 1 column 8.");
+        assert_has_error(
+            "{ asdf asdf: 5 }",
+            "Expected a colon after the string or word in an object property on line 1 column 8.",
+        );
     }
 
     #[test]
@@ -391,7 +408,14 @@ mod tests {
 
     #[test]
     fn it_should_include_tokens_when_specified() {
-        let result = parse_to_ast("{}", &ParseOptions { tokens: true, ..Default::default() }).unwrap();
+        let result = parse_to_ast(
+            "{}",
+            &ParseOptions {
+                tokens: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let tokens = result.tokens.unwrap();
         assert_eq!(tokens.len(), 2);
     }
@@ -404,7 +428,14 @@ mod tests {
 
     #[test]
     fn it_should_include_comments_when_specified() {
-        let result = parse_to_ast("{} // 2", &ParseOptions { comments: true, ..Default::default() }).unwrap();
+        let result = parse_to_ast(
+            "{} // 2",
+            &ParseOptions {
+                comments: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let comments = result.comments.unwrap();
         assert_eq!(comments.len(), 2); // for both positions, but it's the same comment
     }

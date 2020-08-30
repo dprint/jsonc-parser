@@ -1,10 +1,10 @@
-pub mod common;
 pub mod ast;
+pub mod common;
 pub mod errors;
-pub mod tokens;
 mod parse_to_ast;
-mod scanner;
 mod parse_to_value;
+mod scanner;
+pub mod tokens;
 mod value;
 
 pub use parse_to_ast::*;
