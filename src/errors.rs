@@ -10,24 +10,30 @@ pub struct ParseError {
     pub range: Range,
     /// Error message.
     pub message: String,
+    /// Message with the range text.
+    display_message: String,
 }
 
 impl ParseError {
     pub(crate) fn new(range: Range, message: &str, file_text: &str) -> ParseError {
-        let message = get_message_with_range(&range, message, file_text);
-        ParseError { message, range }
+        let display_message = get_message_with_range(&range, message, file_text);
+        ParseError {
+            message: message.to_string(),
+            range,
+            display_message,
+        }
     }
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.message)
+        write!(f, "{}", self.display_message)
     }
 }
 
 impl Error for ParseError {
     fn description(&self) -> &str {
-        &self.message
+        &self.display_message
     }
 }
 
