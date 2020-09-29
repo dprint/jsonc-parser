@@ -109,15 +109,15 @@ fn range_to_test_str(range: &Range) -> String {
 }
 
 fn string_lit_to_test_str(lit: &StringLit) -> String {
-    lit_to_test_str("string", lit.value.as_ref(), &lit.range)
+    lit_to_test_str("string", lit.value.as_str(), &lit.range)
 }
 
 fn word_lit_to_test_str(lit: &WordLit) -> String {
-    lit_to_test_str("word", lit.value.as_ref(), &lit.range)
+    lit_to_test_str("word", lit.value.as_str(), &lit.range)
 }
 
 fn number_lit_to_test_str(lit: &NumberLit) -> String {
-    lit_to_test_str("number", lit.value.as_ref(), &lit.range)
+    lit_to_test_str("number", lit.value.as_str(), &lit.range)
 }
 
 fn boolean_lit_to_test_str(lit: &BooleanLit) -> String {
@@ -237,11 +237,11 @@ fn comment_to_test_str(comment: &Comment) -> String {
 }
 
 fn comment_line_to_test_str(line: &CommentLine) -> String {
-    lit_to_test_str("line", &line.text.as_ref(), &line.range)
+    lit_to_test_str("line", &line.text.as_str(), &line.range)
 }
 
 fn comment_block_to_test_str(block: &CommentBlock) -> String {
-    lit_to_test_str("block", &block.text.as_ref(), &block.range)
+    lit_to_test_str("block", &block.text.as_str(), &block.range)
 }
 
 fn escape_json_str(text: &str) -> String {

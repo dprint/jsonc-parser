@@ -396,7 +396,7 @@ mod tests {
         let result = parse_to_ast(text, &Default::default());
         match result {
             Ok(_) => panic!("Expected error, but did not find one."),
-            Err(err) => assert_eq!(err.message, message),
+            Err(err) => assert_eq!(err.to_string(), message),
         }
     }
 

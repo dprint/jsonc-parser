@@ -7,11 +7,11 @@ pub struct ImmutableString {
 }
 
 impl ImmutableString {
-    pub fn as_ref(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.inner
     }
 
-    pub fn to_string(self) -> String {
+    pub fn into_string(self) -> String {
         match Rc::try_unwrap(self.inner) {
             Ok(inner) => inner,
             Err(value) => String::from(value.as_ref()),
@@ -41,6 +41,13 @@ pub struct Range {
     pub start_line: usize,
     /// Line of the end position of the node in the text.
     pub end_line: usize,
+}
+
+impl Range {
+    /// Gets the end position minus the start of the range.
+    pub fn width(&self) -> usize {
+        self.end - self.start
+    }
 }
 
 /// Represents an object that has a range in the text.
@@ -77,6 +84,10 @@ pub trait Ranged {
     fn end_position(&self) -> Position {
         let range = self.range();
         Position::new(range.end, range.end_line)
+    }
+    /// Gets the end position minus the start of the range.
+    fn width(&self) -> usize {
+        self.range().width()
     }
 }
 

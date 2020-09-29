@@ -643,7 +643,7 @@ mod tests {
                 Ok(Some(_)) => {}
                 Ok(None) => break,
                 Err(err) => {
-                    error_message = err.message;
+                    error_message = err.to_string();
                     break;
                 }
             }

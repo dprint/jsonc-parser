@@ -95,6 +95,120 @@ pub struct Object {
     pub properties: Vec<ObjectProp>,
 }
 
+macro_rules! generate_take {
+    ($self:ident, $name:ident, $value_type:ident) => {
+        // there must be some better code that could be written here...
+        if let Some(pos) = $self.properties.iter().position(|p| p.name.as_str() == $name) {
+            if let Value::$value_type(_) = &$self.properties[pos].value {
+                if let Value::$value_type(node) = $self.properties.remove(pos).value {
+                    Some(node)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+}
+
+macro_rules! generate_get {
+    ($self:ident, $name:ident, $value_type:ident) => {
+        $self
+            .properties
+            .iter()
+            .filter(|p| p.name.as_str() == $name)
+            .map(|p| {
+                if let Value::$value_type(node) = &p.value {
+                    Some(node)
+                } else {
+                    None
+                }
+            })
+            .next()
+            .flatten()
+    };
+}
+
+impl Object {
+    /// Gets a property value in the object by its name.
+    pub fn get(&self, name: &str) -> Option<&ObjectProp> {
+        self.properties.iter().filter(|p| p.name.as_str() == name).next()
+    }
+
+    /// Gets a string property value from the object by name.
+    /// Returns `None` when not a string or it doesn't exist.
+    pub fn get_string(&self, name: &str) -> Option<&StringLit> {
+        generate_get!(self, name, StringLit)
+    }
+
+    /// Gets a number property value from the object by name.
+    /// Returns `None` when not a number or it doesn't exist.
+    pub fn get_number(&self, name: &str) -> Option<&NumberLit> {
+        generate_get!(self, name, NumberLit)
+    }
+
+    /// Gets a boolean property value from the object by name.
+    /// Returns `None` when not a boolean or it doesn't exist.
+    pub fn get_boolean(&self, name: &str) -> Option<&BooleanLit> {
+        generate_get!(self, name, BooleanLit)
+    }
+
+    /// Gets an object property value from the object by name.
+    /// Returns `None` when not an object or it doesn't exist.
+    pub fn get_object(&self, name: &str) -> Option<&Object> {
+        generate_get!(self, name, Object)
+    }
+
+    /// Gets an array property value from the object by name.
+    /// Returns `None` when not an array or it doesn't exist.
+    pub fn get_array(&self, name: &str) -> Option<&Array> {
+        generate_get!(self, name, Array)
+    }
+
+    /// Takes a value from the object by name.
+    /// Returns `None` when it doesn't exist.
+    pub fn take(&mut self, name: &str) -> Option<ObjectProp> {
+        if let Some(pos) = self.properties.iter().position(|p| p.name.as_str() == name) {
+            Some(self.properties.remove(pos))
+        } else {
+            None
+        }
+    }
+
+    /// Takes a string property value from the object by name.
+    /// Returns `None` when not a string or it doesn't exist.
+    pub fn take_string(&mut self, name: &str) -> Option<StringLit> {
+        generate_take!(self, name, StringLit)
+    }
+
+    /// Takes a number property value from the object by name.
+    /// Returns `None` when not a number or it doesn't exist.
+    pub fn take_number(&mut self, name: &str) -> Option<NumberLit> {
+        generate_take!(self, name, NumberLit)
+    }
+
+    /// Takes a boolean property value from the object by name.
+    /// Returns `None` when not a boolean or it doesn't exist.
+    pub fn take_boolean(&mut self, name: &str) -> Option<BooleanLit> {
+        generate_take!(self, name, BooleanLit)
+    }
+
+    /// Takes an object property value from the object by name.
+    /// Returns `None` when not an object or it doesn't exist.
+    pub fn take_object(&mut self, name: &str) -> Option<Object> {
+        generate_take!(self, name, Object)
+    }
+
+    /// Takes an array property value from the object by name.
+    /// Returns `None` when not an array or it doesn't exist.
+    pub fn take_array(&mut self, name: &str) -> Option<Array> {
+        generate_take!(self, name, Array)
+    }
+}
+
 /// Represents an object property (ex. `"prop": []`).
 #[derive(Debug, PartialEq, Clone)]
 pub struct ObjectProp {
@@ -111,11 +225,19 @@ pub enum ObjectPropName {
 }
 
 impl ObjectPropName {
-    /// Gets the object property name as a string.
-    pub fn to_string(self) -> String {
+    /// Converts the object property name into a string.
+    pub fn into_string(self) -> String {
         match self {
-            ObjectPropName::String(lit) => lit.value.to_string(),
-            ObjectPropName::Word(lit) => lit.value.to_string(),
+            ObjectPropName::String(lit) => lit.value.into_string(),
+            ObjectPropName::Word(lit) => lit.value.into_string(),
+        }
+    }
+
+    /// Gets the object property name as a string.
+    pub fn as_str(&self) -> &str {
+        match self {
+            ObjectPropName::String(lit) => lit.value.as_str(),
+            ObjectPropName::Word(lit) => lit.value.as_str(),
         }
     }
 }
@@ -145,8 +267,8 @@ impl Comment {
     /// Gets the text of the comment.
     pub fn text(&self) -> &str {
         match self {
-            Comment::Line(line) => line.text.as_ref(),
-            Comment::Block(line) => line.text.as_ref(),
+            Comment::Line(line) => line.text.as_str(),
+            Comment::Block(line) => line.text.as_str(),
         }
     }
 
@@ -283,5 +405,61 @@ impl<'a> From<&'a Value> for Node<'a> {
             Value::Object(node) => Node::Object(node),
             Value::StringLit(node) => Node::StringLit(node),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{parse_to_ast, ParseOptions};
+
+    #[test]
+    fn it_should_take() {
+        let ast = parse_to_ast(
+            "{'prop': 'asdf', 'other': 'text'}",
+            &ParseOptions {
+                tokens: false,
+                comments: false,
+            },
+        )
+        .unwrap();
+        let mut obj = match ast.value {
+            Some(Value::Object(obj)) => obj,
+            _ => unreachable!(),
+        };
+
+        assert_eq!(obj.properties.len(), 2);
+        assert_eq!(obj.take_string("asdf"), None);
+        assert_eq!(obj.properties.len(), 2);
+        assert_eq!(obj.take_number("prop"), None);
+        assert_eq!(obj.properties.len(), 2);
+        assert_eq!(obj.take_string("prop").is_some(), true);
+        assert_eq!(obj.properties.len(), 1);
+        assert_eq!(obj.take("something"), None);
+        assert_eq!(obj.properties.len(), 1);
+        assert_eq!(obj.take("other").is_some(), true);
+        assert_eq!(obj.properties.len(), 0);
+    }
+
+    #[test]
+    fn it_should_get() {
+        let ast = parse_to_ast(
+            "{'prop': 'asdf'}",
+            &ParseOptions {
+                tokens: false,
+                comments: false,
+            },
+        )
+        .unwrap();
+        let obj = match ast.value {
+            Some(Value::Object(obj)) => obj,
+            _ => unreachable!(),
+        };
+
+        assert_eq!(obj.properties.len(), 1);
+        assert_eq!(obj.get_string("asdf"), None);
+        assert_eq!(obj.get_string("prop").is_some(), true);
+        assert_eq!(obj.get("asdf"), None);
+        assert_eq!(obj.properties.len(), 1);
     }
 }
