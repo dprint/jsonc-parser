@@ -217,17 +217,22 @@ impl Scanner {
                                 hex_text.push(current_char);
                             }
                         }
-                        let decimal = match u8::from_str_radix(&hex_text, 16) {
-                            Ok(decimal) => decimal,
-                            Err(err) => {
+
+                        let hex_u32 = u32::from_str_radix(&hex_text, 16);
+                        let hex_char = match hex_u32.ok().map(|hex_u32| std::char::from_u32(hex_u32)).flatten() {
+                            Some(hex_char) => hex_char,
+                            None => {
                                 return Err(self.create_error_for_start_and_line(
                                     escape_start,
                                     escape_start_line,
-                                    &format!("Error converting hex of {} to u8. {:?}", hex_text, err),
-                                ))
+                                    &format!(
+                                        "Invalid unicode escape sequence. '{}' is not a valid UTF8 character",
+                                        hex_text
+                                    ),
+                                ));
                             }
                         };
-                        text.push(decimal as char);
+                        text.push(hex_char);
                     }
                     _ => {
                         return Err(self.create_error_for_start_and_line(
@@ -505,7 +510,7 @@ impl Scanner {
 mod tests {
     use super::super::common::ImmutableString;
     use super::super::tokens::Token;
-    use super::Scanner;
+    use super::*;
 
     #[test]
     fn it_tokenizes_string() {
@@ -616,6 +621,14 @@ mod tests {
                 Token::CommentBlock(ImmutableString::from(" test")),
                 Token::Comma,
             ],
+        );
+    }
+
+    #[test]
+    fn it_errors_on_invalid_utf8_char_for_issue_6() {
+        assert_has_error(
+            "\"\\uDF06\"",
+            "Invalid unicode escape sequence. 'DF06' is not a valid UTF8 character on line 1 column 2.",
         );
     }
 
