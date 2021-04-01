@@ -1,3 +1,5 @@
+#[global_allocator]
+static GLOBAL: mimallocator::Mimalloc = mimallocator::Mimalloc;
 pub mod ast;
 pub mod common;
 pub mod errors;
