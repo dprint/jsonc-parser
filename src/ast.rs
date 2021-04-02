@@ -1,9 +1,10 @@
-use super::common::{ImmutableString, Range, Ranged};
+use super::common::{Range, Ranged};
+use std::borrow::Cow;
 
 /// JSON value.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value<'a> {
-    StringLit(StringLit),
+    StringLit(StringLit<'a>),
     NumberLit(NumberLit<'a>),
     BooleanLit(BooleanLit),
     Object(Object<'a>),
@@ -14,7 +15,7 @@ pub enum Value<'a> {
 /// Node that can appear in the AST.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node<'a, 'b> {
-    StringLit(&'b StringLit),
+    StringLit(&'b StringLit<'a>),
     NumberLit(&'b NumberLit<'a>),
     BooleanLit(&'b BooleanLit),
     Object(&'b Object<'a>),
@@ -55,9 +56,9 @@ pub enum NodeKind {
 
 /// Node surrounded in double quotes (ex. `"my string"`).
 #[derive(Debug, PartialEq, Clone)]
-pub struct StringLit {
+pub struct StringLit<'a> {
     pub range: Range,
-    pub value: ImmutableString,
+    pub value: Cow<'a, str>,
 }
 
 /// A string that's not in quotes.
@@ -220,7 +221,7 @@ pub struct ObjectProp<'a> {
 /// Represents an object property name that may or may not be in quotes.
 #[derive(Debug, PartialEq, Clone)]
 pub enum ObjectPropName<'a> {
-    String(StringLit),
+    String(StringLit<'a>),
     Word(WordLit<'a>),
 }
 
@@ -228,15 +229,15 @@ impl<'a> ObjectPropName<'a> {
     /// Converts the object property name into a string.
     pub fn into_string(self) -> String {
         match self {
-            ObjectPropName::String(lit) => lit.value.into_string(),
+            ObjectPropName::String(lit) => lit.value.to_string(),
             ObjectPropName::Word(lit) => String::from(lit.value),
         }
     }
 
-    /// Gets the object property name as a string.
+    /// Gets the object property name as a string reference.
     pub fn as_str(&self) -> &str {
         match self {
-            ObjectPropName::String(lit) => lit.value.as_str(),
+            ObjectPropName::String(lit) => lit.value.as_ref(),
             ObjectPropName::Word(lit) => lit.value,
         }
     }
@@ -338,7 +339,7 @@ macro_rules! impl_ranged {
     };
 }
 
-impl_ranged![StringLit, BooleanLit, NullKeyword];
+impl_ranged![BooleanLit, NullKeyword];
 
 macro_rules! impl_ranged_lifetime {
     ($($node_name:ident),*) => {
@@ -352,7 +353,16 @@ macro_rules! impl_ranged_lifetime {
     };
 }
 
-impl_ranged_lifetime![WordLit, Object, ObjectProp, Array, CommentLine, CommentBlock, NumberLit];
+impl_ranged_lifetime![
+    WordLit,
+    Object,
+    ObjectProp,
+    Array,
+    CommentLine,
+    CommentBlock,
+    NumberLit,
+    StringLit
+];
 
 impl<'a> Ranged for Value<'a> {
     fn range(&self) -> &Range {
@@ -394,7 +404,7 @@ macro_rules! generate_node {
     };
 }
 
-generate_node![StringLit, BooleanLit, NullKeyword];
+generate_node![BooleanLit, NullKeyword];
 
 macro_rules! generate_node_lifetime {
     ($($node_name:ident),*) => {
@@ -409,7 +419,7 @@ macro_rules! generate_node_lifetime {
     };
 }
 
-generate_node_lifetime![WordLit, Object, ObjectProp, Array, NumberLit];
+generate_node_lifetime![WordLit, Object, ObjectProp, Array, NumberLit, StringLit];
 
 impl<'a, 'b> From<&'b Value<'a>> for Node<'a, 'b> {
     fn from(value: &'b Value<'a>) -> Node<'a, 'b> {

@@ -1,4 +1,5 @@
-use super::common::{ImmutableString, Range, Ranged};
+use super::common::{Range, Ranged};
+use std::borrow::Cow;
 
 /// A token found while scanning.
 #[derive(Debug, PartialEq, Clone)]
@@ -9,7 +10,7 @@ pub enum Token<'a> {
     CloseBracket,
     Comma,
     Colon,
-    String(ImmutableString),
+    String(Cow<'a, str>),
     Word(&'a str),
     Boolean(bool),
     Number(&'a str),

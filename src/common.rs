@@ -1,35 +1,3 @@
-use std::rc::Rc;
-
-/// A string that cannot be changed.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ImmutableString {
-    inner: Rc<String>,
-}
-
-impl ImmutableString {
-    pub fn as_str(&self) -> &str {
-        &self.inner
-    }
-
-    pub fn into_string(self) -> String {
-        match Rc::try_unwrap(self.inner) {
-            Ok(inner) => inner,
-            Err(value) => String::from(value.as_ref()),
-        }
-    }
-
-    pub(super) fn new(text: String) -> ImmutableString {
-        ImmutableString { inner: Rc::new(text) }
-    }
-
-    #[cfg(test)]
-    pub(super) fn from(text: &str) -> ImmutableString {
-        ImmutableString {
-            inner: Rc::new(String::from(text)),
-        }
-    }
-}
-
 /// Positional information about a start and end point in the text.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Range {

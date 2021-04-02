@@ -1,6 +1,7 @@
-use super::common::{ImmutableString, Range};
+use super::common::Range;
 use super::errors::*;
 use super::tokens::Token;
+use std::borrow::Cow;
 use std::str::Chars;
 
 /// Converts text into a stream of tokens.
@@ -136,7 +137,12 @@ impl<'a> Scanner<'a> {
         self.create_error_for_start_and_line(self.byte_index, self.line_number, message)
     }
 
-    pub(super) fn create_error_for_start_and_line(&self, start: usize, start_line: usize, message: &str) -> ParseError {
+    pub(super) fn create_error_for_start_and_line(
+        &self,
+        start: usize,
+        start_line: usize,
+        message: &str,
+    ) -> ParseError {
         let range = Range {
             start,
             start_line,
@@ -157,7 +163,8 @@ impl<'a> Scanner<'a> {
             self.current_char()
         );
         let is_double_quote = self.current_char() == Some('"');
-        let mut text = String::new();
+        let mut last_start_byte_index = self.byte_index + 1;
+        let mut text: Option<String> = None;
         let mut last_was_backslash = false;
         let mut found_end_string = false;
 
@@ -166,81 +173,80 @@ impl<'a> Scanner<'a> {
                 let escape_start = self.byte_index - 1; // -1 for backslash
                 let escape_start_line = self.line_number;
                 match current_char {
-                    '"' => {
-                        if !is_double_quote {
-                            return Err(self.create_error_for_start_and_line(
-                                escape_start,
-                                escape_start_line,
-                                "Invalid escape in single quote string",
-                            ));
-                        } else {
-                            text.push(current_char);
-                        }
-                    }
-                    '\'' => {
-                        if is_double_quote {
-                            return Err(self.create_error_for_start_and_line(
-                                escape_start,
-                                escape_start_line,
-                                "Invalid escape in double quote string",
-                            ));
-                        } else {
-                            text.push(current_char);
-                        }
-                    }
-                    '\\' => {
-                        text.push('\\');
-                    }
-                    '/' => {
-                        text.push('/');
-                    }
-                    'b' => {
-                        text.push('\u{08}');
-                    }
-                    'f' => {
-                        text.push('\u{0C}');
-                    }
-                    'n' => {
-                        text.push('\n');
-                    }
-                    'r' => {
-                        text.push('\r');
-                    }
-                    't' => {
-                        text.push('\t');
-                    }
-                    'u' => {
-                        let mut hex_text = String::new();
-                        // expect four hex values
-                        for _ in 0..4 {
-                            let current_char = self.move_next_char();
-                            if !self.is_hex() {
+                    '"' | '\'' | '\\' | '/' | 'b' | 'f' | 'u' | 'r' | 'n' | 't' => {
+                        if current_char == '"' {
+                            if !is_double_quote {
                                 return Err(self.create_error_for_start_and_line(
                                     escape_start,
                                     escape_start_line,
-                                    "Expected four hex digits",
+                                    "Invalid escape in single quote string",
                                 ));
                             }
-                            if let Some(current_char) = current_char {
-                                hex_text.push(current_char);
+                        } else if current_char == '\'' {
+                            if is_double_quote {
+                                return Err(self.create_error_for_start_and_line(
+                                    escape_start,
+                                    escape_start_line,
+                                    "Invalid escape in double quote string",
+                                ));
                             }
                         }
 
-                        let hex_u32 = u32::from_str_radix(&hex_text, 16);
-                        let hex_char = match hex_u32.ok().map(|hex_u32| std::char::from_u32(hex_u32)).flatten() {
-                            Some(hex_char) => hex_char,
-                            None => {
-                                return Err(self.create_error_for_start_and_line(
-                                    escape_start,
-                                    escape_start_line,
-                                    &format!(
-                                        "Invalid unicode escape sequence. '{}' is not a valid UTF8 character",
-                                        hex_text
-                                    ),
-                                ));
+                        let previous_text = &self.file_text[last_start_byte_index..escape_start];
+                        if text.is_none() {
+                            text = Some(String::new());
+                        }
+                        let text = text.as_mut().unwrap();
+                        text.push_str(previous_text);
+                        if current_char == 'u' {
+                            let mut hex_text = String::new();
+                            // expect four hex values
+                            for _ in 0..4 {
+                                let current_char = self.move_next_char();
+                                if !self.is_hex() {
+                                    return Err(self.create_error_for_start_and_line(
+                                        escape_start,
+                                        escape_start_line,
+                                        "Expected four hex digits",
+                                    ));
+                                }
+                                if let Some(current_char) = current_char {
+                                    hex_text.push(current_char);
+                                }
                             }
-                        };
-                        text.push(hex_char);
+
+                            let hex_u32 = u32::from_str_radix(&hex_text, 16);
+                            let hex_char = match hex_u32
+                                .ok()
+                                .map(|hex_u32| std::char::from_u32(hex_u32))
+                                .flatten()
+                            {
+                                Some(hex_char) => hex_char,
+                                None => {
+                                    return Err(self.create_error_for_start_and_line(
+                                        escape_start,
+                                        escape_start_line,
+                                        &format!(
+                                            "Invalid unicode escape sequence. '{}' is not a valid UTF8 character",
+                                            hex_text
+                                        ),
+                                    ));
+                                }
+                            };
+                            text.push(hex_char);
+                            last_start_byte_index = self.byte_index
+                                + self.current_char().map(|c| c.len_utf8()).unwrap_or(0);
+                        } else {
+                            text.push(match current_char {
+                                'b' => '\u{08}',
+                                'f' => '\u{0C}',
+                                't' => '\t',
+                                'r' => '\r',
+                                'n' => '\n',
+                                _ => current_char,
+                            });
+                            last_start_byte_index = self.byte_index + current_char.len_utf8();
+                        }
                     }
                     _ => {
                         return Err(self.create_error_for_start_and_line(
@@ -251,20 +257,26 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 last_was_backslash = false;
-            } else if is_double_quote && current_char == '"' || !is_double_quote && current_char == '\'' {
+            } else if is_double_quote && current_char == '"'
+                || !is_double_quote && current_char == '\''
+            {
                 found_end_string = true;
                 break;
             } else {
                 last_was_backslash = current_char == '\\';
-                if !last_was_backslash {
-                    text.push(current_char);
-                }
             }
         }
 
         if found_end_string {
             self.move_next_char();
-            Ok(Token::String(ImmutableString::new(text)))
+            let final_segment = &self.file_text[last_start_byte_index..self.byte_index - 1];
+            Ok(Token::String(match text {
+                Some(mut text) => {
+                    text.push_str(final_segment);
+                    Cow::Owned(text)
+                }
+                None => Cow::Borrowed(final_segment),
+            }))
         } else {
             Err(self.create_error_for_current_token("Unterminated string literal"))
         }
@@ -285,7 +297,9 @@ impl<'a> Scanner<'a> {
                 self.move_next_char();
             }
         } else {
-            return Err(self.create_error_for_current_char("Expected a digit to follow a negative sign"));
+            return Err(
+                self.create_error_for_current_char("Expected a digit to follow a negative sign")
+            );
         }
 
         if self.is_decimal_point() {
@@ -312,14 +326,18 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 _ => {
-                    return Err(self.create_error_for_current_char("Expected plus or minus symbol in number literal"));
+                    return Err(self.create_error_for_current_char(
+                        "Expected plus or minus symbol in number literal",
+                    ));
                 }
             },
             _ => {}
         }
 
         let end_byte_index = self.byte_index;
-        Ok(Token::Number(&self.file_text[start_byte_index..end_byte_index]))
+        Ok(Token::Number(
+            &self.file_text[start_byte_index..end_byte_index],
+        ))
     }
 
     fn parse_comment_line(&mut self) -> Token<'a> {
@@ -355,7 +373,9 @@ impl<'a> Scanner<'a> {
             let end_byte_index = self.byte_index;
             self.assert_then_move_char('*');
             self.assert_then_move_char('/');
-            Ok(Token::CommentBlock(&self.file_text[start_byte_index..end_byte_index]))
+            Ok(Token::CommentBlock(
+                &self.file_text[start_byte_index..end_byte_index],
+            ))
         } else {
             Err(self.create_error_for_current_token("Unterminated comment block"))
         }
@@ -402,7 +422,11 @@ impl<'a> Scanner<'a> {
         let start_byte_index = self.byte_index;
 
         while let Some(current_char) = self.current_char() {
-            if current_char.is_whitespace() || current_char == '\r' || current_char == '\n' || current_char == ':' {
+            if current_char.is_whitespace()
+                || current_char == '\r'
+                || current_char == '\n'
+                || current_char == ':'
+            {
                 break;
             }
             if !current_char.is_alphanumeric() && current_char != '-' {
@@ -418,7 +442,9 @@ impl<'a> Scanner<'a> {
             return Err(self.create_error_for_current_token("Unexpected token"));
         }
 
-        Ok(Token::Word(&self.file_text[start_byte_index..end_byte_index]))
+        Ok(Token::Word(
+            &self.file_text[start_byte_index..end_byte_index],
+        ))
     }
 
     fn assert_then_move_char(&mut self, _character: char) {
@@ -500,7 +526,8 @@ impl<'a> Scanner<'a> {
         self.is_digit()
             || match self.current_char() {
                 Some(current_char) => {
-                    current_char >= 'a' && current_char <= 'f' || current_char >= 'A' && current_char <= 'F'
+                    current_char >= 'a' && current_char <= 'f'
+                        || current_char >= 'A' && current_char <= 'F'
                 }
                 _ => false,
             }
@@ -532,18 +559,17 @@ impl<'a> Scanner<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::common::ImmutableString;
     use super::super::tokens::Token;
     use super::*;
 
     #[test]
     fn it_tokenizes_string() {
         assert_has_tokens(
-            r#""t\"est", "\t\r\n\n\u0020","#,
+            r#""t\"est", "\t\r\n\n\u0020 test\n other","#,
             vec![
-                Token::String(ImmutableString::from(r#"t"est"#)),
+                Token::String(Cow::Borrowed(r#"t"est"#)),
                 Token::Comma,
-                Token::String(ImmutableString::from("\t\r\n\n ")),
+                Token::String(Cow::Borrowed("\t\r\n\n  test\n other")),
                 Token::Comma,
             ],
         );
@@ -562,9 +588,9 @@ mod tests {
         assert_has_tokens(
             r#"'t\'est','a',"#,
             vec![
-                Token::String(ImmutableString::from(r#"t'est"#)),
+                Token::String(Cow::Borrowed(r#"t'est"#)),
                 Token::Comma,
-                Token::String(ImmutableString::from("a")),
+                Token::String(Cow::Borrowed("a")),
                 Token::Comma,
             ],
         );

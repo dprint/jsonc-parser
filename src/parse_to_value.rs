@@ -27,7 +27,7 @@ pub fn parse_to_value(text: &str) -> Result<Option<JsonValue>, ParseError> {
 
 fn handle_value(value: ast::Value) -> JsonValue {
     match value {
-        ast::Value::StringLit(lit) => JsonValue::String(lit.value.into_string()),
+        ast::Value::StringLit(lit) => JsonValue::String(lit.value),
         ast::Value::NumberLit(lit) => JsonValue::Number(lit.value),
         ast::Value::BooleanLit(lit) => JsonValue::Boolean(lit.value),
         ast::Value::Object(obj) => JsonValue::Object(handle_object(obj)),
@@ -37,7 +37,11 @@ fn handle_value(value: ast::Value) -> JsonValue {
 }
 
 fn handle_array(arr: ast::Array) -> JsonArray {
-    let elements = arr.elements.into_iter().map(|element| handle_value(element)).collect();
+    let elements = arr
+        .elements
+        .into_iter()
+        .map(|element| handle_value(element))
+        .collect();
 
     JsonArray::new(elements)
 }
@@ -55,6 +59,7 @@ fn handle_object(obj: ast::Object) -> JsonObject {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
 
     #[test]
     fn it_should_parse_object() {
@@ -73,7 +78,9 @@ mod tests {
         object_map.insert(String::from("a"), JsonValue::Null);
         object_map.insert(
             String::from("b"),
-            JsonValue::Array(vec![JsonValue::Null, JsonValue::String(String::from("text"))].into()),
+            JsonValue::Array(
+                vec![JsonValue::Null, JsonValue::String(Cow::Borrowed("text"))].into(),
+            ),
         );
         object_map.insert(String::from("c"), JsonValue::Boolean(true));
         object_map.insert(String::from("d"), JsonValue::Number("25.55"));
@@ -103,13 +110,13 @@ mod tests {
     #[test]
     fn it_should_parse_string() {
         let value = parse_to_value(r#""test""#).unwrap().unwrap();
-        assert_eq!(value, JsonValue::String(String::from("test")));
+        assert_eq!(value, JsonValue::String(Cow::Borrowed("test")));
     }
 
     #[test]
     fn it_should_parse_string_with_quotes() {
         let value = parse_to_value(r#""echo \"test\"""#).unwrap().unwrap();
-        assert_eq!(value, JsonValue::String(String::from(r#"echo "test""#)));
+        assert_eq!(value, JsonValue::String(Cow::Borrowed(r#"echo "test""#)));
     }
 
     #[test]

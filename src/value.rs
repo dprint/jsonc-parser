@@ -1,10 +1,11 @@
 use core::slice::Iter;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// A JSON value.
 #[derive(Clone, PartialEq, Debug)]
 pub enum JsonValue<'a> {
-    String(String),
+    String(Cow<'a, str>),
     Number(&'a str),
     Boolean(bool),
     Object(JsonObject<'a>),
@@ -77,7 +78,7 @@ impl<'a> JsonObject<'a> {
 
     /// Gets a string property value from the object by name.
     /// Returns `None` when not a string or it doesn't exist.
-    pub fn get_string(&self, name: &str) -> Option<&String> {
+    pub fn get_string(&self, name: &str) -> Option<&Cow<'a, str>> {
         generate_get!(self, name, String)
     }
 
@@ -114,7 +115,7 @@ impl<'a> JsonObject<'a> {
 
     /// Takes a string property value from the object by name.
     /// Returns `None` when not a string or it doesn't exist.
-    pub fn take_string(&mut self, name: &str) -> Option<String> {
+    pub fn take_string(&mut self, name: &str) -> Option<Cow<'a, str>> {
         generate_take!(self, name, String)
     }
 
@@ -197,8 +198,14 @@ mod test {
     #[test]
     fn it_should_take() {
         let mut inner = HashMap::new();
-        inner.insert(String::from("prop"), JsonValue::String(String::from("asdf")));
-        inner.insert(String::from("other"), JsonValue::String(String::from("text")));
+        inner.insert(
+            String::from("prop"),
+            JsonValue::String(Cow::Borrowed("asdf")),
+        );
+        inner.insert(
+            String::from("other"),
+            JsonValue::String(Cow::Borrowed("text")),
+        );
         let mut obj = JsonObject::new(inner);
 
         assert_eq!(obj.len(), 2);
@@ -206,24 +213,33 @@ mod test {
         assert_eq!(obj.len(), 2);
         assert_eq!(obj.take_number("prop"), None);
         assert_eq!(obj.len(), 2);
-        assert_eq!(obj.take_string("prop"), Some(String::from("asdf")));
+        assert_eq!(obj.take_string("prop"), Some(Cow::Borrowed("asdf")));
         assert_eq!(obj.len(), 1);
         assert_eq!(obj.take("something"), None);
         assert_eq!(obj.len(), 1);
-        assert_eq!(obj.take("other"), Some(JsonValue::String(String::from("text"))));
+        assert_eq!(
+            obj.take("other"),
+            Some(JsonValue::String(Cow::Borrowed("text")))
+        );
         assert_eq!(obj.len(), 0);
     }
 
     #[test]
     fn it_should_get() {
         let mut inner = HashMap::new();
-        inner.insert(String::from("prop"), JsonValue::String(String::from("asdf")));
+        inner.insert(
+            String::from("prop"),
+            JsonValue::String(Cow::Borrowed("asdf")),
+        );
         let obj = JsonObject::new(inner);
 
         assert_eq!(obj.len(), 1);
         assert_eq!(obj.get_string("asdf"), None);
-        assert_eq!(obj.get_string("prop"), Some(&String::from("asdf")));
-        assert_eq!(obj.get("prop"), Some(&JsonValue::String(String::from("asdf"))));
+        assert_eq!(obj.get_string("prop"), Some(&Cow::Borrowed("asdf")));
+        assert_eq!(
+            obj.get("prop"),
+            Some(&JsonValue::String(Cow::Borrowed("asdf")))
+        );
         assert_eq!(obj.get("asdf"), None);
         assert_eq!(obj.len(), 1);
     }
