@@ -7,7 +7,8 @@
   },
   "includes": ["**/*.{md,rs}"],
   "excludes": [
-    "**/target"
+    "**/target",
+    "./benches/json"
   ],
   "plugins": [
     "https://plugins.dprint.dev/markdown-0.4.1.wasm",
