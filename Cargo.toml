@@ -10,9 +10,4 @@ repository = "https://github.com/dsherret/jsonc-parser"
 [dependencies]
 
 [dev-dependencies]
-criterion = "0.3.4"
 pretty_assertions = "0.6.1"
-
-[[bench]]
-harness = false
-name = "json_speed"
