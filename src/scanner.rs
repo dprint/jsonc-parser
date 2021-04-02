@@ -271,21 +271,17 @@ impl<'a> Scanner<'a> {
     }
 
     fn parse_number(&mut self) -> Result<Token<'a>, ParseError> {
-        let mut text = String::new();
+        let start_byte_index = self.byte_index;
 
         if self.is_negative_sign() {
-            text.push('-');
             self.move_next_char();
         }
 
         if self.is_zero() {
-            text.push('0');
             self.move_next_char();
         } else if self.is_one_nine() {
-            text.push(self.current_char().unwrap());
             self.move_next_char();
             while self.is_digit() {
-                text.push(self.current_char().unwrap());
                 self.move_next_char();
             }
         } else {
@@ -293,7 +289,6 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_decimal_point() {
-            text.push('.');
             self.move_next_char();
 
             if !self.is_digit() {
@@ -301,37 +296,30 @@ impl<'a> Scanner<'a> {
             }
 
             while self.is_digit() {
-                text.push(self.current_char().unwrap());
                 self.move_next_char();
             }
         }
 
         match self.current_char() {
-            Some('e') | Some('E') => {
-                text.push(self.current_char().unwrap());
-                match self.move_next_char() {
-                    Some('-') | Some('+') => {
-                        text.push(self.current_char().unwrap());
-                        self.move_next_char();
-                        if !self.is_digit() {
-                            return Err(self.create_error_for_current_char("Expected a digit"));
-                        }
-                        while self.is_digit() {
-                            text.push(self.current_char().unwrap());
-                            self.move_next_char();
-                        }
+            Some('e') | Some('E') => match self.move_next_char() {
+                Some('-') | Some('+') => {
+                    self.move_next_char();
+                    if !self.is_digit() {
+                        return Err(self.create_error_for_current_char("Expected a digit"));
                     }
-                    _ => {
-                        return Err(
-                            self.create_error_for_current_char("Expected plus or minus symbol in number literal")
-                        );
+                    while self.is_digit() {
+                        self.move_next_char();
                     }
                 }
-            }
+                _ => {
+                    return Err(self.create_error_for_current_char("Expected plus or minus symbol in number literal"));
+                }
+            },
             _ => {}
         }
 
-        Ok(Token::Number(ImmutableString::new(text)))
+        let end_byte_index = self.byte_index;
+        Ok(Token::Number(&self.file_text[start_byte_index..end_byte_index]))
     }
 
     fn parse_comment_line(&mut self) -> Token<'a> {
@@ -411,7 +399,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn parse_word(&mut self) -> Result<Token<'a>, ParseError> {
-        let mut text = String::new();
+        let start_byte_index = self.byte_index;
 
         while let Some(current_char) = self.current_char() {
             if current_char.is_whitespace() || current_char == '\r' || current_char == '\n' || current_char == ':' {
@@ -421,16 +409,16 @@ impl<'a> Scanner<'a> {
                 return Err(self.create_error_for_current_token("Unexpected token"));
             }
 
-            text.push(current_char);
-
             self.move_next_char();
         }
 
-        if text.len() == 0 {
+        let end_byte_index = self.byte_index;
+
+        if end_byte_index - start_byte_index == 0 {
             return Err(self.create_error_for_current_token("Unexpected token"));
         }
 
-        Ok(Token::Word(ImmutableString::new(text)))
+        Ok(Token::Word(&self.file_text[start_byte_index..end_byte_index]))
     }
 
     fn assert_then_move_char(&mut self, _character: char) {
@@ -600,15 +588,15 @@ mod tests {
         assert_has_tokens(
             "0, 0.123, -198, 0e-345, 0.3e+025,",
             vec![
-                Token::Number(ImmutableString::from("0")),
+                Token::Number("0"),
                 Token::Comma,
-                Token::Number(ImmutableString::from("0.123")),
+                Token::Number("0.123"),
                 Token::Comma,
-                Token::Number(ImmutableString::from("-198")),
+                Token::Number("-198"),
                 Token::Comma,
-                Token::Number(ImmutableString::from("0e-345")),
+                Token::Number("0e-345"),
                 Token::Comma,
-                Token::Number(ImmutableString::from("0.3e+025")),
+                Token::Number("0.3e+025"),
                 Token::Comma,
             ],
         );

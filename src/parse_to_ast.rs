@@ -29,7 +29,7 @@ pub struct ParseResult<'a> {
     /// Remarks: The key is the start and end position of the tokens.
     pub comments: Option<CommentMap<'a>>,
     /// The JSON value the text contained.
-    pub value: Option<Value>,
+    pub value: Option<Value<'a>>,
     /// Collection of tokens (excluding any comments).
     ///
     /// Provide `tokens: true` to the `ParseOptions` for this to have a value.
@@ -46,7 +46,7 @@ struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
-    pub fn scan(&mut self) -> Result<Option<Token>, ParseError> {
+    pub fn scan(&mut self) -> Result<Option<Token<'a>>, ParseError> {
         let previous_end = self.last_token_end;
         let token = self.scan_handling_comments()?;
         self.last_token_end = self.scanner.token_end();
@@ -76,7 +76,7 @@ impl<'a> Context<'a> {
         Ok(token)
     }
 
-    pub fn token(&self) -> Option<Token> {
+    pub fn token(&self) -> Option<Token<'a>> {
         self.scanner.token()
     }
 
@@ -187,7 +187,7 @@ pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseRe
     })
 }
 
-fn parse_value(context: &mut Context) -> Result<Option<Value>, ParseError> {
+fn parse_value<'a>(context: &mut Context<'a>) -> Result<Option<Value<'a>>, ParseError> {
     match context.token() {
         None => Ok(None),
         Some(token) => match token {
@@ -208,7 +208,7 @@ fn parse_value(context: &mut Context) -> Result<Option<Value>, ParseError> {
     }
 }
 
-fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
+fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError> {
     debug_assert!(context.token() == Some(Token::OpenBrace));
     let mut properties = Vec::new();
 
@@ -219,10 +219,10 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
         match context.token() {
             Some(Token::CloseBrace) => break,
             Some(Token::String(prop_name)) => {
-                properties.push(parse_object_property(context, prop_name, true)?);
+                properties.push(parse_object_property(context, PropName::String(prop_name))?);
             }
             Some(Token::Word(prop_name)) | Some(Token::Number(prop_name)) => {
-                properties.push(parse_object_property(context, prop_name, false)?);
+                properties.push(parse_object_property(context, PropName::Word(prop_name))?);
             }
             None => return Err(context.create_parse_error_for_current_range("Unterminated object")),
             _ => return Err(context.create_parse_error("Unexpected token in object")),
@@ -243,17 +243,17 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
     })
 }
 
-fn parse_object_property(
-    context: &mut Context,
-    prop_name: ImmutableString,
-    is_string: bool,
-) -> Result<ObjectProp, ParseError> {
+enum PropName<'a> {
+    String(ImmutableString),
+    Word(&'a str),
+}
+
+fn parse_object_property<'a>(context: &mut Context<'a>, prop_name: PropName<'a>) -> Result<ObjectProp<'a>, ParseError> {
     context.start_range();
 
-    let name = if is_string {
-        ObjectPropName::String(create_string_lit(context, prop_name))
-    } else {
-        ObjectPropName::Word(create_word(context, prop_name))
+    let name = match prop_name {
+        PropName::String(prop_name) => ObjectPropName::String(create_string_lit(context, prop_name)),
+        PropName::Word(prop_name) => ObjectPropName::Word(create_word(context, prop_name)),
     };
 
     match context.scan()? {
@@ -274,7 +274,7 @@ fn parse_object_property(
     }
 }
 
-fn parse_array(context: &mut Context) -> Result<Array, ParseError> {
+fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
     debug_assert!(context.token() == Some(Token::OpenBracket));
     let mut elements = Vec::new();
 
@@ -308,35 +308,35 @@ fn parse_array(context: &mut Context) -> Result<Array, ParseError> {
 
 // factory functions
 
-fn create_string_lit(context: &Context, value: ImmutableString) -> StringLit {
+fn create_string_lit<'a>(context: &Context<'a>, value: ImmutableString) -> StringLit {
     StringLit {
         range: context.create_range_from_last_token(),
         value,
     }
 }
 
-fn create_word(context: &Context, value: ImmutableString) -> WordLit {
+fn create_word<'a>(context: &Context<'a>, value: &'a str) -> WordLit<'a> {
     WordLit {
         range: context.create_range_from_last_token(),
         value,
     }
 }
 
-fn create_boolean_lit(context: &Context, value: bool) -> BooleanLit {
+fn create_boolean_lit<'a>(context: &Context<'a>, value: bool) -> BooleanLit {
     BooleanLit {
         range: context.create_range_from_last_token(),
         value,
     }
 }
 
-fn create_number_lit(context: &Context, value: ImmutableString) -> NumberLit {
+fn create_number_lit<'a>(context: &Context<'a>, value: &'a str) -> NumberLit<'a> {
     NumberLit {
         range: context.create_range_from_last_token(),
         value,
     }
 }
 
-fn create_null_keyword(context: &Context) -> NullKeyword {
+fn create_null_keyword<'a>(context: &Context<'a>) -> NullKeyword {
     NullKeyword {
         range: context.create_range_from_last_token(),
     }

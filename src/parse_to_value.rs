@@ -28,7 +28,7 @@ pub fn parse_to_value(text: &str) -> Result<Option<JsonValue>, ParseError> {
 fn handle_value(value: ast::Value) -> JsonValue {
     match value {
         ast::Value::StringLit(lit) => JsonValue::String(lit.value.into_string()),
-        ast::Value::NumberLit(lit) => JsonValue::Number(lit.value.into_string()),
+        ast::Value::NumberLit(lit) => JsonValue::Number(lit.value),
         ast::Value::BooleanLit(lit) => JsonValue::Boolean(lit.value),
         ast::Value::Object(obj) => JsonValue::Object(handle_object(obj)),
         ast::Value::Array(arr) => JsonValue::Array(handle_array(arr)),
@@ -76,7 +76,7 @@ mod tests {
             JsonValue::Array(vec![JsonValue::Null, JsonValue::String(String::from("text"))].into()),
         );
         object_map.insert(String::from("c"), JsonValue::Boolean(true));
-        object_map.insert(String::from("d"), JsonValue::Number(String::from("25.55")));
+        object_map.insert(String::from("d"), JsonValue::Number("25.55"));
         assert_eq!(value, JsonValue::Object(object_map.into()));
     }
 
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn it_should_parse_number() {
         let value = parse_to_value("50").unwrap().unwrap();
-        assert_eq!(value, JsonValue::Number(String::from("50")));
+        assert_eq!(value, JsonValue::Number("50"));
     }
 
     #[test]

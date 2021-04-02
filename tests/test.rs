@@ -113,11 +113,11 @@ fn string_lit_to_test_str(lit: &StringLit) -> String {
 }
 
 fn word_lit_to_test_str(lit: &WordLit) -> String {
-    lit_to_test_str("word", lit.value.as_str(), &lit.range)
+    lit_to_test_str("word", lit.value, &lit.range)
 }
 
 fn number_lit_to_test_str(lit: &NumberLit) -> String {
-    lit_to_test_str("number", lit.value.as_str(), &lit.range)
+    lit_to_test_str("number", lit.value, &lit.range)
 }
 
 fn boolean_lit_to_test_str(lit: &BooleanLit) -> String {

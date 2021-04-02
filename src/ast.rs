@@ -2,29 +2,29 @@ use super::common::{ImmutableString, Range, Ranged};
 
 /// JSON value.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Value {
+pub enum Value<'a> {
     StringLit(StringLit),
-    NumberLit(NumberLit),
+    NumberLit(NumberLit<'a>),
     BooleanLit(BooleanLit),
-    Object(Object),
-    Array(Array),
+    Object(Object<'a>),
+    Array(Array<'a>),
     NullKeyword(NullKeyword),
 }
 
 /// Node that can appear in the AST.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Node<'a> {
-    StringLit(&'a StringLit),
-    NumberLit(&'a NumberLit),
-    BooleanLit(&'a BooleanLit),
-    Object(&'a Object),
-    ObjectProp(&'a ObjectProp),
-    Array(&'a Array),
-    NullKeyword(&'a NullKeyword),
-    WordLit(&'a WordLit),
+pub enum Node<'a, 'b> {
+    StringLit(&'b StringLit),
+    NumberLit(&'b NumberLit<'a>),
+    BooleanLit(&'b BooleanLit),
+    Object(&'b Object<'a>),
+    ObjectProp(&'b ObjectProp<'a>),
+    Array(&'b Array<'a>),
+    NullKeyword(&'b NullKeyword),
+    WordLit(&'b WordLit<'a>),
 }
 
-impl<'a> Node<'a> {
+impl<'a, 'b> Node<'a, 'b> {
     /// Gets the node kind.
     pub fn kind(&self) -> NodeKind {
         match self {
@@ -63,16 +63,16 @@ pub struct StringLit {
 /// A string that's not in quotes.
 /// Usually the appearance of this would be a parsing error.
 #[derive(Debug, PartialEq, Clone)]
-pub struct WordLit {
+pub struct WordLit<'a> {
     pub range: Range,
-    pub value: ImmutableString,
+    pub value: &'a str,
 }
 
 /// Represents a number (ex. `123`, `99.99`, `-1.2e+2`).
 #[derive(Debug, PartialEq, Clone)]
-pub struct NumberLit {
+pub struct NumberLit<'a> {
     pub range: Range,
-    pub value: ImmutableString,
+    pub value: &'a str,
 }
 
 /// Represents a boolean (ex. `true` or `false`).
@@ -90,9 +90,9 @@ pub struct NullKeyword {
 
 /// Represents an object that may contain properties (ex. `{}`, `{ "prop": 4 }`).
 #[derive(Debug, PartialEq, Clone)]
-pub struct Object {
+pub struct Object<'a> {
     pub range: Range,
-    pub properties: Vec<ObjectProp>,
+    pub properties: Vec<ObjectProp<'a>>,
 }
 
 macro_rules! generate_take {
@@ -132,7 +132,7 @@ macro_rules! generate_get {
     };
 }
 
-impl Object {
+impl<'a> Object<'a> {
     /// Gets a property value in the object by its name.
     pub fn get(&self, name: &str) -> Option<&ObjectProp> {
         self.properties.iter().filter(|p| p.name.as_str() == name).next()
@@ -211,25 +211,25 @@ impl Object {
 
 /// Represents an object property (ex. `"prop": []`).
 #[derive(Debug, PartialEq, Clone)]
-pub struct ObjectProp {
+pub struct ObjectProp<'a> {
     pub range: Range,
-    pub name: ObjectPropName,
-    pub value: Value,
+    pub name: ObjectPropName<'a>,
+    pub value: Value<'a>,
 }
 
 /// Represents an object property name that may or may not be in quotes.
 #[derive(Debug, PartialEq, Clone)]
-pub enum ObjectPropName {
+pub enum ObjectPropName<'a> {
     String(StringLit),
-    Word(WordLit),
+    Word(WordLit<'a>),
 }
 
-impl ObjectPropName {
+impl<'a> ObjectPropName<'a> {
     /// Converts the object property name into a string.
     pub fn into_string(self) -> String {
         match self {
             ObjectPropName::String(lit) => lit.value.into_string(),
-            ObjectPropName::Word(lit) => lit.value.into_string(),
+            ObjectPropName::Word(lit) => String::from(lit.value),
         }
     }
 
@@ -237,16 +237,16 @@ impl ObjectPropName {
     pub fn as_str(&self) -> &str {
         match self {
             ObjectPropName::String(lit) => lit.value.as_str(),
-            ObjectPropName::Word(lit) => lit.value.as_str(),
+            ObjectPropName::Word(lit) => lit.value,
         }
     }
 }
 
 /// Represents an array that may contain elements (ex. `[]`, `[5, 6]`).
 #[derive(Debug, PartialEq, Clone)]
-pub struct Array {
+pub struct Array<'a> {
     pub range: Range,
-    pub elements: Vec<Value>,
+    pub elements: Vec<Value<'a>>,
 }
 
 /// Kind of JSONC comment.
@@ -306,8 +306,8 @@ pub struct CommentBlock<'a> {
 
 // Object Property Name
 
-impl<'a> From<&'a ObjectPropName> for Node<'a> {
-    fn from(object_prop_name: &'a ObjectPropName) -> Node<'a> {
+impl<'a, 'b> From<&'b ObjectPropName<'a>> for Node<'a, 'b> {
+    fn from(object_prop_name: &'b ObjectPropName<'a>) -> Node<'a, 'b> {
         match object_prop_name {
             ObjectPropName::String(lit) => lit.into(),
             ObjectPropName::Word(lit) => lit.into(),
@@ -315,7 +315,7 @@ impl<'a> From<&'a ObjectPropName> for Node<'a> {
     }
 }
 
-impl Ranged for ObjectPropName {
+impl<'a> Ranged for ObjectPropName<'a> {
     fn range(&self) -> &Range {
         match self {
             ObjectPropName::String(lit) => lit.range(),
@@ -338,16 +338,7 @@ macro_rules! impl_ranged {
     };
 }
 
-impl_ranged![
-    StringLit,
-    WordLit,
-    NumberLit,
-    BooleanLit,
-    NullKeyword,
-    Object,
-    ObjectProp,
-    Array
-];
+impl_ranged![StringLit, BooleanLit, NullKeyword];
 
 macro_rules! impl_ranged_lifetime {
     ($($node_name:ident),*) => {
@@ -361,9 +352,9 @@ macro_rules! impl_ranged_lifetime {
     };
 }
 
-impl_ranged_lifetime![CommentLine, CommentBlock];
+impl_ranged_lifetime![WordLit, Object, ObjectProp, Array, CommentLine, CommentBlock, NumberLit];
 
-impl Ranged for Value {
+impl<'a> Ranged for Value<'a> {
     fn range(&self) -> &Range {
         match self {
             Value::Array(node) => node.range(),
@@ -376,19 +367,26 @@ impl Ranged for Value {
     }
 }
 
+impl<'a, 'b> Ranged for Node<'a, 'b> {
+    fn range(&self) -> &Range {
+        match self {
+            Node::StringLit(node) => node.range(),
+            Node::NumberLit(node) => node.range(),
+            Node::BooleanLit(node) => node.range(),
+            Node::NullKeyword(node) => node.range(),
+            Node::WordLit(node) => node.range(),
+            Node::Array(node) => node.range(),
+            Node::Object(node) => node.range(),
+            Node::ObjectProp(node) => node.range(),
+        }
+    }
+}
+
 macro_rules! generate_node {
     ($($node_name:ident),*) => {
-        impl<'a> Ranged for Node<'a> {
-            fn range(&self) -> &Range {
-                match self {
-                    $(Node::$node_name(node) => node.range()),*
-                }
-            }
-        }
-
         $(
-        impl<'a> From<&'a $node_name> for Node<'a> {
-            fn from(node: &'a $node_name) -> Node<'a> {
+        impl<'a, 'b> From<&'b $node_name> for Node<'a, 'b> {
+            fn from(node: &'b $node_name) -> Node<'a, 'b> {
                 Node::$node_name(node)
             }
         }
@@ -396,19 +394,25 @@ macro_rules! generate_node {
     };
 }
 
-generate_node![
-    StringLit,
-    WordLit,
-    NumberLit,
-    BooleanLit,
-    NullKeyword,
-    Object,
-    ObjectProp,
-    Array
-];
+generate_node![StringLit, BooleanLit, NullKeyword];
 
-impl<'a> From<&'a Value> for Node<'a> {
-    fn from(value: &'a Value) -> Node<'a> {
+macro_rules! generate_node_lifetime {
+    ($($node_name:ident),*) => {
+
+        $(
+        impl<'a, 'b> From<&'b $node_name<'a>> for Node<'a, 'b> {
+            fn from(node: &'b $node_name<'a>) -> Node<'a, 'b> {
+                Node::$node_name(node)
+            }
+        }
+        )*
+    };
+}
+
+generate_node_lifetime![WordLit, Object, ObjectProp, Array, NumberLit];
+
+impl<'a, 'b> From<&'b Value<'a>> for Node<'a, 'b> {
+    fn from(value: &'b Value<'a>) -> Node<'a, 'b> {
         match value {
             Value::Array(node) => Node::Array(node),
             Value::BooleanLit(node) => Node::BooleanLit(node),

@@ -3,29 +3,29 @@ use std::collections::HashMap;
 
 /// A JSON value.
 #[derive(Clone, PartialEq, Debug)]
-pub enum JsonValue {
+pub enum JsonValue<'a> {
     String(String),
-    Number(String),
+    Number(&'a str),
     Boolean(bool),
-    Object(JsonObject),
-    Array(JsonArray),
+    Object(JsonObject<'a>),
+    Array(JsonArray<'a>),
     Null,
 }
 
 /// A JSON object.
 #[derive(Clone, PartialEq, Debug)]
-pub struct JsonObject(HashMap<String, JsonValue>);
+pub struct JsonObject<'a>(HashMap<String, JsonValue<'a>>);
 
-impl IntoIterator for JsonObject {
-    type Item = (String, JsonValue);
-    type IntoIter = std::collections::hash_map::IntoIter<String, JsonValue>;
+impl<'a> IntoIterator for JsonObject<'a> {
+    type Item = (String, JsonValue<'a>);
+    type IntoIter = std::collections::hash_map::IntoIter<String, JsonValue<'a>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl From<HashMap<String, JsonValue>> for JsonObject {
+impl<'a> From<HashMap<String, JsonValue<'a>>> for JsonObject<'a> {
     fn from(properties: HashMap<String, JsonValue>) -> JsonObject {
         JsonObject::new(properties)
     }
@@ -54,14 +54,14 @@ macro_rules! generate_get {
     };
 }
 
-impl JsonObject {
+impl<'a> JsonObject<'a> {
     /// Creates a new JsonObject.
-    pub fn new(inner: HashMap<String, JsonValue>) -> JsonObject {
+    pub fn new(inner: HashMap<String, JsonValue<'a>>) -> JsonObject<'a> {
         JsonObject(inner)
     }
 
     /// Drops the object returning the inner hash map.
-    pub fn take_inner(self) -> HashMap<String, JsonValue> {
+    pub fn take_inner(self) -> HashMap<String, JsonValue<'a>> {
         self.0
     }
 
@@ -71,7 +71,7 @@ impl JsonObject {
     }
 
     /// Gets a value in the object by its name.
-    pub fn get(&self, name: &str) -> Option<&JsonValue> {
+    pub fn get(&self, name: &str) -> Option<&JsonValue<'a>> {
         self.0.get(name)
     }
 
@@ -83,7 +83,7 @@ impl JsonObject {
 
     /// Gets a number property value from the object by name.
     /// Returns `None` when not a number or it doesn't exist.
-    pub fn get_number(&self, name: &str) -> Option<&String> {
+    pub fn get_number(&self, name: &str) -> Option<&'a str> {
         generate_get!(self, name, Number)
     }
 
@@ -96,19 +96,19 @@ impl JsonObject {
 
     /// Gets an object property value from the object by name.
     /// Returns `None` when not an object or it doesn't exist.
-    pub fn get_object(&self, name: &str) -> Option<&JsonObject> {
+    pub fn get_object(&self, name: &str) -> Option<&JsonObject<'a>> {
         generate_get!(self, name, Object)
     }
 
     /// Gets an array property value from the object by name.
     /// Returns `None` when not an array or it doesn't exist.
-    pub fn get_array(&self, name: &str) -> Option<&JsonArray> {
+    pub fn get_array(&self, name: &str) -> Option<&JsonArray<'a>> {
         generate_get!(self, name, Array)
     }
 
     /// Takes a value from the object by name.
     /// Returns `None` when it doesn't exist.
-    pub fn take(&mut self, name: &str) -> Option<JsonValue> {
+    pub fn take(&mut self, name: &str) -> Option<JsonValue<'a>> {
         self.0.remove(name)
     }
 
@@ -120,7 +120,7 @@ impl JsonObject {
 
     /// Takes a number property value from the object by name.
     /// Returns `None` when not a number or it doesn't exist.
-    pub fn take_number(&mut self, name: &str) -> Option<String> {
+    pub fn take_number(&mut self, name: &str) -> Option<&'a str> {
         generate_take!(self, name, Number)
     }
 
@@ -132,23 +132,23 @@ impl JsonObject {
 
     /// Takes an object property value from the object by name.
     /// Returns `None` when not an object or it doesn't exist.
-    pub fn take_object(&mut self, name: &str) -> Option<JsonObject> {
+    pub fn take_object(&mut self, name: &str) -> Option<JsonObject<'a>> {
         generate_take!(self, name, Object)
     }
 
     /// Takes an array property value from the object by name.
     /// Returns `None` when not an array or it doesn't exist.
-    pub fn take_array(&mut self, name: &str) -> Option<JsonArray> {
+    pub fn take_array(&mut self, name: &str) -> Option<JsonArray<'a>> {
         generate_take!(self, name, Array)
     }
 }
 
 /// A JSON array.
 #[derive(Clone, PartialEq, Debug)]
-pub struct JsonArray(Vec<JsonValue>);
+pub struct JsonArray<'a>(Vec<JsonValue<'a>>);
 
-impl IntoIterator for JsonArray {
-    type Item = JsonValue;
+impl<'a> IntoIterator for JsonArray<'a> {
+    type Item = JsonValue<'a>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -156,30 +156,30 @@ impl IntoIterator for JsonArray {
     }
 }
 
-impl From<Vec<JsonValue>> for JsonArray {
-    fn from(elements: Vec<JsonValue>) -> JsonArray {
+impl<'a> From<Vec<JsonValue<'a>>> for JsonArray<'a> {
+    fn from(elements: Vec<JsonValue<'a>>) -> JsonArray<'a> {
         JsonArray::new(elements)
     }
 }
 
-impl JsonArray {
+impl<'a> JsonArray<'a> {
     /// Creates a new JsonArray.
-    pub fn new(inner: Vec<JsonValue>) -> JsonArray {
+    pub fn new(inner: Vec<JsonValue<'a>>) -> JsonArray<'a> {
         JsonArray(inner)
     }
 
     /// Drops the object returning the inner vector.
-    pub fn take_inner(self) -> Vec<JsonValue> {
+    pub fn take_inner(self) -> Vec<JsonValue<'a>> {
         self.0
     }
 
     /// Iterates over the array elements.
-    pub fn iter(&self) -> Iter<JsonValue> {
+    pub fn iter(&self) -> Iter<JsonValue<'a>> {
         self.0.iter()
     }
 
     /// Gets a value from the array by index.
-    pub fn get(&self, index: usize) -> Option<&JsonValue> {
+    pub fn get(&self, index: usize) -> Option<&JsonValue<'a>> {
         self.0.get(index)
     }
 
