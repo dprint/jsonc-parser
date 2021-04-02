@@ -54,7 +54,7 @@ jobs:
       run: cargo publish
 
   benchmark:
-    name: Performance regression check
+    name: Benchmarks
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -83,7 +83,6 @@ jobs:
         output-file-path: output.txt
         external-data-json-path: ./cache/benchmark-data.json
         fail-on-alert: true
-        comment-on-alert: true
         auto-push: false
     - name: Deploy
       if: github.ref == 'ref/head/master'
