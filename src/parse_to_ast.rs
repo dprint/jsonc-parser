@@ -36,8 +36,8 @@ pub struct ParseResult {
     pub tokens: Option<Vec<TokenAndRange>>,
 }
 
-struct Context {
-    scanner: Scanner,
+struct Context<'a> {
+    scanner: Scanner<'a>,
     comments: Option<CommentMap>,
     current_comments: Option<Vec<Comment>>,
     last_token_end: usize,
@@ -45,7 +45,7 @@ struct Context {
     tokens: Option<Vec<TokenAndRange>>,
 }
 
-impl Context {
+impl<'a> Context<'a> {
     pub fn scan(&mut self) -> Result<Option<Token>, ParseError> {
         let previous_end = self.last_token_end;
         let token = self.scan_handling_comments()?;
@@ -162,7 +162,7 @@ impl Context {
 /// }).expect("Should parse.");
 /// // ...inspect parse_result for value, tokens, and comments here...
 /// ```
-pub fn parse_to_ast(text: &str, options: &ParseOptions) -> Result<ParseResult, ParseError> {
+pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseResult, ParseError> {
     let mut context = Context {
         scanner: Scanner::new(text),
         comments: if options.comments { Some(HashMap::new()) } else { None },

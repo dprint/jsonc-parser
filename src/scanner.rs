@@ -1,31 +1,43 @@
 use super::common::{ImmutableString, Range};
 use super::errors::*;
 use super::tokens::Token;
+use std::str::Chars;
 
 /// Converts text into a stream of tokens.
-pub struct Scanner {
-    char_index: usize,
+pub struct Scanner<'a> {
     byte_index: usize,
     line_number: usize,
     token_start: usize,
     token_start_line: usize,
-    chars: Vec<char>, // todo: use an iterator instead?
+    char_iter: Chars<'a>,
+    char_buffer: Vec<char>,
     current_token: Option<Token>,
+    file_text: &'a str,
     text_length: usize,
 }
 
-impl Scanner {
+const CHAR_BUFFER_MAX_SIZE: usize = 6;
+
+impl<'a> Scanner<'a> {
     /// Creates a new scanner based on the provided text.
-    pub fn new(text: &str) -> Scanner {
+    pub fn new(text: &'a str) -> Scanner<'a> {
+        let mut char_iter = text.chars();
+        let mut char_buffer = Vec::with_capacity(CHAR_BUFFER_MAX_SIZE);
+        let current_char = char_iter.next();
+        if let Some(current_char) = current_char {
+            char_buffer.push(current_char);
+        }
+
         Scanner {
-            char_index: 0,
             byte_index: 0,
             line_number: 0,
             token_start: 0,
             token_start_line: 0,
-            chars: text.chars().collect(),
+            char_iter,
+            char_buffer,
             current_token: None,
             text_length: text.len(),
+            file_text: text,
         }
     }
 
@@ -137,9 +149,7 @@ impl Scanner {
     }
 
     pub(super) fn create_error_for_range(&self, range: Range, message: &str) -> ParseError {
-        use std::iter::FromIterator;
-        let file_text = String::from_iter(&self.chars);
-        ParseError::new(range, message, &file_text)
+        ParseError::new(range, message, &self.file_text)
     }
 
     fn parse_string(&mut self) -> Result<Token, ParseError> {
@@ -377,30 +387,29 @@ impl Scanner {
     }
 
     fn try_move_word(&mut self, text: &str) -> bool {
-        // todo: debug assert no newlines
-        let mut char_index = self.char_index;
-        let mut byte_index = self.byte_index;
+        let mut char_index = 0;
         for c in text.chars() {
-            if let Some(current_char) = self.chars.get(char_index) {
-                if *current_char != c {
+            if let Some(current_char) = self.peek_char_offset(char_index) {
+                if current_char != c {
                     return false;
                 }
 
                 char_index += 1;
-                byte_index += current_char.len_utf8();
             } else {
                 return false;
             }
         }
 
-        if let Some(next_char) = self.chars.get(char_index) {
+        if let Some(next_char) = self.peek_char_offset(char_index) {
             if next_char.is_alphanumeric() {
                 return false;
             }
         }
 
-        self.char_index = char_index;
-        self.byte_index = byte_index;
+        for _ in 0..char_index {
+            self.move_next_char();
+        }
+
         true
     }
 
@@ -446,25 +455,55 @@ impl Scanner {
     }
 
     fn move_next_char(&mut self) -> Option<char> {
-        if let Some(current_char) = self.current_char() {
+        if let Some(&current_char) = self.char_buffer.get(0) {
             if current_char == '\n' {
                 self.line_number += 1;
             }
-            self.char_index += 1;
+
+            // shift the entire array to the left then pop the last item
+            for i in 1..self.char_buffer.len() {
+                self.char_buffer[i - 1] = self.char_buffer[i];
+            }
+            self.char_buffer.pop();
+
+            if self.char_buffer.is_empty() {
+                if let Some(new_char) = self.char_iter.next() {
+                    self.char_buffer.push(new_char);
+                }
+            }
+
             self.byte_index += current_char.len_utf8();
         }
+
         self.current_char()
     }
 
-    fn peek_char(&self) -> Option<char> {
-        self.chars.get(self.char_index + 1).map(|x| x.to_owned())
+    fn peek_char(&mut self) -> Option<char> {
+        self.peek_char_offset(1)
+    }
+
+    fn peek_char_offset(&mut self, offset: usize) -> Option<char> {
+        // fill the char buffer
+        for _ in self.char_buffer.len()..offset + 1 {
+            if let Some(next_char) = self.char_iter.next() {
+                self.char_buffer.push(next_char);
+            } else {
+                // end of string
+                return None;
+            }
+        }
+
+        // should not exceed this
+        debug_assert!(self.char_buffer.len() <= CHAR_BUFFER_MAX_SIZE);
+
+        self.char_buffer.get(offset).map(|c| *c)
     }
 
     fn current_char(&self) -> Option<char> {
-        self.chars.get(self.char_index).map(|x| x.to_owned())
+        self.char_buffer.get(0).map(|c| *c)
     }
 
-    fn is_new_line(&self) -> bool {
+    fn is_new_line(&mut self) -> bool {
         match self.current_char() {
             Some('\n') => true,
             Some('\r') => self.peek_char() == Some('\n'),
