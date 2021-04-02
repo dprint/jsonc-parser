@@ -2,7 +2,7 @@ use super::common::{ImmutableString, Range, Ranged};
 
 /// A token found while scanning.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Token {
+pub enum Token<'a> {
     OpenBrace,
     CloseBrace,
     OpenBracket,
@@ -14,17 +14,17 @@ pub enum Token {
     Boolean(bool),
     Number(ImmutableString),
     Null,
-    CommentLine(ImmutableString),
-    CommentBlock(ImmutableString),
+    CommentLine(&'a str),
+    CommentBlock(&'a str),
 }
 
 /// A token with positional information.
-pub struct TokenAndRange {
+pub struct TokenAndRange<'a> {
     pub range: Range,
-    pub token: Token,
+    pub token: Token<'a>,
 }
 
-impl Ranged for TokenAndRange {
+impl<'a> Ranged for TokenAndRange<'a> {
     fn range(&self) -> &Range {
         &self.range
     }

@@ -258,17 +258,17 @@ pub enum CommentKind {
 
 /// JSONC comment.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Comment {
-    Line(CommentLine),
-    Block(CommentBlock),
+pub enum Comment<'a> {
+    Line(CommentLine<'a>),
+    Block(CommentBlock<'a>),
 }
 
-impl Comment {
+impl<'a> Comment<'a> {
     /// Gets the text of the comment.
-    pub fn text(&self) -> &str {
+    pub fn text(&self) -> &'a str {
         match self {
-            Comment::Line(line) => line.text.as_str(),
-            Comment::Block(line) => line.text.as_str(),
+            Comment::Line(line) => line.text,
+            Comment::Block(line) => line.text,
         }
     }
 
@@ -281,7 +281,7 @@ impl Comment {
     }
 }
 
-impl Ranged for Comment {
+impl<'a> Ranged for Comment<'a> {
     fn range(&self) -> &Range {
         match self {
             Comment::Line(line) => line.range(),
@@ -292,16 +292,16 @@ impl Ranged for Comment {
 
 /// Represents a comment line (ex. `// my comment`).
 #[derive(Debug, PartialEq, Clone)]
-pub struct CommentLine {
+pub struct CommentLine<'a> {
     pub range: Range,
-    pub text: ImmutableString,
+    pub text: &'a str,
 }
 
 /// Represents a comment block (ex. `/* my comment */`).
 #[derive(Debug, PartialEq, Clone)]
-pub struct CommentBlock {
+pub struct CommentBlock<'a> {
     pub range: Range,
-    pub text: ImmutableString,
+    pub text: &'a str,
 }
 
 // Object Property Name
@@ -346,10 +346,22 @@ impl_ranged![
     NullKeyword,
     Object,
     ObjectProp,
-    Array,
-    CommentLine,
-    CommentBlock
+    Array
 ];
+
+macro_rules! impl_ranged_lifetime {
+    ($($node_name:ident),*) => {
+        $(
+            impl<'a> Ranged for $node_name<'a> {
+                fn range(&self) -> &Range {
+                    &self.range
+                }
+            }
+        )*
+    };
+}
+
+impl_ranged_lifetime![CommentLine, CommentBlock];
 
 impl Ranged for Value {
     fn range(&self) -> &Range {

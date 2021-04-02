@@ -9,7 +9,7 @@ use std::rc::Rc;
 /// Map where the comments are stored in collections where
 /// the key is the previous token end or start of file or
 /// next token start or end of the file.
-pub type CommentMap = HashMap<usize, Rc<Vec<Comment>>>;
+pub type CommentMap<'a> = HashMap<usize, Rc<Vec<Comment<'a>>>>;
 
 /// Options for parsing.
 #[derive(Default)]
@@ -21,28 +21,28 @@ pub struct ParseOptions {
 }
 
 /// Result of parsing the text.
-pub struct ParseResult {
+pub struct ParseResult<'a> {
     /// Collection of comments in the text.
     ///
     /// Provide `comments: true` to the `ParseOptions` for this to have a value.
     ///
     /// Remarks: The key is the start and end position of the tokens.
-    pub comments: Option<CommentMap>,
+    pub comments: Option<CommentMap<'a>>,
     /// The JSON value the text contained.
     pub value: Option<Value>,
     /// Collection of tokens (excluding any comments).
     ///
     /// Provide `tokens: true` to the `ParseOptions` for this to have a value.
-    pub tokens: Option<Vec<TokenAndRange>>,
+    pub tokens: Option<Vec<TokenAndRange<'a>>>,
 }
 
 struct Context<'a> {
     scanner: Scanner<'a>,
-    comments: Option<CommentMap>,
-    current_comments: Option<Vec<Comment>>,
+    comments: Option<CommentMap<'a>>,
+    current_comments: Option<Vec<Comment<'a>>>,
     last_token_end: usize,
     range_stack: Vec<Range>,
-    tokens: Option<Vec<TokenAndRange>>,
+    tokens: Option<Vec<TokenAndRange<'a>>>,
 }
 
 impl<'a> Context<'a> {
@@ -117,7 +117,7 @@ impl<'a> Context<'a> {
         self.scanner.create_error_for_range(range, message)
     }
 
-    fn scan_handling_comments(&mut self) -> Result<Option<Token>, ParseError> {
+    fn scan_handling_comments(&mut self) -> Result<Option<Token<'a>>, ParseError> {
         loop {
             let token = self.scanner.scan()?;
             match token {
@@ -138,7 +138,7 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn handle_comment(&mut self, comment: Comment) {
+    fn handle_comment(&mut self, comment: Comment<'a>) {
         if self.comments.is_some() {
             if let Some(comments) = self.current_comments.as_mut() {
                 comments.push(comment);
@@ -162,7 +162,7 @@ impl<'a> Context<'a> {
 /// }).expect("Should parse.");
 /// // ...inspect parse_result for value, tokens, and comments here...
 /// ```
-pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseResult, ParseError> {
+pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseResult<'a>, ParseError> {
     let mut context = Context {
         scanner: Scanner::new(text),
         comments: if options.comments { Some(HashMap::new()) } else { None },

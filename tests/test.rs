@@ -237,11 +237,11 @@ fn comment_to_test_str(comment: &Comment) -> String {
 }
 
 fn comment_line_to_test_str(line: &CommentLine) -> String {
-    lit_to_test_str("line", &line.text.as_str(), &line.range)
+    lit_to_test_str("line", line.text, &line.range)
 }
 
 fn comment_block_to_test_str(block: &CommentBlock) -> String {
-    lit_to_test_str("block", &block.text.as_str(), &block.range)
+    lit_to_test_str("block", block.text, &block.range)
 }
 
 fn escape_json_str(text: &str) -> String {

@@ -11,9 +11,8 @@ pub struct Scanner<'a> {
     token_start_line: usize,
     char_iter: Chars<'a>,
     char_buffer: Vec<char>,
-    current_token: Option<Token>,
+    current_token: Option<Token<'a>>,
     file_text: &'a str,
-    text_length: usize,
 }
 
 const CHAR_BUFFER_MAX_SIZE: usize = 6;
@@ -36,13 +35,12 @@ impl<'a> Scanner<'a> {
             char_iter,
             char_buffer,
             current_token: None,
-            text_length: text.len(),
             file_text: text,
         }
     }
 
     /// Moves to and returns the next token.
-    pub fn scan(&mut self) -> Result<Option<Token>, ParseError> {
+    pub fn scan(&mut self) -> Result<Option<Token<'a>>, ParseError> {
         self.skip_whitespace();
         self.token_start = self.byte_index;
         self.token_start_line = self.line_number;
@@ -126,7 +124,7 @@ impl<'a> Scanner<'a> {
     }
 
     /// Gets the current token.
-    pub fn token(&self) -> Option<Token> {
+    pub fn token(&self) -> Option<Token<'a>> {
         self.current_token.as_ref().map(|x| x.to_owned())
     }
 
@@ -142,7 +140,7 @@ impl<'a> Scanner<'a> {
         let range = Range {
             start,
             start_line,
-            end: std::cmp::min(self.byte_index + 1, self.text_length),
+            end: std::cmp::min(self.byte_index + 1, self.file_text.len()),
             end_line: self.line_number,
         };
         self.create_error_for_range(range, message)
@@ -152,7 +150,7 @@ impl<'a> Scanner<'a> {
         ParseError::new(range, message, &self.file_text)
     }
 
-    fn parse_string(&mut self) -> Result<Token, ParseError> {
+    fn parse_string(&mut self) -> Result<Token<'a>, ParseError> {
         debug_assert!(
             self.current_char() == Some('\'') || self.current_char() == Some('"'),
             "Expected \", was {:?}",
@@ -272,7 +270,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn parse_number(&mut self) -> Result<Token, ParseError> {
+    fn parse_number(&mut self) -> Result<Token<'a>, ParseError> {
         let mut text = String::new();
 
         if self.is_negative_sign() {
@@ -336,41 +334,40 @@ impl<'a> Scanner<'a> {
         Ok(Token::Number(ImmutableString::new(text)))
     }
 
-    fn parse_comment_line(&mut self) -> Token {
-        let mut text = String::new();
+    fn parse_comment_line(&mut self) -> Token<'a> {
         self.assert_then_move_char('/');
         #[cfg(debug_assertions)]
         self.assert_char('/');
 
-        while let Some(current_char) = self.move_next_char() {
+        let start_byte_index = self.byte_index + 1;
+        while let Some(_) = self.move_next_char() {
             if self.is_new_line() {
                 break;
             }
-            text.push(current_char);
         }
 
-        Token::CommentLine(ImmutableString::new(text))
+        Token::CommentLine(&self.file_text[start_byte_index..self.byte_index])
     }
 
-    fn parse_comment_block(&mut self) -> Result<Token, ParseError> {
-        let mut text = String::new();
+    fn parse_comment_block(&mut self) -> Result<Token<'a>, ParseError> {
         self.assert_then_move_char('/');
         #[cfg(debug_assertions)]
         self.assert_char('*');
         let mut found_end = false;
 
+        let start_byte_index = self.byte_index + 1;
         while let Some(current_char) = self.move_next_char() {
             if current_char == '*' && self.peek_char() == Some('/') {
                 found_end = true;
                 break;
             }
-            text.push(current_char);
         }
 
         if found_end {
+            let end_byte_index = self.byte_index;
             self.assert_then_move_char('*');
             self.assert_then_move_char('/');
-            Ok(Token::CommentBlock(ImmutableString::new(text)))
+            Ok(Token::CommentBlock(&self.file_text[start_byte_index..end_byte_index]))
         } else {
             Err(self.create_error_for_current_token("Unterminated comment block"))
         }
@@ -413,7 +410,7 @@ impl<'a> Scanner<'a> {
         true
     }
 
-    fn parse_word(&mut self) -> Result<Token, ParseError> {
+    fn parse_word(&mut self) -> Result<Token<'a>, ParseError> {
         let mut text = String::new();
 
         while let Some(current_char) = self.current_char() {
@@ -643,9 +640,9 @@ mod tests {
         assert_has_tokens(
             "//test\n//t\r\n// test\n,",
             vec![
-                Token::CommentLine(ImmutableString::from("test")),
-                Token::CommentLine(ImmutableString::from("t")),
-                Token::CommentLine(ImmutableString::from(" test")),
+                Token::CommentLine("test"),
+                Token::CommentLine("t"),
+                Token::CommentLine(" test"),
                 Token::Comma,
             ],
         );
@@ -656,8 +653,8 @@ mod tests {
         assert_has_tokens(
             "/*test\n *//* test*/,",
             vec![
-                Token::CommentBlock(ImmutableString::from("test\n ")),
-                Token::CommentBlock(ImmutableString::from(" test")),
+                Token::CommentBlock("test\n "),
+                Token::CommentBlock(" test"),
                 Token::Comma,
             ],
         );
