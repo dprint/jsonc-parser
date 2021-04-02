@@ -1,5 +1,5 @@
-use super::common::{ImmutableString, Range, Ranged};
-
+use super::common::{ Range, Ranged};
+use smol_str::SmolStr;
 /// JSON value.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
@@ -57,7 +57,7 @@ pub enum NodeKind {
 #[derive(Debug, PartialEq, Clone)]
 pub struct StringLit {
     pub range: Range,
-    pub value: ImmutableString,
+    pub value: SmolStr,
 }
 
 /// A string that's not in quotes.
@@ -65,14 +65,14 @@ pub struct StringLit {
 #[derive(Debug, PartialEq, Clone)]
 pub struct WordLit {
     pub range: Range,
-    pub value: ImmutableString,
+    pub value: SmolStr,
 }
 
 /// Represents a number (ex. `123`, `99.99`, `-1.2e+2`).
 #[derive(Debug, PartialEq, Clone)]
 pub struct NumberLit {
     pub range: Range,
-    pub value: ImmutableString,
+    pub value: SmolStr,
 }
 
 /// Represents a boolean (ex. `true` or `false`).
@@ -228,8 +228,8 @@ impl ObjectPropName {
     /// Converts the object property name into a string.
     pub fn into_string(self) -> String {
         match self {
-            ObjectPropName::String(lit) => lit.value.into_string(),
-            ObjectPropName::Word(lit) => lit.value.into_string(),
+            ObjectPropName::String(lit) => lit.value.to_string(),
+            ObjectPropName::Word(lit) => lit.value.to_string(),
         }
     }
 
@@ -294,14 +294,14 @@ impl Ranged for Comment {
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommentLine {
     pub range: Range,
-    pub text: ImmutableString,
+    pub text: SmolStr,
 }
 
 /// Represents a comment block (ex. `/* my comment */`).
 #[derive(Debug, PartialEq, Clone)]
 pub struct CommentBlock {
     pub range: Range,
-    pub text: ImmutableString,
+    pub text: SmolStr,
 }
 
 // Object Property Name

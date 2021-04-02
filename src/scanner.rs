@@ -1,6 +1,7 @@
-use super::common::{ImmutableString, Range};
+use super::common::{ Range};
 use super::errors::*;
 use super::tokens::Token;
+use smol_str::SmolStr;
 
 /// Converts text into a stream of tokens.
 pub struct Scanner {
@@ -256,7 +257,7 @@ impl Scanner {
 
         if found_end_string {
             self.move_next_char();
-            Ok(Token::String(ImmutableString::new(text)))
+            Ok(Token::String(SmolStr::new(text)))
         } else {
             Err(self.create_error_for_current_token("Unterminated string literal"))
         }
@@ -323,7 +324,7 @@ impl Scanner {
             _ => {}
         }
 
-        Ok(Token::Number(ImmutableString::new(text)))
+        Ok(Token::Number(SmolStr::new(text)))
     }
 
     fn parse_comment_line(&mut self) -> Token {
@@ -339,7 +340,7 @@ impl Scanner {
             text.push(current_char);
         }
 
-        Token::CommentLine(ImmutableString::new(text))
+        Token::CommentLine(SmolStr::new(text))
     }
 
     fn parse_comment_block(&mut self) -> Result<Token, ParseError> {
@@ -360,7 +361,7 @@ impl Scanner {
         if found_end {
             self.assert_then_move_char('*');
             self.assert_then_move_char('/');
-            Ok(Token::CommentBlock(ImmutableString::new(text)))
+            Ok(Token::CommentBlock(SmolStr::new(text)))
         } else {
             Err(self.create_error_for_current_token("Unterminated comment block"))
         }
@@ -424,7 +425,7 @@ impl Scanner {
             return Err(self.create_error_for_current_token("Unexpected token"));
         }
 
-        Ok(Token::Word(ImmutableString::new(text)))
+        Ok(Token::Word(SmolStr::new(text)))
     }
 
     fn assert_then_move_char(&mut self, _character: char) {
@@ -508,8 +509,8 @@ impl Scanner {
 
 #[cfg(test)]
 mod tests {
-    use super::super::common::ImmutableString;
     use super::super::tokens::Token;
+    use smol_str::SmolStr;
     use super::*;
 
     #[test]
@@ -517,9 +518,9 @@ mod tests {
         assert_has_tokens(
             r#""t\"est", "\t\r\n\n\u0020","#,
             vec![
-                Token::String(ImmutableString::from(r#"t"est"#)),
+                Token::String(SmolStr::from(r#"t"est"#)),
                 Token::Comma,
-                Token::String(ImmutableString::from("\t\r\n\n ")),
+                Token::String(SmolStr::from("\t\r\n\n ")),
                 Token::Comma,
             ],
         );
@@ -538,9 +539,9 @@ mod tests {
         assert_has_tokens(
             r#"'t\'est','a',"#,
             vec![
-                Token::String(ImmutableString::from(r#"t'est"#)),
+                Token::String(SmolStr::from(r#"t'est"#)),
                 Token::Comma,
-                Token::String(ImmutableString::from("a")),
+                Token::String(SmolStr::from("a")),
                 Token::Comma,
             ],
         );
@@ -564,15 +565,15 @@ mod tests {
         assert_has_tokens(
             "0, 0.123, -198, 0e-345, 0.3e+025,",
             vec![
-                Token::Number(ImmutableString::from("0")),
+                Token::Number(SmolStr::from("0")),
                 Token::Comma,
-                Token::Number(ImmutableString::from("0.123")),
+                Token::Number(SmolStr::from("0.123")),
                 Token::Comma,
-                Token::Number(ImmutableString::from("-198")),
+                Token::Number(SmolStr::from("-198")),
                 Token::Comma,
-                Token::Number(ImmutableString::from("0e-345")),
+                Token::Number(SmolStr::from("0e-345")),
                 Token::Comma,
-                Token::Number(ImmutableString::from("0.3e+025")),
+                Token::Number(SmolStr::from("0.3e+025")),
                 Token::Comma,
             ],
         );
@@ -604,9 +605,9 @@ mod tests {
         assert_has_tokens(
             "//test\n//t\r\n// test\n,",
             vec![
-                Token::CommentLine(ImmutableString::from("test")),
-                Token::CommentLine(ImmutableString::from("t")),
-                Token::CommentLine(ImmutableString::from(" test")),
+                Token::CommentLine(SmolStr::from("test")),
+                Token::CommentLine(SmolStr::from("t")),
+                Token::CommentLine(SmolStr::from(" test")),
                 Token::Comma,
             ],
         );
@@ -617,8 +618,8 @@ mod tests {
         assert_has_tokens(
             "/*test\n *//* test*/,",
             vec![
-                Token::CommentBlock(ImmutableString::from("test\n ")),
-                Token::CommentBlock(ImmutableString::from(" test")),
+                Token::CommentBlock(SmolStr::from("test\n ")),
+                Token::CommentBlock(SmolStr::from(" test")),
                 Token::Comma,
             ],
         );

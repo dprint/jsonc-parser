@@ -7,7 +7,11 @@ license = "MIT"
 description = "JSONC parser."
 repository = "https://github.com/dsherret/jsonc-parser"
 
-[dependencies]
-
 [dev-dependencies]
 pretty_assertions = "0.6.1"
+
+# [profile.release]
+# debug = true
+
+[dependencies]
+smol_str = "0.1.17"

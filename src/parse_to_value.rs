@@ -27,8 +27,8 @@ pub fn parse_to_value(text: &str) -> Result<Option<JsonValue>, ParseError> {
 
 fn handle_value(value: ast::Value) -> JsonValue {
     match value {
-        ast::Value::StringLit(lit) => JsonValue::String(lit.value.into_string()),
-        ast::Value::NumberLit(lit) => JsonValue::Number(lit.value.into_string()),
+        ast::Value::StringLit(lit) => JsonValue::String(lit.value.to_string()),
+        ast::Value::NumberLit(lit) => JsonValue::Number(lit.value.to_string()),
         ast::Value::BooleanLit(lit) => JsonValue::Boolean(lit.value),
         ast::Value::Object(obj) => JsonValue::Object(handle_object(obj)),
         ast::Value::Array(arr) => JsonValue::Array(handle_array(arr)),

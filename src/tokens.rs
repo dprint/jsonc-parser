@@ -1,5 +1,5 @@
-use super::common::{ImmutableString, Range, Ranged};
-
+use super::common::{ Range, Ranged};
+use smol_str::SmolStr;
 /// A token found while scanning.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
@@ -9,13 +9,13 @@ pub enum Token {
     CloseBracket,
     Comma,
     Colon,
-    String(ImmutableString),
-    Word(ImmutableString),
+    String(SmolStr),
+    Word(SmolStr),
     Boolean(bool),
-    Number(ImmutableString),
+    Number(SmolStr),
     Null,
-    CommentLine(ImmutableString),
-    CommentBlock(ImmutableString),
+    CommentLine(SmolStr),
+    CommentBlock(SmolStr),
 }
 
 /// A token with positional information.

@@ -1,11 +1,11 @@
 use super::ast::*;
-use super::common::{ImmutableString, Range};
+use super::common::Range;
 use super::errors::*;
 use super::scanner::Scanner;
 use super::tokens::{Token, TokenAndRange};
 use std::collections::HashMap;
 use std::rc::Rc;
-
+use smol_str::SmolStr;
 /// Map where the comments are stored in collections where
 /// the key is the previous token end or start of file or
 /// next token start or end of the file.
@@ -245,7 +245,7 @@ fn parse_object(context: &mut Context) -> Result<Object, ParseError> {
 
 fn parse_object_property(
     context: &mut Context,
-    prop_name: ImmutableString,
+    prop_name: SmolStr,
     is_string: bool,
 ) -> Result<ObjectProp, ParseError> {
     context.start_range();
@@ -308,14 +308,14 @@ fn parse_array(context: &mut Context) -> Result<Array, ParseError> {
 
 // factory functions
 
-fn create_string_lit(context: &Context, value: ImmutableString) -> StringLit {
+fn create_string_lit(context: &Context, value: SmolStr) -> StringLit {
     StringLit {
         range: context.create_range_from_last_token(),
         value,
     }
 }
 
-fn create_word(context: &Context, value: ImmutableString) -> WordLit {
+fn create_word(context: &Context, value: SmolStr) -> WordLit {
     WordLit {
         range: context.create_range_from_last_token(),
         value,
@@ -329,7 +329,7 @@ fn create_boolean_lit(context: &Context, value: bool) -> BooleanLit {
     }
 }
 
-fn create_number_lit(context: &Context, value: ImmutableString) -> NumberLit {
+fn create_number_lit(context: &Context, value: SmolStr) -> NumberLit {
     NumberLit {
         range: context.create_range_from_last_token(),
         value,
