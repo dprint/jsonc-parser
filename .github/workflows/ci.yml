@@ -74,24 +74,12 @@ jobs:
     # Run benchmark and stores the output to a file
     - name: Run benchmark
       run: cargo +nightly bench | tee output.txt
-    # Download previous benchmark result from cache (if exists)
-    - name: Download previous benchmark data
-      uses: actions/cache@v1
-      with:
-        path: ./cache
-        key: ${{ runner.os }}-benchmark
     # Run `github-action-benchmark` action
     - name: Store benchmark result
       uses: rhysd/github-action-benchmark@v1
       with:
         tool: 'cargo'
         output-file-path: output.txt
-        external-data-json-path: ./cache/benchmark-data.json
         fail-on-alert: true
-        auto-push: false
-    - name: Deploy
-      if: github.ref == 'ref/head/master'
-      uses: JamesIves/github-pages-deploy-action@releases/v3
-      with:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        BRANCH: gh-pages
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: ${{ github.ref == 'refs/heads/master' }}

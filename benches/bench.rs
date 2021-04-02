@@ -7,16 +7,6 @@ use std::fs::read_to_string;
 use test::Bencher;
 
 #[bench]
-fn citm_catalog_json_ast(b: &mut Bencher) {
-    bench_ast(b, &get_citm_catalog_json());
-}
-
-#[bench]
-fn citm_catalog_json_value(b: &mut Bencher) {
-    bench_value(b, &get_citm_catalog_json());
-}
-
-#[bench]
 fn citm_catalog_json_large_ast(b: &mut Bencher) {
     bench_ast(b, &get_citm_catalog_json_large());
 }
