@@ -86,8 +86,8 @@ jobs:
         comment-on-alert: true
         auto-push: false
     - name: Deploy
+      if: github.ref == 'ref/head/master'
       uses: JamesIves/github-pages-deploy-action@releases/v3
-      if: {{ github.ref == 'ref/head/master' }}
       with:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         BRANCH: gh-pages
