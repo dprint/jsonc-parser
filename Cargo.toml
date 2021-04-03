@@ -8,6 +8,10 @@ description = "JSONC parser."
 repository = "https://github.com/dprint/jsonc-parser"
 
 [dependencies]
+serde_json = { version = "1.0", optional = true }
+
+[features]
+serde = ["serde_json"]
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"

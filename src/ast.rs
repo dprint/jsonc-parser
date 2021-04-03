@@ -229,8 +229,8 @@ impl<'a> ObjectPropName<'a> {
     /// Converts the object property name into a string.
     pub fn into_string(self) -> String {
         match self {
-            ObjectPropName::String(lit) => lit.value.to_string(),
-            ObjectPropName::Word(lit) => String::from(lit.value),
+            ObjectPropName::String(lit) => lit.value.into_owned(),
+            ObjectPropName::Word(lit) => lit.value.to_string(),
         }
     }
 

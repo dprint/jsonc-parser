@@ -39,10 +39,10 @@ jobs:
 
     - name: Test debug
       if: matrix.config.kind == 'test_debug'
-      run: cargo test --verbose
+      run: cargo test --verbose --all-features
     - name: Test release
       if: matrix.config.kind == 'test_release'
-      run: cargo test --release --verbose
+      run: cargo test --release --verbose --all-features
 
       # CARGO PUBLISH
     - name: Cargo login
