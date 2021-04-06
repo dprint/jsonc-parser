@@ -26,3 +26,5 @@ let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &ParseOptions {
 })?;
 // ...inspect parse_result for value, tokens, and comments here...
 ```
+## Benchmark
+See [Benchmarks](https://dprint.github.io/jsonc-parser/dev/bench/)
