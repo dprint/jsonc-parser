@@ -163,25 +163,14 @@ impl<'a> Context<'a> {
 /// }).expect("Should parse.");
 /// // ...inspect parse_result for value, tokens, and comments here...
 /// ```
-pub fn parse_to_ast<'a>(
-    text: &'a str,
-    options: &ParseOptions,
-) -> Result<ParseResult<'a>, ParseError> {
+pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseResult<'a>, ParseError> {
     let mut context = Context {
         scanner: Scanner::new(text),
-        comments: if options.comments {
-            Some(HashMap::new())
-        } else {
-            None
-        },
+        comments: if options.comments { Some(HashMap::new()) } else { None },
         current_comments: None,
         last_token_end: 0,
         range_stack: Vec::new(),
-        tokens: if options.tokens {
-            Some(Vec::new())
-        } else {
-            None
-        },
+        tokens: if options.tokens { Some(Vec::new()) } else { None },
     };
     context.scan()?;
     let value = parse_value(&mut context)?;
@@ -205,19 +194,11 @@ fn parse_value<'a>(context: &mut Context<'a>) -> Result<Option<Value<'a>>, Parse
         Some(token) => match token {
             Token::OpenBrace => return Ok(Some(Value::Object(parse_object(context)?))),
             Token::OpenBracket => return Ok(Some(Value::Array(parse_array(context)?))),
-            Token::String(value) => {
-                return Ok(Some(Value::StringLit(create_string_lit(context, value))))
-            }
-            Token::Boolean(value) => {
-                return Ok(Some(Value::BooleanLit(create_boolean_lit(context, value))))
-            }
-            Token::Number(value) => {
-                return Ok(Some(Value::NumberLit(create_number_lit(context, value))))
-            }
+            Token::String(value) => return Ok(Some(Value::StringLit(create_string_lit(context, value)))),
+            Token::Boolean(value) => return Ok(Some(Value::BooleanLit(create_boolean_lit(context, value)))),
+            Token::Number(value) => return Ok(Some(Value::NumberLit(create_number_lit(context, value)))),
             Token::Null => return Ok(Some(Value::NullKeyword(create_null_keyword(context)))),
-            Token::CloseBracket => {
-                return Err(context.create_parse_error("Unexpected close bracket"))
-            }
+            Token::CloseBracket => return Err(context.create_parse_error("Unexpected close bracket")),
             Token::CloseBrace => return Err(context.create_parse_error("Unexpected close brace")),
             Token::Comma => return Err(context.create_parse_error("Unexpected comma")),
             Token::Colon => return Err(context.create_parse_error("Unexpected colon")),
@@ -268,26 +249,17 @@ enum PropName<'a> {
     Word(&'a str),
 }
 
-fn parse_object_property<'a>(
-    context: &mut Context<'a>,
-    prop_name: PropName<'a>,
-) -> Result<ObjectProp<'a>, ParseError> {
+fn parse_object_property<'a>(context: &mut Context<'a>, prop_name: PropName<'a>) -> Result<ObjectProp<'a>, ParseError> {
     context.start_range();
 
     let name = match prop_name {
-        PropName::String(prop_name) => {
-            ObjectPropName::String(create_string_lit(context, prop_name))
-        }
+        PropName::String(prop_name) => ObjectPropName::String(create_string_lit(context, prop_name)),
         PropName::Word(prop_name) => ObjectPropName::Word(create_word(context, prop_name)),
     };
 
     match context.scan()? {
         Some(Token::Colon) => {}
-        _ => {
-            return Err(context.create_parse_error(
-                "Expected a colon after the string or word in an object property",
-            ))
-        }
+        _ => return Err(context.create_parse_error("Expected a colon after the string or word in an object property")),
     }
 
     context.scan()?;
@@ -316,9 +288,7 @@ fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
             None => return Err(context.create_parse_error_for_current_range("Unterminated array")),
             _ => match parse_value(context)? {
                 Some(value) => elements.push(value),
-                None => {
-                    return Err(context.create_parse_error_for_current_range("Unterminated array"))
-                }
+                None => return Err(context.create_parse_error_for_current_range("Unterminated array")),
             },
         }
 
