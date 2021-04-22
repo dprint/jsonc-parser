@@ -43,13 +43,11 @@ fn handle_array(arr: ast::Array) -> JsonArray {
 }
 
 fn handle_object(obj: ast::Object) -> JsonObject {
-    let mut props = HashMap::with_capacity(obj.properties.len());
-    for prop in obj.properties.into_iter() {
+    JsonObject::new(obj.properties.into_iter().map(|prop| {
         let prop_name = prop.name.into_string();
         let prop_value = handle_value(prop.value);
-        props.insert(prop_name, prop_value);
-    }
-    JsonObject::new(props)
+        (prop_name, prop_value)
+    }).collect())
 }
 
 #[cfg(test)]
