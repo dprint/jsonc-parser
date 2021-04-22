@@ -43,7 +43,7 @@ fn handle_array(arr: ast::Array) -> JsonArray {
 }
 
 fn handle_object(obj: ast::Object) -> JsonObject {
-    let mut props = HashMap::new();
+    let mut props = HashMap::with_capacity(obj.properties.len());
     for prop in obj.properties.into_iter() {
         let prop_name = prop.name.into_string();
         let prop_value = handle_value(prop.value);
