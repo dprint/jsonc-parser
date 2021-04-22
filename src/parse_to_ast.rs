@@ -4,13 +4,13 @@ use super::errors::*;
 use super::scanner::Scanner;
 use super::tokens::{Token, TokenAndRange};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 use std::rc::Rc;
 
 /// Map where the comments are stored in collections where
 /// the key is the previous token end or start of file or
 /// next token start or end of the file.
-pub type CommentMap<'a> = HashMap<usize, Rc<Vec<Comment<'a>>>>;
+pub type CommentMap<'a> = FxHashMap<usize, Rc<Vec<Comment<'a>>>>;
 
 /// Options for parsing.
 #[derive(Default)]
@@ -166,7 +166,7 @@ impl<'a> Context<'a> {
 pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseResult<'a>, ParseError> {
     let mut context = Context {
         scanner: Scanner::new(text),
-        comments: if options.comments { Some(HashMap::new()) } else { None },
+        comments: if options.comments { Some(FxHashMap::default()) } else { None },
         current_comments: None,
         last_token_end: 0,
         range_stack: Vec::new(),

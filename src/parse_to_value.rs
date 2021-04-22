@@ -2,7 +2,6 @@ use super::ast;
 use super::errors::ParseError;
 use super::value::*;
 use super::{parse_to_ast, ParseOptions};
-use std::collections::HashMap;
 
 /// Parses a string containing JSONC to a `JsonValue`.
 ///
@@ -68,7 +67,7 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        let mut object_map = HashMap::new();
+        let mut object_map = fxhash::FxHashMap::default();
         object_map.insert(String::from("a"), JsonValue::Null);
         object_map.insert(
             String::from("b"),
