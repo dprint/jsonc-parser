@@ -105,21 +105,25 @@ impl<'a> Scanner<'a> {
     }
 
     /// Gets the start position of the token.
+    #[inline]
     pub fn token_start(&self) -> usize {
         self.token_start
     }
 
     /// Gets the end position of the token.
+    #[inline]
     pub fn token_end(&self) -> usize {
         self.byte_index
     }
 
     /// Gets the line the token starts on.
+    #[inline]
     pub fn token_start_line(&self) -> usize {
         self.token_start_line
     }
 
     /// Gets the line the token ends on.
+    #[inline]
     pub fn token_end_line(&self) -> usize {
         self.line_number
     }
@@ -465,6 +469,7 @@ impl<'a> Scanner<'a> {
         );
     }
 
+    #[inline]
     fn move_next_char(&mut self) -> Option<char> {
         if let Some(&current_char) = self.char_buffer.get(0) {
             if current_char == '\n' {
@@ -510,6 +515,7 @@ impl<'a> Scanner<'a> {
         self.char_buffer.get(offset).map(|c| *c)
     }
 
+    #[inline]
     fn current_char(&self) -> Option<char> {
         self.char_buffer.get(0).map(|c| *c)
     }
@@ -533,25 +539,29 @@ impl<'a> Scanner<'a> {
             }
     }
 
+    #[inline]
     fn is_digit(&self) -> bool {
         self.is_one_nine() || self.is_zero()
     }
 
+    #[inline]
     fn is_zero(&self) -> bool {
         self.current_char() == Some('0')
     }
 
+    #[inline]
     fn is_one_nine(&self) -> bool {
         match self.current_char() {
             Some(current_char) => current_char >= '1' && current_char <= '9',
             _ => false,
         }
     }
-
+    #[inline]
     fn is_negative_sign(&self) -> bool {
         self.current_char() == Some('-')
     }
 
+    #[inline]
     fn is_decimal_point(&self) -> bool {
         self.current_char() == Some('.')
     }
