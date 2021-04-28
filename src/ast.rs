@@ -1,5 +1,6 @@
 use super::common::{Range, Ranged};
-use std::borrow::Cow;
+// use std::borrow::Cow;
+use beef::lean::Cow;
 
 /// JSON value.
 #[derive(Debug, PartialEq, Clone)]

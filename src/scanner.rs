@@ -1,7 +1,8 @@
 use super::common::Range;
 use super::errors::*;
 use super::tokens::Token;
-use std::borrow::Cow;
+// use std::borrow::Cow;
+use beef::lean::Cow;
 use std::str::Chars;
 
 /// Converts text into a stream of tokens.
@@ -273,9 +274,9 @@ impl<'a> Scanner<'a> {
             Ok(Token::String(match text {
                 Some(mut text) => {
                     text.push_str(final_segment);
-                    Cow::Owned(text)
+                    Cow::owned(text)
                 }
-                None => Cow::Borrowed(final_segment),
+                None => Cow::borrowed(final_segment),
             }))
         } else {
             Err(self.create_error_for_current_token("Unterminated string literal"))
@@ -567,9 +568,9 @@ mod tests {
         assert_has_tokens(
             r#""t\"est", "\t\r\n\n\u0020 test\n other","#,
             vec![
-                Token::String(Cow::Borrowed(r#"t"est"#)),
+                Token::String(Cow::borrowed(r#"t"est"#)),
                 Token::Comma,
-                Token::String(Cow::Borrowed("\t\r\n\n  test\n other")),
+                Token::String(Cow::borrowed("\t\r\n\n  test\n other")),
                 Token::Comma,
             ],
         );
@@ -588,9 +589,9 @@ mod tests {
         assert_has_tokens(
             r#"'t\'est','a',"#,
             vec![
-                Token::String(Cow::Borrowed(r#"t'est"#)),
+                Token::String(Cow::borrowed(r#"t'est"#)),
                 Token::Comma,
-                Token::String(Cow::Borrowed("a")),
+                Token::String(Cow::borrowed("a")),
                 Token::Comma,
             ],
         );

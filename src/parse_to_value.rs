@@ -55,7 +55,8 @@ fn handle_object(obj: ast::Object) -> JsonObject {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::borrow::Cow;
+    // use std::borrow::Cow;
+    use beef::lean::Cow;
 
     #[test]
     fn it_should_parse_object() {
@@ -74,7 +75,7 @@ mod tests {
         object_map.insert(String::from("a"), JsonValue::Null);
         object_map.insert(
             String::from("b"),
-            JsonValue::Array(vec![JsonValue::Null, JsonValue::String(Cow::Borrowed("text"))].into()),
+            JsonValue::Array(vec![JsonValue::Null, JsonValue::String(Cow::borrowed("text"))].into()),
         );
         object_map.insert(String::from("c"), JsonValue::Boolean(true));
         object_map.insert(String::from("d"), JsonValue::Number("25.55"));
@@ -104,13 +105,13 @@ mod tests {
     #[test]
     fn it_should_parse_string() {
         let value = parse_to_value(r#""test""#).unwrap().unwrap();
-        assert_eq!(value, JsonValue::String(Cow::Borrowed("test")));
+        assert_eq!(value, JsonValue::String(Cow::borrowed("test")));
     }
 
     #[test]
     fn it_should_parse_string_with_quotes() {
         let value = parse_to_value(r#""echo \"test\"""#).unwrap().unwrap();
-        assert_eq!(value, JsonValue::String(Cow::Borrowed(r#"echo "test""#)));
+        assert_eq!(value, JsonValue::String(Cow::borrowed(r#"echo "test""#)));
     }
 
     #[test]

@@ -1,0 +1,24 @@
+
+running 35 tests
+iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii
+test result: ok. 0 passed; 0 failed; 35 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test citm_catalog_json_large_ast   ... bench:  65,650,430 ns/iter (+/- 6,256,557)
+test citm_catalog_json_large_value ... bench:  90,173,800 ns/iter (+/- 7,105,093)
+test package_json_ast              ... bench:      79,572 ns/iter (+/- 17,223)
+test package_json_value            ... bench:     115,695 ns/iter (+/- 7,960)
+test tsconfig_json_ast             ... bench:      27,544 ns/iter (+/- 1,245)
+test tsconfig_json_value           ... bench:      28,729 ns/iter (+/- 3,454)
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 6 measured; 0 filtered out; finished in 61.80s
+
+
+running 6 tests
+test citm_catalog_json_large_ast   ... bench:  55,786,700 ns/iter (+/- 4,681,091)
+test citm_catalog_json_large_value ... bench:  85,874,920 ns/iter (+/- 5,292,646)
+test package_json_ast              ... bench:      76,723 ns/iter (+/- 3,379)
+test package_json_value            ... bench:     110,514 ns/iter (+/- 7,437)
+test tsconfig_json_ast             ... bench:      27,483 ns/iter (+/- 1,524)
+test tsconfig_json_value           ... bench:      28,089 ns/iter (+/- 1,349)

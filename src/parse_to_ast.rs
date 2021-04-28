@@ -3,7 +3,8 @@ use super::common::Range;
 use super::errors::*;
 use super::scanner::Scanner;
 use super::tokens::{Token, TokenAndRange};
-use std::borrow::Cow;
+// use std::borrow::Cow;
+use beef::lean::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 

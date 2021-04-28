@@ -1,5 +1,6 @@
 use core::slice::Iter;
-use std::borrow::Cow;
+// use std::borrow::Cow;
+use beef::lean::Cow;
 use std::collections::HashMap;
 
 /// A JSON value.
@@ -200,11 +201,11 @@ mod test {
         let mut inner = HashMap::new();
         inner.insert(
             String::from("prop"),
-            JsonValue::String(Cow::Borrowed("asdf")),
+            JsonValue::String(Cow::borrowed("asdf")),
         );
         inner.insert(
             String::from("other"),
-            JsonValue::String(Cow::Borrowed("text")),
+            JsonValue::String(Cow::borrowed("text")),
         );
         let mut obj = JsonObject::new(inner);
 
@@ -213,13 +214,13 @@ mod test {
         assert_eq!(obj.len(), 2);
         assert_eq!(obj.take_number("prop"), None);
         assert_eq!(obj.len(), 2);
-        assert_eq!(obj.take_string("prop"), Some(Cow::Borrowed("asdf")));
+        assert_eq!(obj.take_string("prop"), Some(Cow::borrowed("asdf")));
         assert_eq!(obj.len(), 1);
         assert_eq!(obj.take("something"), None);
         assert_eq!(obj.len(), 1);
         assert_eq!(
             obj.take("other"),
-            Some(JsonValue::String(Cow::Borrowed("text")))
+            Some(JsonValue::String(Cow::borrowed("text")))
         );
         assert_eq!(obj.len(), 0);
     }
@@ -229,16 +230,16 @@ mod test {
         let mut inner = HashMap::new();
         inner.insert(
             String::from("prop"),
-            JsonValue::String(Cow::Borrowed("asdf")),
+            JsonValue::String(Cow::borrowed("asdf")),
         );
         let obj = JsonObject::new(inner);
 
         assert_eq!(obj.len(), 1);
         assert_eq!(obj.get_string("asdf"), None);
-        assert_eq!(obj.get_string("prop"), Some(&Cow::Borrowed("asdf")));
+        assert_eq!(obj.get_string("prop"), Some(&Cow::borrowed("asdf")));
         assert_eq!(
             obj.get("prop"),
-            Some(&JsonValue::String(Cow::Borrowed("asdf")))
+            Some(&JsonValue::String(Cow::borrowed("asdf")))
         );
         assert_eq!(obj.get("asdf"), None);
         assert_eq!(obj.len(), 1);
