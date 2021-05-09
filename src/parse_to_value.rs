@@ -37,7 +37,7 @@ fn handle_value(value: ast::Value) -> JsonValue {
 }
 
 fn handle_array(arr: ast::Array) -> JsonArray {
-    let elements = arr.elements.into_iter().map(|element| handle_value(element)).collect();
+    let elements = arr.elements.into_iter().map(handle_value).collect();
 
     JsonArray::new(elements)
 }

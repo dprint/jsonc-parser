@@ -71,6 +71,11 @@ impl<'a> JsonObject<'a> {
         self.0.len()
     }
 
+    /// Gets if there are no properties.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Gets a value in the object by its name.
     pub fn get(&self, name: &str) -> Option<&JsonValue<'a>> {
         self.0.get(name)
@@ -188,6 +193,11 @@ impl<'a> JsonArray<'a> {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+
+    /// Gets if the array is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -198,14 +208,8 @@ mod test {
     #[test]
     fn it_should_take() {
         let mut inner = HashMap::new();
-        inner.insert(
-            String::from("prop"),
-            JsonValue::String(Cow::Borrowed("asdf")),
-        );
-        inner.insert(
-            String::from("other"),
-            JsonValue::String(Cow::Borrowed("text")),
-        );
+        inner.insert(String::from("prop"), JsonValue::String(Cow::Borrowed("asdf")));
+        inner.insert(String::from("other"), JsonValue::String(Cow::Borrowed("text")));
         let mut obj = JsonObject::new(inner);
 
         assert_eq!(obj.len(), 2);
@@ -217,29 +221,20 @@ mod test {
         assert_eq!(obj.len(), 1);
         assert_eq!(obj.take("something"), None);
         assert_eq!(obj.len(), 1);
-        assert_eq!(
-            obj.take("other"),
-            Some(JsonValue::String(Cow::Borrowed("text")))
-        );
+        assert_eq!(obj.take("other"), Some(JsonValue::String(Cow::Borrowed("text"))));
         assert_eq!(obj.len(), 0);
     }
 
     #[test]
     fn it_should_get() {
         let mut inner = HashMap::new();
-        inner.insert(
-            String::from("prop"),
-            JsonValue::String(Cow::Borrowed("asdf")),
-        );
+        inner.insert(String::from("prop"), JsonValue::String(Cow::Borrowed("asdf")));
         let obj = JsonObject::new(inner);
 
         assert_eq!(obj.len(), 1);
         assert_eq!(obj.get_string("asdf"), None);
         assert_eq!(obj.get_string("prop"), Some(&Cow::Borrowed("asdf")));
-        assert_eq!(
-            obj.get("prop"),
-            Some(&JsonValue::String(Cow::Borrowed("asdf")))
-        );
+        assert_eq!(obj.get("prop"), Some(&JsonValue::String(Cow::Borrowed("asdf"))));
         assert_eq!(obj.get("asdf"), None);
         assert_eq!(obj.len(), 1);
     }

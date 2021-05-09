@@ -136,7 +136,7 @@ macro_rules! generate_get {
 impl<'a> Object<'a> {
     /// Gets a property value in the object by its name.
     pub fn get(&self, name: &str) -> Option<&ObjectProp> {
-        self.properties.iter().filter(|p| p.name.as_str() == name).next()
+        self.properties.iter().find(|p| p.name.as_str() == name)
     }
 
     /// Gets a string property value from the object by name.

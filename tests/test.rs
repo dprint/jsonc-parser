@@ -128,10 +128,7 @@ fn lit_to_test_str(lit_type: &str, value: &str, range: &Range) -> String {
     let mut text = String::new();
     text.push_str("{\n");
     text.push_str(&format!("  \"type\": \"{}\",\n", lit_type));
-    text.push_str(&format!(
-        "  {},\n",
-        range_to_test_str(range).replace("\n", "\n  ")
-    ));
+    text.push_str(&format!("  {},\n", range_to_test_str(range).replace("\n", "\n  ")));
     text.push_str(&format!("  \"value\": \"{}\"\n", escape_json_str(value)));
     text.push_str("}");
     text
@@ -141,10 +138,7 @@ fn object_to_test_str(obj: &Object) -> String {
     let mut text = String::new();
     text.push_str("{\n");
     text.push_str("  \"type\": \"object\",\n");
-    text.push_str(&format!(
-        "  {},\n",
-        range_to_test_str(&obj.range).replace("\n", "\n  ")
-    ));
+    text.push_str(&format!("  {},\n", range_to_test_str(&obj.range).replace("\n", "\n  ")));
     text.push_str("  \"properties\": [");
     let prop_count = obj.properties.len();
     for (i, prop) in obj.properties.iter().enumerate() {
@@ -190,10 +184,7 @@ fn array_to_test_str(arr: &Array) -> String {
     let mut text = String::new();
     text.push_str("{\n");
     text.push_str("  \"type\": \"array\",\n");
-    text.push_str(&format!(
-        "  {},\n",
-        range_to_test_str(&arr.range).replace("\n", "\n  ")
-    ));
+    text.push_str(&format!("  {},\n", range_to_test_str(&arr.range).replace("\n", "\n  ")));
     text.push_str("  \"elements\": [");
     let elements_count = arr.elements.len();
     for (i, element) in arr.elements.iter().enumerate() {

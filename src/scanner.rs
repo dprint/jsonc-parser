@@ -182,14 +182,12 @@ impl<'a> Scanner<'a> {
                                     "Invalid escape in single quote string",
                                 ));
                             }
-                        } else if current_char == '\'' {
-                            if is_double_quote {
-                                return Err(self.create_error_for_start_and_line(
-                                    escape_start,
-                                    escape_start_line,
-                                    "Invalid escape in double quote string",
-                                ));
-                            }
+                        } else if current_char == '\'' && is_double_quote {
+                            return Err(self.create_error_for_start_and_line(
+                                escape_start,
+                                escape_start_line,
+                                "Invalid escape in double quote string",
+                            ));
                         }
 
                         let previous_text = &self.file_text[last_start_byte_index..escape_start];
@@ -216,11 +214,7 @@ impl<'a> Scanner<'a> {
                             }
 
                             let hex_u32 = u32::from_str_radix(&hex_text, 16);
-                            let hex_char = match hex_u32
-                                .ok()
-                                .map(|hex_u32| std::char::from_u32(hex_u32))
-                                .flatten()
-                            {
+                            let hex_char = match hex_u32.ok().map(std::char::from_u32).flatten() {
                                 Some(hex_char) => hex_char,
                                 None => {
                                     return Err(self.create_error_for_start_and_line(
@@ -346,7 +340,7 @@ impl<'a> Scanner<'a> {
         self.assert_char('/');
 
         let start_byte_index = self.byte_index + 1;
-        while let Some(_) = self.move_next_char() {
+        while self.move_next_char().is_some() {
             if self.is_new_line() {
                 break;
             }
@@ -507,11 +501,11 @@ impl<'a> Scanner<'a> {
         // should not exceed this
         debug_assert!(self.char_buffer.len() <= CHAR_BUFFER_MAX_SIZE);
 
-        self.char_buffer.get(offset).map(|c| *c)
+        self.char_buffer.get(offset).copied()
     }
 
     fn current_char(&self) -> Option<char> {
-        self.char_buffer.get(0).map(|c| *c)
+        self.char_buffer.get(0).copied()
     }
 
     fn is_new_line(&mut self) -> bool {
@@ -526,8 +520,7 @@ impl<'a> Scanner<'a> {
         self.is_digit()
             || match self.current_char() {
                 Some(current_char) => {
-                    current_char >= 'a' && current_char <= 'f'
-                        || current_char >= 'A' && current_char <= 'F'
+                    ('a'..='f').contains(&current_char) || ('A'..='F').contains(&current_char)
                 }
                 _ => false,
             }
@@ -543,7 +536,7 @@ impl<'a> Scanner<'a> {
 
     fn is_one_nine(&self) -> bool {
         match self.current_char() {
-            Some(current_char) => current_char >= '1' && current_char <= '9',
+            Some(current_char) => ('1'..='9').contains(&current_char),
             _ => false,
         }
     }

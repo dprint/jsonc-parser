@@ -192,17 +192,17 @@ fn parse_value<'a>(context: &mut Context<'a>) -> Result<Option<Value<'a>>, Parse
     match context.token() {
         None => Ok(None),
         Some(token) => match token {
-            Token::OpenBrace => return Ok(Some(Value::Object(parse_object(context)?))),
-            Token::OpenBracket => return Ok(Some(Value::Array(parse_array(context)?))),
-            Token::String(value) => return Ok(Some(Value::StringLit(create_string_lit(context, value)))),
-            Token::Boolean(value) => return Ok(Some(Value::BooleanLit(create_boolean_lit(context, value)))),
-            Token::Number(value) => return Ok(Some(Value::NumberLit(create_number_lit(context, value)))),
+            Token::OpenBrace => Ok(Some(Value::Object(parse_object(context)?))),
+            Token::OpenBracket => Ok(Some(Value::Array(parse_array(context)?))),
+            Token::String(value) => Ok(Some(Value::StringLit(create_string_lit(context, value)))),
+            Token::Boolean(value) => Ok(Some(Value::BooleanLit(create_boolean_lit(context, value)))),
+            Token::Number(value) => Ok(Some(Value::NumberLit(create_number_lit(context, value)))),
             Token::Null => return Ok(Some(Value::NullKeyword(create_null_keyword(context)))),
-            Token::CloseBracket => return Err(context.create_parse_error("Unexpected close bracket")),
-            Token::CloseBrace => return Err(context.create_parse_error("Unexpected close brace")),
-            Token::Comma => return Err(context.create_parse_error("Unexpected comma")),
-            Token::Colon => return Err(context.create_parse_error("Unexpected colon")),
-            Token::Word(_) => return Err(context.create_parse_error("Unexpected word")),
+            Token::CloseBracket => Err(context.create_parse_error("Unexpected close bracket")),
+            Token::CloseBrace => Err(context.create_parse_error("Unexpected close brace")),
+            Token::Comma => Err(context.create_parse_error("Unexpected comma")),
+            Token::Colon => Err(context.create_parse_error("Unexpected colon")),
+            Token::Word(_) => Err(context.create_parse_error("Unexpected word")),
             Token::CommentLine(_) => unreachable!(),
             Token::CommentBlock(_) => unreachable!(),
         },
@@ -230,11 +230,8 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
         }
 
         // skip the comma
-        match context.scan()? {
-            Some(Token::Comma) => {
-                context.scan()?;
-            }
-            _ => {}
+        if let Some(Token::Comma) = context.scan()? {
+            context.scan()?;
         }
     }
 
@@ -293,11 +290,8 @@ fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
         }
 
         // skip the comma
-        match context.scan()? {
-            Some(Token::Comma) => {
-                context.scan()?;
-            }
-            _ => {}
+        if let Some(Token::Comma) = context.scan()? {
+            context.scan()?;
         }
     }
 
@@ -323,7 +317,7 @@ fn create_word<'a>(context: &Context<'a>, value: &'a str) -> WordLit<'a> {
     }
 }
 
-fn create_boolean_lit<'a>(context: &Context<'a>, value: bool) -> BooleanLit {
+fn create_boolean_lit(context: &Context, value: bool) -> BooleanLit {
     BooleanLit {
         range: context.create_range_from_last_token(),
         value,
@@ -337,7 +331,7 @@ fn create_number_lit<'a>(context: &Context<'a>, value: &'a str) -> NumberLit<'a>
     }
 }
 
-fn create_null_keyword<'a>(context: &Context<'a>) -> NullKeyword {
+fn create_null_keyword(context: &Context) -> NullKeyword {
     NullKeyword {
         range: context.create_range_from_last_token(),
     }
