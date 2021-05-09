@@ -17,6 +17,12 @@ fn citm_catalog_json_large_value(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(feature = "serde")]
+fn citm_catalog_json_large_serde(b: &mut Bencher) {
+    bench_serde(b, &get_citm_catalog_json_large());
+}
+
+#[bench]
 fn tsconfig_json_ast(b: &mut Bencher) {
     bench_ast(b, &get_tsconfig_json());
 }
@@ -39,15 +45,16 @@ fn package_json_value(b: &mut Bencher) {
 // bench helpers
 
 fn bench_ast(b: &mut Bencher, json_text: &str) {
-    b.iter(|| {
-        parse_to_ast(&json_text, &ParseOptions::default()).unwrap();
-    });
+    b.iter(|| parse_to_ast(json_text, &ParseOptions::default()).unwrap());
 }
 
 fn bench_value(b: &mut Bencher, json_text: &str) {
-    b.iter(|| {
-        parse_to_value(&json_text).unwrap();
-    });
+    b.iter(|| parse_to_value(json_text).unwrap());
+}
+
+#[cfg(feature = "serde")]
+fn bench_serde(b: &mut Bencher, json_text: &str) {
+    b.iter(|| serde_json::from_str::<serde_json::Value>(json_text).unwrap());
 }
 
 // data
