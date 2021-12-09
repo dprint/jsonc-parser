@@ -24,7 +24,7 @@ impl<'a> Scanner<'a> {
     /// Creates a new scanner based on the provided text.
     pub fn new(text: &'a str) -> Scanner<'a> {
         let mut char_iter = text.chars();
-        let mut char_buffer =SmallVec::with_capacity(CHAR_BUFFER_MAX_SIZE);
+        let mut char_buffer = SmallVec::with_capacity(CHAR_BUFFER_MAX_SIZE);
         let current_char = char_iter.next();
         if let Some(current_char) = current_char {
             char_buffer.push(current_char);

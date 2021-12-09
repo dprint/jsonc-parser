@@ -74,7 +74,9 @@ mod tests {
         object_map.insert(String::from("a"), JsonValue::Null);
         object_map.insert(
             String::from("b"),
-            JsonValue::Array(vec![JsonValue::Null, JsonValue::String(Cow::Borrowed("text"))].into()),
+            JsonValue::Array(
+                vec![JsonValue::Null, JsonValue::String(Cow::Borrowed("text"))].into(),
+            ),
         );
         object_map.insert(String::from("c"), JsonValue::Boolean(true));
         object_map.insert(String::from("d"), JsonValue::Number("25.55"));

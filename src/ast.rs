@@ -99,7 +99,11 @@ pub struct Object<'a> {
 macro_rules! generate_take {
     ($self:ident, $name:ident, $value_type:ident) => {
         // there must be some better code that could be written here...
-        if let Some(pos) = $self.properties.iter().position(|p| p.name.as_str() == $name) {
+        if let Some(pos) = $self
+            .properties
+            .iter()
+            .position(|p| p.name.as_str() == $name)
+        {
             if let Value::$value_type(_) = &$self.properties[pos].value {
                 if let Value::$value_type(node) = $self.properties.remove(pos).value {
                     Some(node)
