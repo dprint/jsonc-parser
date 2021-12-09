@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use super::common::Range;
 use super::errors::*;
 use super::tokens::Token;
@@ -11,7 +13,7 @@ pub struct Scanner<'a> {
     token_start: usize,
     token_start_line: usize,
     char_iter: Chars<'a>,
-    char_buffer: Vec<char>,
+    char_buffer: SmallVec<[char; CHAR_BUFFER_MAX_SIZE]>,
     current_token: Option<Token<'a>>,
     file_text: &'a str,
 }
@@ -22,7 +24,7 @@ impl<'a> Scanner<'a> {
     /// Creates a new scanner based on the provided text.
     pub fn new(text: &'a str) -> Scanner<'a> {
         let mut char_iter = text.chars();
-        let mut char_buffer = Vec::with_capacity(CHAR_BUFFER_MAX_SIZE);
+        let mut char_buffer =SmallVec::with_capacity(CHAR_BUFFER_MAX_SIZE);
         let current_char = char_iter.next();
         if let Some(current_char) = current_char {
             char_buffer.push(current_char);
