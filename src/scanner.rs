@@ -141,7 +141,11 @@ impl<'a> Scanner<'a> {
     let range = Range {
       start,
       start_line,
-      end: std::cmp::min(self.byte_index + 1, self.file_text.len()),
+      end: if let Some(c) = self.file_text[self.byte_index..].chars().next() {
+        self.byte_index + c.len_utf8()
+      } else {
+        self.file_text.len()
+      },
       end_line: self.line_number,
     };
     self.create_error_for_range(range, message)

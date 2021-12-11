@@ -136,9 +136,10 @@ mod tests {
 
   #[test]
   fn error_unexpected_token() {
-    let err = parse_to_value("{ \"a\":\u{200b}5 }").err().unwrap();
-    assert_eq!(err.range.start_line, 0);
-    assert_eq!(err.range.start, 6);
+    let err = parse_to_value("{\n  \"a\":\u{200b}5 }").err().unwrap();
+    assert_eq!(err.range.start_line, 1);
+    assert_eq!(err.range.start, 8);
+    assert_eq!(err.range.end, 11);
     assert_eq!(err.message, "Unexpected token");
   }
 }
