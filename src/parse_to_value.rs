@@ -136,7 +136,7 @@ mod tests {
 
   #[test]
   fn error_unexpected_token() {
-    let err = parse_to_value(r#"{ "a":\u200b5 }"#).err().unwrap();
+    let err = parse_to_value("{ \"a\":\u{200b}5 }").err().unwrap();
     assert_eq!(err.range.start_line, 0);
     assert_eq!(err.range.start, 6);
     assert_eq!(err.message, "Unexpected token");
