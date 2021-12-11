@@ -9,9 +9,9 @@ jobs:
     strategy:
       matrix:
         config:
-          - os: ubuntu-16.04
+          - os: ubuntu-latest
             kind: test_release
-          - os: ubuntu-16.04
+          - os: ubuntu-latest
             kind: test_debug
 
     env:
@@ -20,15 +20,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-
-    - name: Cache cargo
-      uses: actions/cache@v2
+    - uses: actions-rs/toolchain@v1
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        profile: minimal
+        toolchain: 1.57.0
+        override: true
+
+    - uses: Swatinem/rust-cache@v1
 
     - name: Build debug
       if: matrix.config.kind == 'test_debug'
