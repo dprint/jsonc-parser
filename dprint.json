@@ -1,5 +1,6 @@
 {
   "incremental": true,
+  "indentWidth": 2,
   "rustfmt": {
     "max_width": 120
   },
