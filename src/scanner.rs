@@ -137,12 +137,7 @@ impl<'a> Scanner<'a> {
         self.create_error_for_start_and_line(self.byte_index, self.line_number, message)
     }
 
-    pub(super) fn create_error_for_start_and_line(
-        &self,
-        start: usize,
-        start_line: usize,
-        message: &str,
-    ) -> ParseError {
+    pub(super) fn create_error_for_start_and_line(&self, start: usize, start_line: usize, message: &str) -> ParseError {
         let range = Range {
             start,
             start_line,
@@ -228,8 +223,8 @@ impl<'a> Scanner<'a> {
                                 }
                             };
                             text.push(hex_char);
-                            last_start_byte_index = self.byte_index
-                                + self.current_char().map(|c| c.len_utf8()).unwrap_or(0);
+                            last_start_byte_index =
+                                self.byte_index + self.current_char().map(|c| c.len_utf8()).unwrap_or(0);
                         } else {
                             text.push(match current_char {
                                 'b' => '\u{08}',
@@ -251,9 +246,7 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 last_was_backslash = false;
-            } else if is_double_quote && current_char == '"'
-                || !is_double_quote && current_char == '\''
-            {
+            } else if is_double_quote && current_char == '"' || !is_double_quote && current_char == '\'' {
                 found_end_string = true;
                 break;
             } else {
@@ -291,9 +284,7 @@ impl<'a> Scanner<'a> {
                 self.move_next_char();
             }
         } else {
-            return Err(
-                self.create_error_for_current_char("Expected a digit to follow a negative sign")
-            );
+            return Err(self.create_error_for_current_char("Expected a digit to follow a negative sign"));
         }
 
         if self.is_decimal_point() {
@@ -320,18 +311,14 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 _ => {
-                    return Err(self.create_error_for_current_char(
-                        "Expected plus or minus symbol in number literal",
-                    ));
+                    return Err(self.create_error_for_current_char("Expected plus or minus symbol in number literal"));
                 }
             },
             _ => {}
         }
 
         let end_byte_index = self.byte_index;
-        Ok(Token::Number(
-            &self.file_text[start_byte_index..end_byte_index],
-        ))
+        Ok(Token::Number(&self.file_text[start_byte_index..end_byte_index]))
     }
 
     fn parse_comment_line(&mut self) -> Token<'a> {
@@ -367,9 +354,7 @@ impl<'a> Scanner<'a> {
             let end_byte_index = self.byte_index;
             self.assert_then_move_char('*');
             self.assert_then_move_char('/');
-            Ok(Token::CommentBlock(
-                &self.file_text[start_byte_index..end_byte_index],
-            ))
+            Ok(Token::CommentBlock(&self.file_text[start_byte_index..end_byte_index]))
         } else {
             Err(self.create_error_for_current_token("Unterminated comment block"))
         }
@@ -416,11 +401,7 @@ impl<'a> Scanner<'a> {
         let start_byte_index = self.byte_index;
 
         while let Some(current_char) = self.current_char() {
-            if current_char.is_whitespace()
-                || current_char == '\r'
-                || current_char == '\n'
-                || current_char == ':'
-            {
+            if current_char.is_whitespace() || current_char == '\r' || current_char == '\n' || current_char == ':' {
                 break;
             }
             if !current_char.is_alphanumeric() && current_char != '-' {
@@ -436,9 +417,7 @@ impl<'a> Scanner<'a> {
             return Err(self.create_error_for_current_token("Unexpected token"));
         }
 
-        Ok(Token::Word(
-            &self.file_text[start_byte_index..end_byte_index],
-        ))
+        Ok(Token::Word(&self.file_text[start_byte_index..end_byte_index]))
     }
 
     fn assert_then_move_char(&mut self, _character: char) {
@@ -519,9 +498,7 @@ impl<'a> Scanner<'a> {
     fn is_hex(&self) -> bool {
         self.is_digit()
             || match self.current_char() {
-                Some(current_char) => {
-                    ('a'..='f').contains(&current_char) || ('A'..='F').contains(&current_char)
-                }
+                Some(current_char) => ('a'..='f').contains(&current_char) || ('A'..='F').contains(&current_char),
                 _ => false,
             }
     }

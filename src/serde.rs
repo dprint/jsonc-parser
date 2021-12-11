@@ -13,10 +13,10 @@ use std::str::FromStr;
 ///
 /// # Example
 ///
-/// ```
+/// ```rs
 /// use jsonc_parser::parse_to_serde_value;
 ///
-/// let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#).expect("Should parse.");
+/// let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#).unwrap();
 /// ```
 pub fn parse_to_serde_value(text: &str) -> Result<Option<SerdeValue>, ParseError> {
     let value = parse_to_ast(

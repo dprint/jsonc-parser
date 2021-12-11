@@ -8,7 +8,7 @@ JSONC parser implemented in Rust.
 
 To a simple `JsonValue`:
 
-```rust
+```rs
 use jsonc_parser::parse_to_value;
 
 let json_value = parse_to_value(r#"{ "test": 5 } // test"#)?;
@@ -17,7 +17,7 @@ let json_value = parse_to_value(r#"{ "test": 5 } // test"#)?;
 
 Or an AST:
 
-```rust
+```rs
 use jsonc_parser::{parse_to_ast, ParseOptions};
 
 let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &ParseOptions {
@@ -25,4 +25,17 @@ let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &ParseOptions {
     tokens: true, // include tokens in result
 })?;
 // ...inspect parse_result for value, tokens, and comments here...
+```
+
+Or use the "serde" feature:
+
+```toml
+# in Cargo.toml
+jsonc-parser = { version = "...", features = ["serde"] }
+```
+
+```rs
+use jsonc_parser::parse_to_serde_value;
+
+let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#)?;
 ```
