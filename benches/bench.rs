@@ -73,7 +73,7 @@ fn get_tsconfig_json() -> String {
 }
 
 fn get_package_json() -> String {
-    read_to_string("benches/data/package.json").unwrap()
+    read_to_string("benches/data/package.txt").unwrap()
 }
 
 fn create_json_array_of_object(text: &str, length: usize) -> String {
