@@ -5,6 +5,12 @@ use std::str::FromStr;
 
 /// Parses a string containing JSONC to a `serde_json::Value.
 ///
+/// Requires the "serde" cargo feature:
+///
+/// ```toml
+/// jsonc-parser = { version = "...", features = ["serde"] }
+/// ```
+///
 /// # Example
 ///
 /// ```
@@ -86,9 +92,7 @@ mod tests {
         });
         expected_value.insert("b".to_string(), {
             let mut inner_array = Vec::new();
-            inner_array.push(SerdeValue::Number(
-                serde_json::Number::from_str("0.3e+025").unwrap(),
-            ));
+            inner_array.push(SerdeValue::Number(serde_json::Number::from_str("0.3e+025").unwrap()));
             SerdeValue::Array(inner_array)
         });
         expected_value.insert("c".to_string(), SerdeValue::String("c1".to_string()));
