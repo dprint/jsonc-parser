@@ -135,19 +135,19 @@ macro_rules! generate_get {
 
 impl<'a> Object<'a> {
   /// Gets a property value in the object by its name.
-  pub fn get(&self, name: &str) -> Option<&ObjectProp> {
+  pub fn get(&self, name: &str) -> Option<&ObjectProp<'a>> {
     self.properties.iter().find(|p| p.name.as_str() == name)
   }
 
   /// Gets a string property value from the object by name.
   /// Returns `None` when not a string or it doesn't exist.
-  pub fn get_string(&self, name: &str) -> Option<&StringLit> {
+  pub fn get_string(&self, name: &str) -> Option<&StringLit<'a>> {
     generate_get!(self, name, StringLit)
   }
 
   /// Gets a number property value from the object by name.
   /// Returns `None` when not a number or it doesn't exist.
-  pub fn get_number(&self, name: &str) -> Option<&NumberLit> {
+  pub fn get_number(&self, name: &str) -> Option<&NumberLit<'a>> {
     generate_get!(self, name, NumberLit)
   }
 
@@ -159,19 +159,19 @@ impl<'a> Object<'a> {
 
   /// Gets an object property value from the object by name.
   /// Returns `None` when not an object or it doesn't exist.
-  pub fn get_object(&self, name: &str) -> Option<&Object> {
+  pub fn get_object(&self, name: &str) -> Option<&Object<'a>> {
     generate_get!(self, name, Object)
   }
 
   /// Gets an array property value from the object by name.
   /// Returns `None` when not an array or it doesn't exist.
-  pub fn get_array(&self, name: &str) -> Option<&Array> {
+  pub fn get_array(&self, name: &str) -> Option<&Array<'a>> {
     generate_get!(self, name, Array)
   }
 
   /// Takes a value from the object by name.
   /// Returns `None` when it doesn't exist.
-  pub fn take(&mut self, name: &str) -> Option<ObjectProp> {
+  pub fn take(&mut self, name: &str) -> Option<ObjectProp<'a>> {
     if let Some(pos) = self.properties.iter().position(|p| p.name.as_str() == name) {
       Some(self.properties.remove(pos))
     } else {
@@ -181,13 +181,13 @@ impl<'a> Object<'a> {
 
   /// Takes a string property value from the object by name.
   /// Returns `None` when not a string or it doesn't exist.
-  pub fn take_string(&mut self, name: &str) -> Option<StringLit> {
+  pub fn take_string(&mut self, name: &str) -> Option<StringLit<'a>> {
     generate_take!(self, name, StringLit)
   }
 
   /// Takes a number property value from the object by name.
   /// Returns `None` when not a number or it doesn't exist.
-  pub fn take_number(&mut self, name: &str) -> Option<NumberLit> {
+  pub fn take_number(&mut self, name: &str) -> Option<NumberLit<'a>> {
     generate_take!(self, name, NumberLit)
   }
 
@@ -199,13 +199,13 @@ impl<'a> Object<'a> {
 
   /// Takes an object property value from the object by name.
   /// Returns `None` when not an object or it doesn't exist.
-  pub fn take_object(&mut self, name: &str) -> Option<Object> {
+  pub fn take_object(&mut self, name: &str) -> Option<Object<'a>> {
     generate_take!(self, name, Object)
   }
 
   /// Takes an array property value from the object by name.
   /// Returns `None` when not an array or it doesn't exist.
-  pub fn take_array(&mut self, name: &str) -> Option<Array> {
+  pub fn take_array(&mut self, name: &str) -> Option<Array<'a>> {
     generate_take!(self, name, Array)
   }
 }
@@ -235,7 +235,7 @@ impl<'a> ObjectPropName<'a> {
   }
 
   /// Gets the object property name as a string reference.
-  pub fn as_str(&self) -> &str {
+  pub fn as_str(&'a self) -> &'a str {
     match self {
       ObjectPropName::String(lit) => lit.value.as_ref(),
       ObjectPropName::Word(lit) => lit.value,
