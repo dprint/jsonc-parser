@@ -41,21 +41,7 @@ fn get_message_with_range(range: &Range, message: &str, file_text: &str) -> Stri
   return format!(
     "{} on line {} column {}.",
     message,
-    range.start_line + 1,
-    get_column_number(range.start, file_text) + 1,
+    range.start.line + 1,
+    range.start.column_index(file_text) + 1,
   );
-
-  fn get_column_number(pos: usize, file_text: &str) -> usize {
-    let mut column_number = 0;
-    for (indice, c) in file_text.char_indices() {
-      if c == '\n' {
-        column_number = 0;
-      } else if indice >= pos {
-        break;
-      } else {
-        column_number += 1;
-      }
-    }
-    column_number
-  }
 }

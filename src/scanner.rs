@@ -1,3 +1,5 @@
+use crate::common::Position;
+
 use super::common::Range;
 use super::errors::*;
 use super::tokens::Token;
@@ -139,20 +141,24 @@ impl<'a> Scanner<'a> {
 
   pub(super) fn create_error_for_start_and_line(&self, start: usize, start_line: usize, message: &str) -> ParseError {
     let range = Range {
-      start,
-      start_line,
-      end: if let Some(c) = self.file_text[self.byte_index..].chars().next() {
-        self.byte_index + c.len_utf8()
-      } else {
-        self.file_text.len()
+      start: Position {
+        index: start,
+        line: start_line,
       },
-      end_line: self.line_number,
+      end: Position {
+        index: if let Some(c) = self.file_text[self.byte_index..].chars().next() {
+          self.byte_index + c.len_utf8()
+        } else {
+          self.file_text.len()
+        },
+        line: self.line_number,
+      },
     };
     self.create_error_for_range(range, message)
   }
 
   pub(super) fn create_error_for_range(&self, range: Range, message: &str) -> ParseError {
-    ParseError::new(range, message, &self.file_text)
+    ParseError::new(range, message, self.file_text)
   }
 
   fn parse_string(&mut self) -> Result<Token<'a>, ParseError> {
