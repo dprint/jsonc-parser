@@ -1,20 +1,16 @@
 /// Positional information about a start and end point in the text.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Range {
-  /// Start byte index of the node in the text.
-  pub start: usize,
-  /// End byte index of the node in the text.
-  pub end: usize,
-  /// Line of the start position of the node in the text.
-  pub start_line: usize,
-  /// Line of the end position of the node in the text.
-  pub end_line: usize,
+  /// Start position of the node in the text.
+  pub start: Position,
+  /// End position of the node in the text.
+  pub end: Position,
 }
 
 impl Range {
   /// Gets the end byte index minus the start byte index of the range.
   pub fn width(&self) -> usize {
-    self.end - self.start
+    self.end.index - self.start.index
   }
 }
 
@@ -25,34 +21,41 @@ pub trait Ranged {
 
   /// Gets the byte index of the first character in the text.
   fn start(&self) -> usize {
-    self.range().start
+    self.range().start.index
   }
+
   /// Gets the line number of the start position in the text.
   fn start_line(&self) -> usize {
-    self.range().start_line
+    self.range().start.line
   }
+
   /// Gets the byte index after the last character in the text.
   fn end(&self) -> usize {
-    self.range().end
+    self.range().end.index
   }
+
   /// Gets the line number of the end position in the text.
   fn end_line(&self) -> usize {
-    self.range().end_line
+    self.range().end.line
   }
+
   /// Gets the text from the provided string.
   fn text<'a>(&self, text: &'a str) -> &'a str {
     &text[self.start()..self.end()]
   }
-  /// Gets the start byte position.
-  fn start_position(&self) -> Position {
+
+  /// Gets the start position.
+  fn start_position(&self) -> &Position {
     let range = self.range();
-    Position::new(range.start, range.start_line)
+    &range.start
   }
+
   /// Gets the end byte position.
-  fn end_position(&self) -> Position {
+  fn end_position(&self) -> &Position {
     let range = self.range();
-    Position::new(range.end, range.end_line)
+    &range.end
   }
+
   /// Gets the end byte index minus the start byte index of the range.
   fn width(&self) -> usize {
     self.range().width()
@@ -60,26 +63,32 @@ pub trait Ranged {
 }
 
 /// Ranged value that specifies a specific position in the file.
+#[derive(Debug, PartialEq, Clone)]
 pub struct Position {
-  pub range: Range,
+  /// Byte index of the node in the text.
+  pub index: usize,
+  /// Line of the position of the node in the text.
+  pub line: usize,
 }
 
 impl Position {
   /// Creates a new position at the specified position and line.
   pub fn new(pos: usize, line: usize) -> Position {
-    Position {
-      range: Range {
-        start: pos,
-        end: pos,
-        start_line: line,
-        end_line: line,
-      },
-    }
+    Position { index: pos, line }
   }
-}
 
-impl Ranged for Position {
-  fn range(&self) -> &Range {
-    &self.range
+  /// Gets the column index from the provided file text.
+  pub fn column_index(&self, file_text: &str) -> usize {
+    let mut column_number = 0;
+    for (indice, c) in file_text.char_indices() {
+      if c == '\n' {
+        column_number = 0;
+      } else if indice >= self.index {
+        break;
+      } else {
+        column_number += 1;
+      }
+    }
+    column_number
   }
 }
