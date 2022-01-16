@@ -1,5 +1,5 @@
 /// Positional information about a start and end point in the text.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Range {
   /// Start position of the node in the text.
   pub start: Position,
@@ -11,6 +11,12 @@ impl Range {
   /// Gets the end byte index minus the start byte index of the range.
   pub fn width(&self) -> usize {
     self.end.index - self.start.index
+  }
+}
+
+impl Ranged for Range {
+  fn range(&self) -> &Range {
+    self
   }
 }
 
@@ -63,7 +69,7 @@ pub trait Ranged {
 }
 
 /// Ranged value that specifies a specific position in the file.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Position {
   /// Byte index of the node in the text.
   pub index: usize,
@@ -90,5 +96,12 @@ impl Position {
       }
     }
     column_number
+  }
+
+  pub fn as_range(&self) -> Range {
+    Range {
+      start: *self,
+      end: *self,
+    }
   }
 }
