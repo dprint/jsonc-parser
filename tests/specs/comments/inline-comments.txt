@@ -4,8 +4,6 @@
     "range": {
       "start": 5,
       "end": 102,
-      "startLine": 0,
-      "endLine": 4
     },
     "properties": [
       {
@@ -13,16 +11,12 @@
         "range": {
           "start": 21,
           "end": 37,
-          "startLine": 1,
-          "endLine": 1
         },
         "name": {
           "type": "string",
           "range": {
             "start": 21,
             "end": 24,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "a"
         },
@@ -31,8 +25,6 @@
           "range": {
             "start": 36,
             "end": 37,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "5"
         }
@@ -42,16 +34,12 @@
         "range": {
           "start": 52,
           "end": 69,
-          "startLine": 2,
-          "endLine": 2
         },
         "name": {
           "type": "string",
           "range": {
             "start": 52,
             "end": 55,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "b"
         },
@@ -60,8 +48,6 @@
           "range": {
             "start": 62,
             "end": 69,
-            "startLine": 2,
-            "endLine": 2
           },
           "elements": [
           ]
@@ -72,16 +58,12 @@
         "range": {
           "start": 85,
           "end": 94,
-          "startLine": 3,
-          "endLine": 3
         },
         "name": {
           "type": "string",
           "range": {
             "start": 85,
             "end": 88,
-            "startLine": 3,
-            "endLine": 3
           },
           "value": "c"
         },
@@ -90,8 +72,6 @@
           "range": {
             "start": 90,
             "end": 94,
-            "startLine": 3,
-            "endLine": 3
           }
         }
       }
@@ -106,8 +86,6 @@
           "range": {
             "start": 0,
             "end": 5,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": "1"
         }
@@ -121,8 +99,6 @@
           "range": {
             "start": 0,
             "end": 5,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": "1"
         }
@@ -136,8 +112,6 @@
           "range": {
             "start": 7,
             "end": 11,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": " 2"
         },
@@ -146,8 +120,6 @@
           "range": {
             "start": 16,
             "end": 21,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "3"
         }
@@ -161,8 +133,6 @@
           "range": {
             "start": 7,
             "end": 11,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": " 2"
         },
@@ -171,8 +141,6 @@
           "range": {
             "start": 16,
             "end": 21,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "3"
         }
@@ -186,8 +154,6 @@
           "range": {
             "start": 24,
             "end": 29,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "4"
         }
@@ -201,8 +167,6 @@
           "range": {
             "start": 24,
             "end": 29,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "4"
         }
@@ -216,8 +180,6 @@
           "range": {
             "start": 31,
             "end": 36,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "5"
         }
@@ -231,8 +193,6 @@
           "range": {
             "start": 31,
             "end": 36,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "5"
         }
@@ -246,8 +206,6 @@
           "range": {
             "start": 37,
             "end": 42,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "6"
         }
@@ -261,8 +219,6 @@
           "range": {
             "start": 37,
             "end": 42,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "6"
         }
@@ -276,8 +232,6 @@
           "range": {
             "start": 44,
             "end": 47,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "7"
         }
@@ -291,8 +245,6 @@
           "range": {
             "start": 44,
             "end": 47,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": "7"
         }
@@ -306,8 +258,6 @@
           "range": {
             "start": 57,
             "end": 62,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "8"
         }
@@ -321,8 +271,6 @@
           "range": {
             "start": 57,
             "end": 62,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "8"
         }
@@ -336,8 +284,6 @@
           "range": {
             "start": 63,
             "end": 68,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "9"
         }
@@ -351,8 +297,6 @@
           "range": {
             "start": 63,
             "end": 68,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "9"
         }
@@ -366,8 +310,6 @@
           "range": {
             "start": 69,
             "end": 75,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "10"
         }
@@ -381,8 +323,6 @@
           "range": {
             "start": 69,
             "end": 75,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "10"
         }
@@ -396,8 +336,6 @@
           "range": {
             "start": 76,
             "end": 80,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "11"
         }
@@ -411,8 +349,6 @@
           "range": {
             "start": 76,
             "end": 80,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "11"
         }
@@ -426,8 +362,6 @@
           "range": {
             "start": 95,
             "end": 101,
-            "startLine": 4,
-            "endLine": 4
           },
           "value": "13"
         }
@@ -441,8 +375,6 @@
           "range": {
             "start": 95,
             "end": 101,
-            "startLine": 4,
-            "endLine": 4
           },
           "value": "13"
         }
@@ -456,8 +388,6 @@
           "range": {
             "start": 103,
             "end": 108,
-            "startLine": 4,
-            "endLine": 4
           },
           "value": " 14"
         }
@@ -471,8 +401,6 @@
           "range": {
             "start": 103,
             "end": 108,
-            "startLine": 4,
-            "endLine": 4
           },
           "value": " 14"
         }

@@ -4,8 +4,6 @@
     "range": {
       "start": 0,
       "end": 55,
-      "startLine": 0,
-      "endLine": 0
     },
     "elements": [
       {
@@ -13,8 +11,6 @@
         "range": {
           "start": 1,
           "end": 7,
-          "startLine": 0,
-          "endLine": 0
         },
         "value": "test"
       },
@@ -23,8 +19,6 @@
         "range": {
           "start": 9,
           "end": 10,
-          "startLine": 0,
-          "endLine": 0
         },
         "value": "5"
       },
@@ -33,8 +27,6 @@
         "range": {
           "start": 12,
           "end": 25,
-          "startLine": 0,
-          "endLine": 0
         },
         "properties": [
           {
@@ -42,16 +34,12 @@
             "range": {
               "start": 14,
               "end": 23,
-              "startLine": 0,
-              "endLine": 0
             },
             "name": {
               "type": "string",
               "range": {
                 "start": 14,
                 "end": 20,
-                "startLine": 0,
-                "endLine": 0
               },
               "value": "prop"
             },
@@ -60,8 +48,6 @@
               "range": {
                 "start": 22,
                 "end": 23,
-                "startLine": 0,
-                "endLine": 0
               },
               "value": "4"
             }
@@ -73,8 +59,6 @@
         "range": {
           "start": 27,
           "end": 35,
-          "startLine": 0,
-          "endLine": 0
         },
         "elements": [
           {
@@ -82,8 +66,6 @@
             "range": {
               "start": 28,
               "end": 34,
-              "startLine": 0,
-              "endLine": 0
             },
             "value": "test"
           }
@@ -94,8 +76,6 @@
         "range": {
           "start": 37,
           "end": 41,
-          "startLine": 0,
-          "endLine": 0
         },
         "value": "true"
       },
@@ -104,8 +84,6 @@
         "range": {
           "start": 43,
           "end": 48,
-          "startLine": 0,
-          "endLine": 0
         },
         "value": "false"
       },
@@ -114,8 +92,6 @@
         "range": {
           "start": 50,
           "end": 54,
-          "startLine": 0,
-          "endLine": 0
         }
       }
     ]

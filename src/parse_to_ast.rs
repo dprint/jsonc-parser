@@ -1,5 +1,3 @@
-use crate::common::Position;
-
 use super::ast::*;
 use super::common::Range;
 use super::errors::*;
@@ -85,11 +83,8 @@ impl<'a> Context<'a> {
 
   pub fn start_range(&mut self) {
     self.range_stack.push(Range {
-      start: Position {
-        index: self.scanner.token_start(),
-        line: self.scanner.token_start_line(),
-      },
-      end: Position { index: 0, line: 0 },
+      start: self.scanner.token_start(),
+      end: 0,
     });
   }
 
@@ -98,21 +93,14 @@ impl<'a> Context<'a> {
       .range_stack
       .pop()
       .expect("Range was popped from the stack, but the stack was empty.");
-    range.end.index = self.scanner.token_end();
-    range.end.line = self.scanner.token_end_line();
+    range.end = self.scanner.token_end();
     range
   }
 
   pub fn create_range_from_last_token(&self) -> Range {
     Range {
-      start: Position {
-        index: self.scanner.token_start(),
-        line: self.scanner.token_start_line(),
-      },
-      end: Position {
-        index: self.scanner.token_end(),
-        line: self.scanner.token_end_line(),
-      },
+      start: self.scanner.token_start(),
+      end: self.scanner.token_end(),
     }
   }
 

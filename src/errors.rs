@@ -38,10 +38,15 @@ impl Error for ParseError {
 }
 
 fn get_message_with_range(range: &Range, message: &str, file_text: &str) -> String {
-  return format!(
-    "{} on line {} column {}.",
-    message,
-    range.start.line + 1,
-    range.start.column_index(file_text) + 1,
-  );
+  let mut line_index = 0;
+  let mut column_index = 0;
+  for c in file_text[0..range.start as usize].chars() {
+    if c == '\n' {
+      line_index += 1;
+      column_index = 0;
+    } else {
+      column_index += 1;
+    }
+  }
+  format!("{} on line {} column {}.", message, line_index + 1, column_index + 1,)
 }
