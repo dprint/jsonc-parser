@@ -7,6 +7,16 @@ pub struct Range {
   pub end: usize,
 }
 
+impl Range {
+  pub fn new(start: usize, end: usize) -> Self {
+    Range { start, end }
+  }
+
+  pub fn from_byte_index(pos: usize) -> Self {
+    Range::new(pos, pos)
+  }
+}
+
 impl Ranged for Range {
   fn range(&self) -> &Range {
     self
