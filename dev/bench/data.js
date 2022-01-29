@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1643498080996,
+  "lastUpdate": 1643498174535,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -1253,6 +1253,72 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 37610,
             "range": "± 7487",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "dsherret@gmail.com",
+            "name": "David Sherret",
+            "username": "dsherret"
+          },
+          "committer": {
+            "email": "dsherret@gmail.com",
+            "name": "David Sherret",
+            "username": "dsherret"
+          },
+          "distinct": true,
+          "id": "c67569a2dc9dc6f061a29ea32ca5ccb165aa4ea9",
+          "message": "chore(release): 0.19.0",
+          "timestamp": "2022-01-29T18:13:52-05:00",
+          "tree_id": "deaba08cff40c94513252c6c132b59cf206d359b",
+          "url": "https://github.com/dprint/jsonc-parser/commit/c67569a2dc9dc6f061a29ea32ca5ccb165aa4ea9"
+        },
+        "date": 1643498174119,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 99284160,
+            "range": "± 1281981",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 46608168,
+            "range": "± 2729101",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 137491375,
+            "range": "± 3397090",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 126991,
+            "range": "± 550",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 179275,
+            "range": "± 3809",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 40773,
+            "range": "± 1489",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 41624,
+            "range": "± 1984",
             "unit": "ns/iter"
           }
         ]
