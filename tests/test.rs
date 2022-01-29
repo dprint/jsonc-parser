@@ -100,10 +100,8 @@ fn value_to_test_str(value: &Value) -> String {
 fn range_to_test_str(range: &Range) -> String {
   let mut text = String::new();
   text.push_str("\"range\": {\n");
-  text.push_str(&format!("  \"start\": {},\n", range.start.index));
-  text.push_str(&format!("  \"end\": {},\n", range.end.index));
-  text.push_str(&format!("  \"startLine\": {},\n", range.start.line));
-  text.push_str(&format!("  \"endLine\": {}\n", range.end.line));
+  text.push_str(&format!("  \"start\": {},\n", range.start));
+  text.push_str(&format!("  \"end\": {},\n", range.end));
   text.push_str("}");
   text
 }

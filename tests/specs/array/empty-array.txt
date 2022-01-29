@@ -4,8 +4,6 @@
     "range": {
       "start": 0,
       "end": 2,
-      "startLine": 0,
-      "endLine": 0
     },
     "elements": [
     ]

@@ -4,8 +4,6 @@
     "range": {
       "start": 16,
       "end": 23,
-      "startLine": 1,
-      "endLine": 1
     },
     "value": "2: ß"
   },
@@ -18,8 +16,6 @@
           "range": {
             "start": 0,
             "end": 15,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": " 3 bytes: ℝ"
         }
@@ -33,8 +29,6 @@
           "range": {
             "start": 0,
             "end": 15,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": " 3 bytes: ℝ"
         }

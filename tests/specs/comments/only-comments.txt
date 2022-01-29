@@ -9,8 +9,6 @@
           "range": {
             "start": 0,
             "end": 10,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": " testing"
         },
@@ -19,8 +17,6 @@
           "range": {
             "start": 11,
             "end": 21,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": " test "
         },
@@ -29,8 +25,6 @@
           "range": {
             "start": 22,
             "end": 29,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": " test"
         },
@@ -39,8 +33,6 @@
           "range": {
             "start": 30,
             "end": 47,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "test /* test */"
         }
@@ -54,8 +46,6 @@
           "range": {
             "start": 0,
             "end": 10,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": " testing"
         },
@@ -64,8 +54,6 @@
           "range": {
             "start": 11,
             "end": 21,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": " test "
         },
@@ -74,8 +62,6 @@
           "range": {
             "start": 22,
             "end": 29,
-            "startLine": 1,
-            "endLine": 1
           },
           "value": " test"
         },
@@ -84,8 +70,6 @@
           "range": {
             "start": 30,
             "end": 47,
-            "startLine": 2,
-            "endLine": 2
           },
           "value": "test /* test */"
         }

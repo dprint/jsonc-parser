@@ -1,5 +1,3 @@
-use crate::common::Position;
-
 use super::common::Range;
 use super::errors::*;
 use super::tokens::Token;
@@ -9,9 +7,7 @@ use std::str::Chars;
 /// Converts text into a stream of tokens.
 pub struct Scanner<'a> {
   byte_index: usize,
-  line_number: usize,
   token_start: usize,
-  token_start_line: usize,
   char_iter: Chars<'a>,
   char_buffer: Vec<char>,
   current_token: Option<Token<'a>>,
@@ -32,9 +28,7 @@ impl<'a> Scanner<'a> {
 
     Scanner {
       byte_index: 0,
-      line_number: 0,
       token_start: 0,
-      token_start_line: 0,
       char_iter,
       char_buffer,
       current_token: None,
@@ -46,7 +40,6 @@ impl<'a> Scanner<'a> {
   pub fn scan(&mut self) -> Result<Option<Token<'a>>, ParseError> {
     self.skip_whitespace();
     self.token_start = self.byte_index;
-    self.token_start_line = self.line_number;
     if let Some(current_char) = self.current_char() {
       let token_result = match current_char {
         '{' => {
@@ -116,42 +109,26 @@ impl<'a> Scanner<'a> {
     self.byte_index
   }
 
-  /// Gets the line the token starts on.
-  pub fn token_start_line(&self) -> usize {
-    self.token_start_line
-  }
-
-  /// Gets the line the token ends on.
-  pub fn token_end_line(&self) -> usize {
-    self.line_number
-  }
-
   /// Gets the current token.
   pub fn token(&self) -> Option<Token<'a>> {
     self.current_token.as_ref().map(|x| x.to_owned())
   }
 
   pub(super) fn create_error_for_current_token(&self, message: &str) -> ParseError {
-    self.create_error_for_start_and_line(self.token_start, self.token_start_line, message)
+    self.create_error_for_start(self.token_start, message)
   }
 
   pub(super) fn create_error_for_current_char(&self, message: &str) -> ParseError {
-    self.create_error_for_start_and_line(self.byte_index, self.line_number, message)
+    self.create_error_for_start(self.byte_index, message)
   }
 
-  pub(super) fn create_error_for_start_and_line(&self, start: usize, start_line: usize, message: &str) -> ParseError {
+  pub(super) fn create_error_for_start(&self, start: usize, message: &str) -> ParseError {
     let range = Range {
-      start: Position {
-        index: start,
-        line: start_line,
-      },
-      end: Position {
-        index: if let Some(c) = self.file_text[self.byte_index..].chars().next() {
-          self.byte_index + c.len_utf8()
-        } else {
-          self.file_text.len()
-        },
-        line: self.line_number,
+      start,
+      end: if let Some(c) = self.file_text[self.byte_index..].chars().next() {
+        self.byte_index + c.len_utf8()
+      } else {
+        self.file_text.len()
       },
     };
     self.create_error_for_range(range, message)
@@ -176,23 +153,14 @@ impl<'a> Scanner<'a> {
     while let Some(current_char) = self.move_next_char() {
       if last_was_backslash {
         let escape_start = self.byte_index - 1; // -1 for backslash
-        let escape_start_line = self.line_number;
         match current_char {
           '"' | '\'' | '\\' | '/' | 'b' | 'f' | 'u' | 'r' | 'n' | 't' => {
             if current_char == '"' {
               if !is_double_quote {
-                return Err(self.create_error_for_start_and_line(
-                  escape_start,
-                  escape_start_line,
-                  "Invalid escape in single quote string",
-                ));
+                return Err(self.create_error_for_start(escape_start, "Invalid escape in single quote string"));
               }
             } else if current_char == '\'' && is_double_quote {
-              return Err(self.create_error_for_start_and_line(
-                escape_start,
-                escape_start_line,
-                "Invalid escape in double quote string",
-              ));
+              return Err(self.create_error_for_start(escape_start, "Invalid escape in double quote string"));
             }
 
             let previous_text = &self.file_text[last_start_byte_index..escape_start];
@@ -207,11 +175,7 @@ impl<'a> Scanner<'a> {
               for _ in 0..4 {
                 let current_char = self.move_next_char();
                 if !self.is_hex() {
-                  return Err(self.create_error_for_start_and_line(
-                    escape_start,
-                    escape_start_line,
-                    "Expected four hex digits",
-                  ));
+                  return Err(self.create_error_for_start(escape_start, "Expected four hex digits"));
                 }
                 if let Some(current_char) = current_char {
                   hex_text.push(current_char);
@@ -222,9 +186,8 @@ impl<'a> Scanner<'a> {
               let hex_char = match hex_u32.ok().map(std::char::from_u32).flatten() {
                 Some(hex_char) => hex_char,
                 None => {
-                  return Err(self.create_error_for_start_and_line(
+                  return Err(self.create_error_for_start(
                     escape_start,
-                    escape_start_line,
                     &format!(
                       "Invalid unicode escape sequence. '{}' is not a valid UTF8 character",
                       hex_text
@@ -246,7 +209,7 @@ impl<'a> Scanner<'a> {
               last_start_byte_index = self.byte_index + current_char.len_utf8();
             }
           }
-          _ => return Err(self.create_error_for_start_and_line(escape_start, escape_start_line, "Invalid escape")),
+          _ => return Err(self.create_error_for_start(escape_start, "Invalid escape")),
         }
         last_was_backslash = false;
       } else if is_double_quote && current_char == '"' || !is_double_quote && current_char == '\'' {
@@ -443,10 +406,6 @@ impl<'a> Scanner<'a> {
 
   fn move_next_char(&mut self) -> Option<char> {
     if let Some(&current_char) = self.char_buffer.get(0) {
-      if current_char == '\n' {
-        self.line_number += 1;
-      }
-
       // shift the entire array to the left then pop the last item
       for i in 1..self.char_buffer.len() {
         self.char_buffer[i - 1] = self.char_buffer[i];

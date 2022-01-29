@@ -4,8 +4,6 @@
     "range": {
       "start": 0,
       "end": 11,
-      "startLine": 0,
-      "endLine": 0
     },
     "properties": [
       {
@@ -13,16 +11,12 @@
         "range": {
           "start": 2,
           "end": 8,
-          "startLine": 0,
-          "endLine": 0
         },
         "name": {
           "type": "string",
           "range": {
             "start": 2,
             "end": 5,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": "p"
         },
@@ -31,8 +25,6 @@
           "range": {
             "start": 7,
             "end": 8,
-            "startLine": 0,
-            "endLine": 0
           },
           "value": "1"
         }
