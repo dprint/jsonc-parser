@@ -1,5 +1,5 @@
 use super::ast::Value as AstValue;
-use super::{errors::ParseError, parse_to_ast, ParseOptions};
+use super::{errors::ParseError, parse_to_ast, CollectOptions, ParseOptions};
 use serde_json::Value as SerdeValue;
 use std::str::FromStr;
 
@@ -16,16 +16,16 @@ use std::str::FromStr;
 /// ```rs
 /// use jsonc_parser::parse_to_serde_value;
 ///
-/// let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#).unwrap();
+/// let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default()).unwrap();
 /// ```
-pub fn parse_to_serde_value(text: &str) -> Result<Option<SerdeValue>, ParseError> {
+pub fn parse_to_serde_value(text: &str, parse_options: &ParseOptions) -> Result<Option<SerdeValue>, ParseError> {
   let value = parse_to_ast(
     text,
-    &ParseOptions {
-      collect_comments: false,
-      collect_tokens: false,
-      ..Default::default()
+    &CollectOptions {
+      comments: false,
+      tokens: false,
     },
+    parse_options,
   )?
   .value;
   Ok(value.map(to_serde))

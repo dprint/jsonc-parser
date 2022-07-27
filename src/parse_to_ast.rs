@@ -13,28 +13,32 @@ use super::tokens::{Token, TokenAndRange};
 /// next token start or end of the file.
 pub type CommentMap<'a> = HashMap<usize, Rc<Vec<Comment<'a>>>>;
 
-/// Options for parsing.
-pub struct ParseOptions {
-  /// Include tokens in the result.
-  pub collect_tokens: bool,
+/// Options for collecting comments and tokens.
+#[derive(Default, Clone)]
+pub struct CollectOptions {
   /// Include comments in the result.
-  pub collect_comments: bool,
+  pub comments: bool,
+  /// Include tokens in the result.
+  pub tokens: bool,
+}
+
+/// Options for parsing.
+#[derive(Clone)]
+pub struct ParseOptions {
   /// Allow comments (defaults to `true`).
   pub allow_comments: bool,
-  /// Allow trailing commas on object literal and array literal values (defaults to `true`).
-  pub allow_trailing_commas: bool,
   /// Allow words and numbers as object property names (defaults to `true`).
   pub allow_loose_object_property_names: bool,
+  /// Allow trailing commas on object literal and array literal values (defaults to `true`).
+  pub allow_trailing_commas: bool,
 }
 
 impl Default for ParseOptions {
   fn default() -> Self {
     Self {
-      collect_tokens: false,
-      collect_comments: false,
       allow_comments: true,
-      allow_trailing_commas: true,
       allow_loose_object_property_names: true,
+      allow_trailing_commas: true,
     }
   }
 }
@@ -180,19 +184,24 @@ impl<'a> Context<'a> {
 /// # Example
 ///
 /// ```
-/// use jsonc_parser::{parse_to_ast, ParseOptions};
+/// use jsonc_parser::CollectOptions;
+/// use jsonc_parser::parse_to_ast;
+/// use jsonc_parser::ParseOptions;
 ///
-/// let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &ParseOptions {
-///     collect_comments: true, // include comments in result
-///     collect_tokens: true, // include tokens in result
-///     ..Default::default()
-/// }).expect("Should parse.");
+/// let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &CollectOptions {
+///     comments: true, // include comments in result
+///     tokens: true, // include tokens in result
+/// }, &Default::default()).expect("Should parse.");
 /// // ...inspect parse_result for value, tokens, and comments here...
 /// ```
-pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseResult<'a>, ParseError> {
+pub fn parse_to_ast<'a>(
+  text: &'a str,
+  collect_options: &CollectOptions,
+  parse_options: &ParseOptions,
+) -> Result<ParseResult<'a>, ParseError> {
   let mut context = Context {
     scanner: Scanner::new(text),
-    comments: if options.collect_comments {
+    comments: if collect_options.comments {
       Some(HashMap::new())
     } else {
       None
@@ -200,10 +209,10 @@ pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseRe
     current_comments: None,
     last_token_end: 0,
     range_stack: Vec::new(),
-    tokens: if options.collect_tokens { Some(Vec::new()) } else { None },
-    allow_comments: options.allow_comments,
-    allow_trailing_commas: options.allow_trailing_commas,
-    allow_loose_object_property_names: options.allow_loose_object_property_names,
+    tokens: if collect_options.tokens { Some(Vec::new()) } else { None },
+    allow_comments: parse_options.allow_comments,
+    allow_trailing_commas: parse_options.allow_trailing_commas,
+    allow_loose_object_property_names: parse_options.allow_loose_object_property_names,
   };
   context.scan()?;
   let value = parse_value(&mut context)?;
@@ -437,7 +446,7 @@ mod tests {
   }
 
   fn assert_has_error(text: &str, message: &str) {
-    let result = parse_to_ast(text, &Default::default());
+    let result = parse_to_ast(text, &Default::default(), &Default::default());
     match result {
       Ok(_) => panic!("Expected error, but did not find one."),
       Err(err) => assert_eq!(err.to_string(), message),
@@ -478,11 +487,11 @@ mod tests {
   fn assert_has_strict_error(text: &str, message: &str) {
     let result = parse_to_ast(
       text,
+      &Default::default(),
       &ParseOptions {
         allow_comments: false,
         allow_loose_object_property_names: false,
         allow_trailing_commas: false,
-        ..Default::default()
       },
     );
     match result {
@@ -493,7 +502,7 @@ mod tests {
 
   #[test]
   fn it_should_not_include_tokens_by_default() {
-    let result = parse_to_ast("{}", &Default::default()).unwrap();
+    let result = parse_to_ast("{}", &Default::default(), &Default::default()).unwrap();
     assert_eq!(result.tokens.is_none(), true);
   }
 
@@ -501,10 +510,11 @@ mod tests {
   fn it_should_include_tokens_when_specified() {
     let result = parse_to_ast(
       "{}",
-      &ParseOptions {
-        collect_tokens: true,
+      &CollectOptions {
+        tokens: true,
         ..Default::default()
       },
+      &Default::default(),
     )
     .unwrap();
     let tokens = result.tokens.unwrap();
@@ -513,7 +523,7 @@ mod tests {
 
   #[test]
   fn it_should_not_include_comments_by_default() {
-    let result = parse_to_ast("{}", &Default::default()).unwrap();
+    let result = parse_to_ast("{}", &Default::default(), &Default::default()).unwrap();
     assert_eq!(result.comments.is_none(), true);
   }
 
@@ -521,10 +531,11 @@ mod tests {
   fn it_should_include_comments_when_specified() {
     let result = parse_to_ast(
       "{} // 2",
-      &ParseOptions {
-        collect_comments: true,
+      &CollectOptions {
+        comments: true,
         ..Default::default()
       },
+      &Default::default(),
     )
     .unwrap();
     let comments = result.comments.unwrap();

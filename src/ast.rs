@@ -441,7 +441,12 @@ mod test {
 
   #[test]
   fn it_should_take() {
-    let ast = parse_to_ast("{'prop': 'asdf', 'other': 'text'}", &ParseOptions::default()).unwrap();
+    let ast = parse_to_ast(
+      "{'prop': 'asdf', 'other': 'text'}",
+      &Default::default(),
+      &ParseOptions::default(),
+    )
+    .unwrap();
     let mut obj = match ast.value {
       Some(Value::Object(obj)) => obj,
       _ => unreachable!(),
@@ -462,7 +467,7 @@ mod test {
 
   #[test]
   fn it_should_get() {
-    let ast = parse_to_ast("{'prop': 'asdf'}", &ParseOptions::default()).unwrap();
+    let ast = parse_to_ast("{'prop': 'asdf'}", &Default::default(), &ParseOptions::default()).unwrap();
     let obj = match ast.value {
       Some(Value::Object(obj)) => obj,
       _ => unreachable!(),

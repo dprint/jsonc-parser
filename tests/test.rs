@@ -17,11 +17,11 @@ fn test_specs() {
       .replace("\r\n", "\n");
     let result = parse_to_ast(
       &json_file_text,
-      &ParseOptions {
-        collect_comments: true,
-        collect_tokens: true,
-        ..Default::default()
+      &CollectOptions {
+        comments: true,
+        tokens: true,
       },
+      &Default::default(),
     )
     .expect("Expected no error.");
     let result_text = parse_result_to_test_str(&result);
