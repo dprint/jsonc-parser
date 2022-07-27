@@ -22,8 +22,9 @@ pub fn parse_to_serde_value(text: &str) -> Result<Option<SerdeValue>, ParseError
   let value = parse_to_ast(
     text,
     &ParseOptions {
-      comments: false,
-      tokens: false,
+      collect_comments: false,
+      collect_tokens: false,
+      ..Default::default()
     },
   )?
   .value;
