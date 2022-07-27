@@ -18,11 +18,12 @@ let json_value = parse_to_value(r#"{ "test": 5 } // test"#)?;
 Or an AST:
 
 ```rs
-use jsonc_parser::{parse_to_ast, ParseOptions};
+use jsonc_parser::parse_to_ast;
+use jsonc_parser::ParseOptions;
 
 let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &ParseOptions {
-    comments: true, // include comments in result
-    tokens: true, // include tokens in result
+    collect_comments: true, // include comments in result
+    collect_tokens: true, // include tokens in result
     ..Default::default()
 })?;
 // ...inspect parse_result for value, tokens, and comments here...
