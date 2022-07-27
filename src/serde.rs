@@ -68,7 +68,7 @@ mod tests {
   }
 
   fn assert_has_error(text: &str, message: &str) {
-    let result = parse_to_serde_value(text);
+    let result = parse_to_serde_value(text, &Default::default());
     match result {
       Ok(_) => panic!("Expected error, but did not find one."),
       Err(err) => assert_eq!(err.to_string(), message),
@@ -77,9 +77,11 @@ mod tests {
 
   #[test]
   fn it_should_parse_to_serde_value() {
-    let result =
-      parse_to_serde_value(r#"{ "a": { "a1": 5 }, "b": [0.3e+025], "c": "c1", "d": true, "e": false, "f": null }"#)
-        .unwrap();
+    let result = parse_to_serde_value(
+      r#"{ "a": { "a1": 5 }, "b": [0.3e+025], "c": "c1", "d": true, "e": false, "f": null }"#,
+      &Default::default(),
+    )
+    .unwrap();
 
     let mut expected_value = serde_json::map::Map::new();
     expected_value.insert("a".to_string(), {
