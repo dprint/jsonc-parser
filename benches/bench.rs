@@ -2,7 +2,8 @@
 
 extern crate test;
 
-use jsonc_parser::{parse_to_ast, parse_to_value, ParseOptions};
+use jsonc_parser::parse_to_ast;
+use jsonc_parser::parse_to_value;
 use std::fs::read_to_string;
 use test::Bencher;
 
@@ -45,11 +46,11 @@ fn package_json_value(b: &mut Bencher) {
 // bench helpers
 
 fn bench_ast(b: &mut Bencher, json_text: &str) {
-  b.iter(|| parse_to_ast(json_text, &ParseOptions::default()).unwrap());
+  b.iter(|| parse_to_ast(json_text, &Default::default(), &Default::default()).unwrap());
 }
 
 fn bench_value(b: &mut Bencher, json_text: &str) {
-  b.iter(|| parse_to_value(json_text).unwrap());
+  b.iter(|| parse_to_value(json_text, &Default::default()).unwrap());
 }
 
 #[cfg(feature = "serde")]
