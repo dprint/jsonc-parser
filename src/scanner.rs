@@ -18,8 +18,8 @@ const CHAR_BUFFER_MAX_SIZE: usize = 6;
 
 impl<'a> Scanner<'a> {
   /// Creates a new scanner based on the provided text.
-  pub fn new(text: &'a str) -> Scanner<'a> {
-    let mut char_iter = text.chars();
+  pub fn new(file_text: &'a str) -> Scanner<'a> {
+    let mut char_iter = file_text.chars();
     let mut char_buffer = Vec::with_capacity(CHAR_BUFFER_MAX_SIZE);
     let current_char = char_iter.next();
     if let Some(current_char) = current_char {
@@ -32,8 +32,12 @@ impl<'a> Scanner<'a> {
       char_iter,
       char_buffer,
       current_token: None,
-      file_text: text,
+      file_text,
     }
+  }
+
+  pub fn file_text(&self) -> &str {
+    &self.file_text
   }
 
   /// Moves to and returns the next token.

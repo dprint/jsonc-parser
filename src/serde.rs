@@ -1,5 +1,5 @@
 use super::ast::Value as AstValue;
-use super::{errors::ParseError, parse_to_ast, ParseOptions};
+use super::{errors::ParseError, parse_to_ast, CollectOptions, ParseOptions};
 use serde_json::Value as SerdeValue;
 use std::str::FromStr;
 
@@ -16,15 +16,16 @@ use std::str::FromStr;
 /// ```rs
 /// use jsonc_parser::parse_to_serde_value;
 ///
-/// let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#).unwrap();
+/// let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default()).unwrap();
 /// ```
-pub fn parse_to_serde_value(text: &str) -> Result<Option<SerdeValue>, ParseError> {
+pub fn parse_to_serde_value(text: &str, parse_options: &ParseOptions) -> Result<Option<SerdeValue>, ParseError> {
   let value = parse_to_ast(
     text,
-    &ParseOptions {
+    &CollectOptions {
       comments: false,
       tokens: false,
     },
+    parse_options,
   )?
   .value;
   Ok(value.map(to_serde))
@@ -67,7 +68,7 @@ mod tests {
   }
 
   fn assert_has_error(text: &str, message: &str) {
-    let result = parse_to_serde_value(text);
+    let result = parse_to_serde_value(text, &Default::default());
     match result {
       Ok(_) => panic!("Expected error, but did not find one."),
       Err(err) => assert_eq!(err.to_string(), message),
@@ -76,9 +77,11 @@ mod tests {
 
   #[test]
   fn it_should_parse_to_serde_value() {
-    let result =
-      parse_to_serde_value(r#"{ "a": { "a1": 5 }, "b": [0.3e+025], "c": "c1", "d": true, "e": false, "f": null }"#)
-        .unwrap();
+    let result = parse_to_serde_value(
+      r#"{ "a": { "a1": 5 }, "b": [0.3e+025], "c": "c1", "d": true, "e": false, "f": null }"#,
+      &Default::default(),
+    )
+    .unwrap();
 
     let mut expected_value = serde_json::map::Map::new();
     expected_value.insert("a".to_string(), {

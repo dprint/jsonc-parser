@@ -1,7 +1,9 @@
 use super::ast;
 use super::errors::ParseError;
+use super::parse_to_ast;
 use super::value::*;
-use super::{parse_to_ast, ParseOptions};
+use super::CollectOptions;
+use super::ParseOptions;
 use std::collections::HashMap;
 
 /// Parses a string containing JSONC to a `JsonValue`.
@@ -11,15 +13,16 @@ use std::collections::HashMap;
 /// ```
 /// use jsonc_parser::parse_to_value;
 ///
-/// let json_value = parse_to_value(r#"{ "test": 5 } // test"#).expect("Should parse.");
+/// let json_value = parse_to_value(r#"{ "test": 5 } // test"#, &Default::default()).expect("Should parse.");
 /// ```
-pub fn parse_to_value(text: &str) -> Result<Option<JsonValue>, ParseError> {
+pub fn parse_to_value<'a>(text: &'a str, options: &ParseOptions) -> Result<Option<JsonValue<'a>>, ParseError> {
   let value = parse_to_ast(
     text,
-    &ParseOptions {
+    &CollectOptions {
       comments: false,
       tokens: false,
     },
+    &options,
   )?
   .value;
   Ok(value.map(handle_value))
@@ -66,6 +69,7 @@ mod tests {
     "c": true,
     d: 25.55
 }"#,
+      &Default::default(),
     )
     .unwrap()
     .unwrap();
@@ -83,39 +87,43 @@ mod tests {
 
   #[test]
   fn it_should_parse_boolean_false() {
-    let value = parse_to_value("false").unwrap().unwrap();
+    let value = parse_to_value("false", &Default::default()).unwrap().unwrap();
     assert_eq!(value, JsonValue::Boolean(false));
-    let value = parse_to_value("true").unwrap().unwrap();
+    let value = parse_to_value("true", &Default::default()).unwrap().unwrap();
     assert_eq!(value, JsonValue::Boolean(true));
   }
 
   #[test]
   fn it_should_parse_boolean_true() {
-    let value = parse_to_value("true").unwrap().unwrap();
+    let value = parse_to_value("true", &Default::default()).unwrap().unwrap();
     assert_eq!(value, JsonValue::Boolean(true));
   }
 
   #[test]
   fn it_should_parse_number() {
-    let value = parse_to_value("50").unwrap().unwrap();
+    let value = parse_to_value("50", &Default::default()).unwrap().unwrap();
     assert_eq!(value, JsonValue::Number("50"));
   }
 
   #[test]
   fn it_should_parse_string() {
-    let value = parse_to_value(r#""test""#).unwrap().unwrap();
+    let value = parse_to_value(r#""test""#, &Default::default()).unwrap().unwrap();
     assert_eq!(value, JsonValue::String(Cow::Borrowed("test")));
   }
 
   #[test]
   fn it_should_parse_string_with_quotes() {
-    let value = parse_to_value(r#""echo \"test\"""#).unwrap().unwrap();
+    let value = parse_to_value(r#""echo \"test\"""#, &Default::default())
+      .unwrap()
+      .unwrap();
     assert_eq!(value, JsonValue::String(Cow::Borrowed(r#"echo "test""#)));
   }
 
   #[test]
   fn it_should_parse_array() {
-    let value = parse_to_value(r#"[false, true]"#).unwrap().unwrap();
+    let value = parse_to_value(r#"[false, true]"#, &Default::default())
+      .unwrap()
+      .unwrap();
     assert_eq!(
       value,
       JsonValue::Array(vec![JsonValue::Boolean(false), JsonValue::Boolean(true)].into())
@@ -124,19 +132,21 @@ mod tests {
 
   #[test]
   fn it_should_parse_null() {
-    let value = parse_to_value("null").unwrap().unwrap();
+    let value = parse_to_value("null", &Default::default()).unwrap().unwrap();
     assert_eq!(value, JsonValue::Null);
   }
 
   #[test]
   fn it_should_parse_empty() {
-    let value = parse_to_value("").unwrap();
+    let value = parse_to_value("", &Default::default()).unwrap();
     assert_eq!(value.is_none(), true);
   }
 
   #[test]
   fn error_unexpected_token() {
-    let err = parse_to_value("{\n  \"a\":\u{200b}5 }").err().unwrap();
+    let err = parse_to_value("{\n  \"a\":\u{200b}5 }", &Default::default())
+      .err()
+      .unwrap();
     assert_eq!(err.range.start, 8);
     assert_eq!(err.range.end, 11);
     assert_eq!(err.message, "Unexpected token");
