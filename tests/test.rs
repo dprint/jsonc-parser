@@ -18,8 +18,9 @@ fn test_specs() {
     let result = parse_to_ast(
       &json_file_text,
       &ParseOptions {
-        tokens: true,
-        comments: true,
+        collect_comments: true,
+        collect_tokens: true,
+        ..Default::default()
       },
     )
     .expect("Expected no error.");

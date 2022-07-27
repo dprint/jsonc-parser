@@ -17,8 +17,11 @@ pub fn parse_to_value(text: &str) -> Result<Option<JsonValue>, ParseError> {
   let value = parse_to_ast(
     text,
     &ParseOptions {
-      comments: false,
-      tokens: false,
+      collect_comments: false,
+      collect_tokens: false,
+      allow_comments: true,
+      allow_trailing_commas: true,
+      allow_loose_object_property_names: true,
     },
   )?
   .value;

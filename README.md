@@ -23,6 +23,7 @@ use jsonc_parser::{parse_to_ast, ParseOptions};
 let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &ParseOptions {
     comments: true, // include comments in result
     tokens: true, // include tokens in result
+    strict: false, // whether to be strict and only parse as JSON
 })?;
 // ...inspect parse_result for value, tokens, and comments here...
 ```

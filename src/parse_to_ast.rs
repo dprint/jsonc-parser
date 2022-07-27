@@ -1,11 +1,12 @@
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use super::ast::*;
 use super::common::Range;
 use super::errors::*;
 use super::scanner::Scanner;
 use super::tokens::{Token, TokenAndRange};
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 /// Map where the comments are stored in collections where
 /// the key is the previous token end or start of file or
@@ -13,12 +14,29 @@ use std::rc::Rc;
 pub type CommentMap<'a> = HashMap<usize, Rc<Vec<Comment<'a>>>>;
 
 /// Options for parsing.
-#[derive(Default)]
 pub struct ParseOptions {
-  /// Whether to include tokens in the result.
-  pub tokens: bool,
-  /// Whether to include comments in the result.
-  pub comments: bool,
+  /// Include tokens in the result.
+  pub collect_tokens: bool,
+  /// Include comments in the result.
+  pub collect_comments: bool,
+  /// Allow comments (defaults to `true`).
+  pub allow_comments: bool,
+  /// Allow trailing commas on object literal and array literal values (defaults to `true`).
+  pub allow_trailing_commas: bool,
+  /// Allow words and numbers as object property names (defaults to `true`).
+  pub allow_loose_object_property_names: bool,
+}
+
+impl Default for ParseOptions {
+  fn default() -> Self {
+    Self {
+      collect_tokens: false,
+      collect_comments: false,
+      allow_comments: true,
+      allow_trailing_commas: true,
+      allow_loose_object_property_names: true,
+    }
+  }
 }
 
 /// Result of parsing the text.
@@ -44,6 +62,9 @@ struct Context<'a> {
   last_token_end: usize,
   range_stack: Vec<Range>,
   tokens: Option<Vec<TokenAndRange<'a>>>,
+  allow_comments: bool,
+  allow_trailing_commas: bool,
+  allow_loose_object_property_names: bool,
 }
 
 impl<'a> Context<'a> {
@@ -104,12 +125,16 @@ impl<'a> Context<'a> {
     }
   }
 
-  pub fn create_parse_error(&self, message: &str) -> ParseError {
+  pub fn create_error(&self, message: &str) -> ParseError {
     self.scanner.create_error_for_current_token(message)
   }
 
-  pub fn create_parse_error_for_current_range(&mut self, message: &str) -> ParseError {
+  pub fn create_error_for_current_range(&mut self, message: &str) -> ParseError {
     let range = self.end_range();
+    self.create_error_for_range(range, message)
+  }
+
+  pub fn create_error_for_range(&self, range: Range, message: &str) -> ParseError {
     self.scanner.create_error_for_range(range, message)
   }
 
@@ -121,26 +146,31 @@ impl<'a> Context<'a> {
           self.handle_comment(Comment::Line(CommentLine {
             range: self.create_range_from_last_token(),
             text,
-          }));
+          }))?;
         }
         Some(Token::CommentBlock(text)) => {
           self.handle_comment(Comment::Block(CommentBlock {
             range: self.create_range_from_last_token(),
             text,
-          }));
+          }))?;
         }
         _ => return Ok(token),
       }
     }
   }
 
-  fn handle_comment(&mut self, comment: Comment<'a>) {
-    if self.comments.is_some() {
-      if let Some(comments) = self.current_comments.as_mut() {
-        comments.push(comment);
-      } else {
-        self.current_comments = Some(vec![comment]);
+  fn handle_comment(&mut self, comment: Comment<'a>) -> Result<(), ParseError> {
+    if !self.allow_comments {
+      Err(self.create_error("Comments are not allowed"))
+    } else {
+      if self.comments.is_some() {
+        if let Some(comments) = self.current_comments.as_mut() {
+          comments.push(comment);
+        } else {
+          self.current_comments = Some(vec![comment]);
+        }
       }
+      Ok(())
     }
   }
 }
@@ -153,25 +183,33 @@ impl<'a> Context<'a> {
 /// use jsonc_parser::{parse_to_ast, ParseOptions};
 ///
 /// let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &ParseOptions {
-///     comments: true, // include comments in result
-///     tokens: true, // include tokens in result
+///     collect_comments: true, // include comments in result
+///     collect_tokens: true, // include tokens in result
+///     ..Default::default()
 /// }).expect("Should parse.");
 /// // ...inspect parse_result for value, tokens, and comments here...
 /// ```
 pub fn parse_to_ast<'a>(text: &'a str, options: &ParseOptions) -> Result<ParseResult<'a>, ParseError> {
   let mut context = Context {
     scanner: Scanner::new(text),
-    comments: if options.comments { Some(HashMap::new()) } else { None },
+    comments: if options.collect_comments {
+      Some(HashMap::new())
+    } else {
+      None
+    },
     current_comments: None,
     last_token_end: 0,
     range_stack: Vec::new(),
-    tokens: if options.tokens { Some(Vec::new()) } else { None },
+    tokens: if options.collect_tokens { Some(Vec::new()) } else { None },
+    allow_comments: options.allow_comments,
+    allow_trailing_commas: options.allow_trailing_commas,
+    allow_loose_object_property_names: options.allow_loose_object_property_names,
   };
   context.scan()?;
   let value = parse_value(&mut context)?;
 
   if context.scan()?.is_some() {
-    return Err(context.create_parse_error("Text cannot contain more than one JSON value"));
+    return Err(context.create_error("Text cannot contain more than one JSON value"));
   }
 
   debug_assert!(context.range_stack.is_empty());
@@ -193,11 +231,11 @@ fn parse_value<'a>(context: &mut Context<'a>) -> Result<Option<Value<'a>>, Parse
       Token::Boolean(value) => Ok(Some(Value::BooleanLit(create_boolean_lit(context, value)))),
       Token::Number(value) => Ok(Some(Value::NumberLit(create_number_lit(context, value)))),
       Token::Null => return Ok(Some(Value::NullKeyword(create_null_keyword(context)))),
-      Token::CloseBracket => Err(context.create_parse_error("Unexpected close bracket")),
-      Token::CloseBrace => Err(context.create_parse_error("Unexpected close brace")),
-      Token::Comma => Err(context.create_parse_error("Unexpected comma")),
-      Token::Colon => Err(context.create_parse_error("Unexpected colon")),
-      Token::Word(_) => Err(context.create_parse_error("Unexpected word")),
+      Token::CloseBracket => Err(context.create_error("Unexpected close bracket")),
+      Token::CloseBrace => Err(context.create_error("Unexpected close brace")),
+      Token::Comma => Err(context.create_error("Unexpected comma")),
+      Token::Colon => Err(context.create_error("Unexpected colon")),
+      Token::Word(_) => Err(context.create_error("Unexpected word")),
       Token::CommentLine(_) => unreachable!(),
       Token::CommentBlock(_) => unreachable!(),
     },
@@ -220,13 +258,18 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
       Some(Token::Word(prop_name)) | Some(Token::Number(prop_name)) => {
         properties.push(parse_object_property(context, PropName::Word(prop_name))?);
       }
-      None => return Err(context.create_parse_error_for_current_range("Unterminated object")),
-      _ => return Err(context.create_parse_error("Unexpected token in object")),
+      None => return Err(context.create_error_for_current_range("Unterminated object")),
+      _ => return Err(context.create_error("Unexpected token in object")),
     }
 
     // skip the comma
     if let Some(Token::Comma) = context.scan()? {
-      context.scan()?;
+      let comma_range = context.create_range_from_last_token();
+      if let Some(Token::CloseBrace) = context.scan()? {
+        if !context.allow_trailing_commas {
+          return Err(context.create_error_for_range(comma_range, "Trailing commas are not allowed"));
+        }
+      }
     }
   }
 
@@ -246,12 +289,18 @@ fn parse_object_property<'a>(context: &mut Context<'a>, prop_name: PropName<'a>)
 
   let name = match prop_name {
     PropName::String(prop_name) => ObjectPropName::String(create_string_lit(context, prop_name)),
-    PropName::Word(prop_name) => ObjectPropName::Word(create_word(context, prop_name)),
+    PropName::Word(prop_name) => {
+      if context.allow_loose_object_property_names {
+        ObjectPropName::Word(create_word(context, prop_name))
+      } else {
+        return Err(context.create_error("Expected string for object property"));
+      }
+    }
   };
 
   match context.scan()? {
     Some(Token::Colon) => {}
-    _ => return Err(context.create_parse_error("Expected a colon after the string or word in an object property")),
+    _ => return Err(context.create_error("Expected a colon after the string or word in an object property")),
   }
 
   context.scan()?;
@@ -263,7 +312,7 @@ fn parse_object_property<'a>(context: &mut Context<'a>, prop_name: PropName<'a>)
       name,
       value,
     }),
-    None => Err(context.create_parse_error("Expected value after colon in object property")),
+    None => Err(context.create_error("Expected value after colon in object property")),
   }
 }
 
@@ -277,16 +326,21 @@ fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
   loop {
     match context.token() {
       Some(Token::CloseBracket) => break,
-      None => return Err(context.create_parse_error_for_current_range("Unterminated array")),
+      None => return Err(context.create_error_for_current_range("Unterminated array")),
       _ => match parse_value(context)? {
         Some(value) => elements.push(value),
-        None => return Err(context.create_parse_error_for_current_range("Unterminated array")),
+        None => return Err(context.create_error_for_current_range("Unterminated array")),
       },
     }
 
     // skip the comma
     if let Some(Token::Comma) = context.scan()? {
-      context.scan()?;
+      let comma_range = context.create_range_from_last_token();
+      if let Some(Token::CloseBracket) = context.scan()? {
+        if !context.allow_trailing_commas {
+          return Err(context.create_error_for_range(comma_range, "Trailing commas are not allowed"));
+        }
+      }
     }
   }
 
@@ -391,6 +445,53 @@ mod tests {
   }
 
   #[test]
+  fn strict_should_error_object_trailing_comma() {
+    assert_has_strict_error(
+      r#"{ "test": 5, }"#,
+      "Trailing commas are not allowed on line 1 column 12.",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_array_trailing_comma() {
+    assert_has_strict_error(r#"[ "test", ]"#, "Trailing commas are not allowed on line 1 column 9.");
+  }
+
+  #[test]
+  fn strict_should_error_comment_line() {
+    assert_has_strict_error(r#"[ "test" ] // 1"#, "Comments are not allowed on line 1 column 12.");
+  }
+
+  #[test]
+  fn strict_should_error_comment_block() {
+    assert_has_strict_error(r#"[ "test" /* 1 */]"#, "Comments are not allowed on line 1 column 10.");
+  }
+
+  #[test]
+  fn strict_should_error_word_property() {
+    assert_has_strict_error(
+      r#"{ word: 5 }"#,
+      "Expected string for object property on line 1 column 3.",
+    );
+  }
+
+  fn assert_has_strict_error(text: &str, message: &str) {
+    let result = parse_to_ast(
+      text,
+      &ParseOptions {
+        allow_comments: false,
+        allow_loose_object_property_names: false,
+        allow_trailing_commas: false,
+        ..Default::default()
+      },
+    );
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), message),
+    }
+  }
+
+  #[test]
   fn it_should_not_include_tokens_by_default() {
     let result = parse_to_ast("{}", &Default::default()).unwrap();
     assert_eq!(result.tokens.is_none(), true);
@@ -401,7 +502,7 @@ mod tests {
     let result = parse_to_ast(
       "{}",
       &ParseOptions {
-        tokens: true,
+        collect_tokens: true,
         ..Default::default()
       },
     )
@@ -421,7 +522,7 @@ mod tests {
     let result = parse_to_ast(
       "{} // 2",
       &ParseOptions {
-        comments: true,
+        collect_comments: true,
         ..Default::default()
       },
     )
