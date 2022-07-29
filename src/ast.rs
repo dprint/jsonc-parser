@@ -12,6 +12,20 @@ pub enum Value<'a> {
   NullKeyword(NullKeyword),
 }
 
+impl<'a> Value<'a> {
+  /// Provides the range for the value.
+  pub fn range(&self) -> Range {
+    match self {
+      Self::Array(v) => v.range,
+      Self::BooleanLit(v) => v.range,
+      Self::NullKeyword(v) => v.range,
+      Self::NumberLit(v) => v.range,
+      Self::Object(v) => v.range,
+      Self::StringLit(v) => v.range,
+    }
+  }
+}
+
 /// Node that can appear in the AST.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node<'a, 'b> {
@@ -478,5 +492,15 @@ mod test {
     assert_eq!(obj.get_string("prop").is_some(), true);
     assert_eq!(obj.get("asdf"), None);
     assert_eq!(obj.properties.len(), 1);
+  }
+
+  #[test]
+  fn it_should_return_range() {
+    let ast = parse_to_ast(r#"{"prop": "asdf"}"#, &Default::default(), &Default::default()).unwrap();
+    let range = ast.value.unwrap().range();
+    assert_eq!(range, Range {
+      start: 0,
+      end: 16,
+    });
   }
 }
