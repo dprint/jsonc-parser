@@ -1,7 +1,4 @@
-use super::ast::Value as AstValue;
 use super::{errors::ParseError, parse_to_ast, CollectOptions, ParseOptions};
-use serde_json::Value as SerdeValue;
-use std::str::FromStr;
 
 /// Parses a string containing JSONC to a `serde_json::Value.
 ///
@@ -18,7 +15,7 @@ use std::str::FromStr;
 ///
 /// let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default()).unwrap();
 /// ```
-pub fn parse_to_serde_value(text: &str, parse_options: &ParseOptions) -> Result<Option<SerdeValue>, ParseError> {
+pub fn parse_to_serde_value(text: &str, parse_options: &ParseOptions) -> Result<Option<serde_json::Value>, ParseError> {
   let value = parse_to_ast(
     text,
     &CollectOptions {
@@ -28,35 +25,14 @@ pub fn parse_to_serde_value(text: &str, parse_options: &ParseOptions) -> Result<
     parse_options,
   )?
   .value;
-  Ok(value.map(to_serde))
-}
-
-fn to_serde(value: AstValue) -> SerdeValue {
-  // originally from the Deno repo, then shaped to work here
-  match value {
-    AstValue::Array(arr) => {
-      let vec = arr.elements.into_iter().map(to_serde).collect();
-      SerdeValue::Array(vec)
-    }
-    AstValue::BooleanLit(bool) => SerdeValue::Bool(bool.value),
-    AstValue::NullKeyword(_) => SerdeValue::Null,
-    AstValue::NumberLit(num) => {
-      let number = serde_json::Number::from_str(num.value).expect("could not parse number");
-      SerdeValue::Number(number)
-    }
-    AstValue::Object(obj) => {
-      let mut map = serde_json::map::Map::new();
-      for prop in obj.properties.into_iter() {
-        map.insert(prop.name.into_string(), to_serde(prop.value));
-      }
-      SerdeValue::Object(map)
-    }
-    AstValue::StringLit(str) => SerdeValue::String(str.value.into_owned()),
-  }
+  Ok(value.map(|v| v.into()))
 }
 
 #[cfg(test)]
 mod tests {
+  use serde_json::Value as SerdeValue;
+  use std::str::FromStr;
+
   use super::*;
 
   #[test]

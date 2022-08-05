@@ -1,5 +1,5 @@
 use super::common::{Range, Ranged};
-use std::{borrow::Cow, str::FromStr};
+use std::borrow::Cow;
 
 /// JSON value.
 #[derive(Debug, PartialEq, Clone)]
@@ -15,6 +15,7 @@ pub enum Value<'a> {
 #[cfg(feature = "serde")]
 impl<'a> From<Value<'a>> for serde_json::Value {
   fn from(value: Value<'a>) -> Self {
+    use std::str::FromStr;
     match value {
       Value::Array(arr) => {
         let vec = arr.elements.into_iter().map(|v| v.into()).collect();
@@ -28,7 +29,7 @@ impl<'a> From<Value<'a>> for serde_json::Value {
       }
       Value::Object(obj) => {
         let mut map = serde_json::map::Map::new();
-        for prop in obj.properties.into_iter() {
+        for prop in obj.properties {
           map.insert(prop.name.into_string(), prop.value.into());
         }
         serde_json::Value::Object(map)
@@ -509,17 +510,25 @@ mod test {
   #[cfg(feature = "serde")]
   #[test]
   fn it_should_coerce_to_serde_value() {
-    let ast = parse_to_ast(r#"{"prop":[true,1,null,"str"]}"#, &Default::default(), &ParseOptions::default()).unwrap();
+    let ast = parse_to_ast(
+      r#"{"prop":[true,1,null,"str"]}"#,
+      &Default::default(),
+      &ParseOptions::default(),
+    )
+    .unwrap();
     let value = ast.value.unwrap();
     let serde_value: serde_json::Value = value.into();
 
-    assert_eq!(serde_value, serde_json::json!({
-      "prop": [
-        true,
-        1,
-        null,
-        "str"
-      ]
-    }));
+    assert_eq!(
+      serde_value,
+      serde_json::json!({
+        "prop": [
+          true,
+          1,
+          null,
+          "str"
+        ]
+      })
+    );
   }
 }
