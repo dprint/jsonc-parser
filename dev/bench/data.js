@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1658882715246,
+  "lastUpdate": 1659667854924,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -1451,6 +1451,72 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 37089,
             "range": "± 258",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "me@kitsonkelly.com",
+            "name": "Kitson Kelly",
+            "username": "kitsonk"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e6525febaa079bc47619fd8d94664f2921aa95d3",
+          "message": "feat: add from trait for serde value (#30)\n\nCloses: #26",
+          "timestamp": "2022-08-04T22:48:37-04:00",
+          "tree_id": "e83043fca6691d4555a2b5cfd541c49b7ea8416a",
+          "url": "https://github.com/dprint/jsonc-parser/commit/e6525febaa079bc47619fd8d94664f2921aa95d3"
+        },
+        "date": 1659667853981,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 75888939,
+            "range": "± 1762170",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 39424292,
+            "range": "± 523120",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 110079252,
+            "range": "± 5572269",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 99905,
+            "range": "± 1188",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 145550,
+            "range": "± 757",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 32262,
+            "range": "± 429",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 32990,
+            "range": "± 502",
             "unit": "ns/iter"
           }
         ]
