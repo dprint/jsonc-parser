@@ -12,6 +12,33 @@ pub enum Value<'a> {
   NullKeyword(NullKeyword),
 }
 
+#[cfg(feature = "serde")]
+impl<'a> From<Value<'a>> for serde_json::Value {
+  fn from(value: Value<'a>) -> Self {
+    use std::str::FromStr;
+    match value {
+      Value::Array(arr) => {
+        let vec = arr.elements.into_iter().map(|v| v.into()).collect();
+        serde_json::Value::Array(vec)
+      }
+      Value::BooleanLit(b) => serde_json::Value::Bool(b.value),
+      Value::NullKeyword(_) => serde_json::Value::Null,
+      Value::NumberLit(num) => {
+        let number = serde_json::Number::from_str(num.value).expect("could not parse number");
+        serde_json::Value::Number(number)
+      }
+      Value::Object(obj) => {
+        let mut map = serde_json::map::Map::new();
+        for prop in obj.properties {
+          map.insert(prop.name.into_string(), prop.value.into());
+        }
+        serde_json::Value::Object(map)
+      }
+      Value::StringLit(s) => serde_json::Value::String(s.value.into_owned()),
+    }
+  }
+}
+
 /// Node that can appear in the AST.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node<'a, 'b> {
@@ -478,5 +505,30 @@ mod test {
     assert_eq!(obj.get_string("prop").is_some(), true);
     assert_eq!(obj.get("asdf"), None);
     assert_eq!(obj.properties.len(), 1);
+  }
+
+  #[cfg(feature = "serde")]
+  #[test]
+  fn it_should_coerce_to_serde_value() {
+    let ast = parse_to_ast(
+      r#"{"prop":[true,1,null,"str"]}"#,
+      &Default::default(),
+      &ParseOptions::default(),
+    )
+    .unwrap();
+    let value = ast.value.unwrap();
+    let serde_value: serde_json::Value = value.into();
+
+    assert_eq!(
+      serde_value,
+      serde_json::json!({
+        "prop": [
+          true,
+          1,
+          null,
+          "str"
+        ]
+      })
+    );
   }
 }

@@ -28,18 +28,24 @@ let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &CollectOptions {
 // ...inspect parse_result for value, tokens, and comments here...
 ```
 
-Or use the "serde" feature:
+## Serde
+
+If you enable the `"serde"` feature as follows:
 
 ```toml
 # in Cargo.toml
 jsonc-parser = { version = "...", features = ["serde"] }
 ```
 
+Then you can use the `parse_to_serde_value` function to get a `serde_json::Value`:
+
 ```rs
 use jsonc_parser::parse_to_serde_value;
 
 let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default())?;
 ```
+
+Alternatively, use `parse_to_ast` then call `.into()` (ex. `let value: serde_json::Value = ast.into();`).
 
 ## Parse Strictly as JSON
 
