@@ -11,7 +11,7 @@
     "./benches/json"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/markdown-0.13.3.wasm",
-    "https://plugins.dprint.dev/exec-0.3.1.json@9351b67ec7a6b58a69201c2834cba38cb3d191080aefc6422fb1320f03c8fc4d"
+    "https://plugins.dprint.dev/markdown-0.15.2.wasm",
+    "https://plugins.dprint.dev/exec-0.3.5.json@d687dda57be0fe9a0088ccdaefa5147649ff24127d8b3ea227536c68ee7abeab"
   ]
 }
