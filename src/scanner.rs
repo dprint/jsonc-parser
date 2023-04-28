@@ -270,20 +270,25 @@ impl<'a> Scanner<'a> {
     }
 
     match self.current_char() {
-      Some('e') | Some('E') => match self.move_next_char() {
-        Some('-') | Some('+') => {
-          self.move_next_char();
-          if !self.is_digit() {
-            return Err(self.create_error_for_current_char("Expected a digit"));
-          }
-          while self.is_digit() {
+      Some('e') | Some('E') => {
+        match self.move_next_char() {
+          Some('-') | Some('+') => {
             self.move_next_char();
+            if !self.is_digit() {
+              return Err(self.create_error_for_current_char("Expected a digit"));
+            }
+          }
+          _ => {
+            if !self.is_digit() {
+              return Err(self.create_error_for_current_char("Expected plus, minus, or digit in number literal"));
+            }
           }
         }
-        _ => {
-          return Err(self.create_error_for_current_char("Expected plus or minus symbol in number literal"));
+
+        while self.is_digit() {
+          self.move_next_char();
         }
-      },
+      }
       _ => {}
     }
 
@@ -548,7 +553,7 @@ mod tests {
   #[test]
   fn it_tokenizes_numbers() {
     assert_has_tokens(
-      "0, 0.123, -198, 0e-345, 0.3e+025,",
+      "0, 0.123, -198, 0e-345, 0.3e+025, 1e1,",
       vec![
         Token::Number("0"),
         Token::Comma,
@@ -560,8 +565,19 @@ mod tests {
         Token::Comma,
         Token::Number("0.3e+025"),
         Token::Comma,
+        Token::Number("1e1"),
+        Token::Comma,
       ],
     );
+  }
+
+  #[test]
+  fn it_errors_invalid_exponent() {
+    assert_has_error(
+      r#"1ea"#,
+      "Expected plus, minus, or digit in number literal on line 1 column 3.",
+    );
+    assert_has_error(r#"1e-a"#, "Expected a digit on line 1 column 4.");
   }
 
   #[test]
