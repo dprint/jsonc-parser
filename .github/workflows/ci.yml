@@ -21,7 +21,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: dsherret/rust-toolchain-file@v1
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - name: Build debug
       if: matrix.config.kind == 'test_debug'
