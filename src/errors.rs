@@ -40,7 +40,7 @@ impl Error for ParseError {
 fn get_message_with_range(range: &Range, message: &str, file_text: &str) -> String {
   let mut line_index = 0;
   let mut column_index = 0;
-  for c in file_text[0..range.start as usize].chars() {
+  for c in file_text[..range.start].chars() {
     if c == '\n' {
       line_index += 1;
       column_index = 0;

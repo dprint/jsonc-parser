@@ -37,7 +37,7 @@ impl<'a> Scanner<'a> {
   }
 
   pub fn file_text(&self) -> &str {
-    &self.file_text
+    self.file_text
   }
 
   /// Moves to and returns the next token.
@@ -187,7 +187,7 @@ impl<'a> Scanner<'a> {
               }
 
               let hex_u32 = u32::from_str_radix(&hex_text, 16);
-              let hex_char = match hex_u32.ok().map(std::char::from_u32).flatten() {
+              let hex_char = match hex_u32.ok().and_then(std::char::from_u32) {
                 Some(hex_char) => hex_char,
                 None => {
                   return Err(self.create_error_for_start(
@@ -414,7 +414,7 @@ impl<'a> Scanner<'a> {
   }
 
   fn move_next_char(&mut self) -> Option<char> {
-    if let Some(&current_char) = self.char_buffer.get(0) {
+    if let Some(&current_char) = self.char_buffer.first() {
       // shift the entire array to the left then pop the last item
       for i in 1..self.char_buffer.len() {
         self.char_buffer[i - 1] = self.char_buffer[i];
@@ -455,7 +455,7 @@ impl<'a> Scanner<'a> {
   }
 
   fn current_char(&self) -> Option<char> {
-    self.char_buffer.get(0).copied()
+    self.char_buffer.first().copied()
   }
 
   fn is_new_line(&mut self) -> bool {
