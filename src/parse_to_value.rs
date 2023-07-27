@@ -22,7 +22,7 @@ pub fn parse_to_value<'a>(text: &'a str, options: &ParseOptions) -> Result<Optio
       comments: false,
       tokens: false,
     },
-    &options,
+    options,
   )?
   .value;
   Ok(value.map(handle_value))

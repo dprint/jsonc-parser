@@ -40,7 +40,7 @@ impl<'a> From<Value<'a>> for serde_json::Value {
 }
 
 /// Node that can appear in the AST.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Node<'a, 'b> {
   StringLit(&'b StringLit<'a>),
   NumberLit(&'b NumberLit<'a>),
@@ -64,6 +64,62 @@ impl<'a, 'b> Node<'a, 'b> {
       Node::Array(_) => NodeKind::Array,
       Node::NullKeyword(_) => NodeKind::NullKeyword,
       Node::WordLit(_) => NodeKind::WordLit,
+    }
+  }
+
+  pub fn as_string_lit(&self) -> Option<&StringLit<'a>> {
+    match self {
+      Node::StringLit(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_number_lit(&self) -> Option<&NumberLit<'a>> {
+    match self {
+      Node::NumberLit(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_boolean_lit(&self) -> Option<&BooleanLit> {
+    match self {
+      Node::BooleanLit(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_object(&self) -> Option<&Object<'a>> {
+    match self {
+      Node::Object(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_object_prop(&self) -> Option<&ObjectProp<'a>> {
+    match self {
+      Node::ObjectProp(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_array(&self) -> Option<&Array<'a>> {
+    match self {
+      Node::Array(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_null_keyword(&self) -> Option<&NullKeyword> {
+    match self {
+      Node::NullKeyword(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_word_lit(&self) -> Option<&WordLit<'a>> {
+    match self {
+      Node::WordLit(node) => Some(node),
+      _ => None,
     }
   }
 }
