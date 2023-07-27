@@ -67,56 +67,56 @@ impl<'a, 'b> Node<'a, 'b> {
     }
   }
 
-  pub fn as_string_lit(&self) -> Option<&StringLit<'a>> {
+  pub fn as_string_lit(&self) -> Option<&'b StringLit<'a>> {
     match self {
       Node::StringLit(node) => Some(node),
       _ => None,
     }
   }
 
-  pub fn as_number_lit(&self) -> Option<&NumberLit<'a>> {
+  pub fn as_number_lit(&self) -> Option<&'b NumberLit<'a>> {
     match self {
       Node::NumberLit(node) => Some(node),
       _ => None,
     }
   }
 
-  pub fn as_boolean_lit(&self) -> Option<&BooleanLit> {
+  pub fn as_boolean_lit(&self) -> Option<&'b BooleanLit> {
     match self {
       Node::BooleanLit(node) => Some(node),
       _ => None,
     }
   }
 
-  pub fn as_object(&self) -> Option<&Object<'a>> {
+  pub fn as_object(&self) -> Option<&'b Object<'a>> {
     match self {
       Node::Object(node) => Some(node),
       _ => None,
     }
   }
 
-  pub fn as_object_prop(&self) -> Option<&ObjectProp<'a>> {
+  pub fn as_object_prop(&self) -> Option<&'b ObjectProp<'a>> {
     match self {
       Node::ObjectProp(node) => Some(node),
       _ => None,
     }
   }
 
-  pub fn as_array(&self) -> Option<&Array<'a>> {
+  pub fn as_array(&self) -> Option<&'b Array<'a>> {
     match self {
       Node::Array(node) => Some(node),
       _ => None,
     }
   }
 
-  pub fn as_null_keyword(&self) -> Option<&NullKeyword> {
+  pub fn as_null_keyword(&self) -> Option<&'b NullKeyword> {
     match self {
       Node::NullKeyword(node) => Some(node),
       _ => None,
     }
   }
 
-  pub fn as_word_lit(&self) -> Option<&WordLit<'a>> {
+  pub fn as_word_lit(&self) -> Option<&'b WordLit<'a>> {
     match self {
       Node::WordLit(node) => Some(node),
       _ => None,
