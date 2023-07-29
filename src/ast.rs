@@ -12,6 +12,50 @@ pub enum Value<'a> {
   NullKeyword(NullKeyword),
 }
 
+impl<'a> Value<'a> {
+  pub fn as_string_lit(&self) -> Option<&StringLit<'a>> {
+    match self {
+      Value::StringLit(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_number_lit(&self) -> Option<&NumberLit<'a>> {
+    match self {
+      Value::NumberLit(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_boolean_lit(&self) -> Option<&BooleanLit> {
+    match self {
+      Value::BooleanLit(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_object(&self) -> Option<&Object<'a>> {
+    match self {
+      Value::Object(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_array(&self) -> Option<&Array<'a>> {
+    match self {
+      Value::Array(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_null_keyword(&self) -> Option<&NullKeyword> {
+    match self {
+      Value::NullKeyword(node) => Some(node),
+      _ => None,
+    }
+  }
+}
+
 #[cfg(feature = "serde")]
 impl<'a> From<Value<'a>> for serde_json::Value {
   fn from(value: Value<'a>) -> Self {
