@@ -1,4 +1,5 @@
-use super::common::{Range, Ranged};
+use super::common::Range;
+use super::common::Ranged;
 use std::borrow::Cow;
 
 /// JSON value.
@@ -564,7 +565,8 @@ impl<'a, 'b> From<&'b Value<'a>> for Node<'a, 'b> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::{parse_to_ast, ParseOptions};
+  use crate::parse_to_ast;
+  use crate::ParseOptions;
 
   #[test]
   fn it_should_take() {

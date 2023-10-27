@@ -6,7 +6,8 @@ use super::ast::*;
 use super::common::Range;
 use super::errors::*;
 use super::scanner::Scanner;
-use super::tokens::{Token, TokenAndRange};
+use super::tokens::Token;
+use super::tokens::TokenAndRange;
 
 /// Map where the comments are stored in collections where
 /// the key is the previous token end or start of file or
