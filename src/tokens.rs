@@ -1,4 +1,5 @@
-use super::common::{Range, Ranged};
+use super::common::Range;
+use super::common::Ranged;
 use std::borrow::Cow;
 
 /// A token found while scanning.

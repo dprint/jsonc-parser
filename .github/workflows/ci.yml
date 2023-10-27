@@ -34,7 +34,10 @@ jobs:
 
     - name: Test debug
       if: matrix.config.kind == 'test_debug'
-      run: cargo test --verbose --all-features
+      run: |
+        cargo test --features serde
+        cargo test --features preserve_order
+        cargo test --verbose --all-features
     - name: Test release
       if: matrix.config.kind == 'test_release'
       run: cargo test --release --verbose --all-features

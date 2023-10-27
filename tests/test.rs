@@ -5,7 +5,8 @@ use jsonc_parser::common::*;
 use jsonc_parser::*;
 use pretty_assertions::assert_eq;
 use std::fs::{self};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 #[test]

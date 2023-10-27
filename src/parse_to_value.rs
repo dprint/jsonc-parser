@@ -4,7 +4,7 @@ use super::parse_to_ast;
 use super::value::*;
 use super::CollectOptions;
 use super::ParseOptions;
-use std::collections::HashMap;
+use crate::value::Map;
 
 /// Parses a string containing JSONC to a `JsonValue`.
 ///
@@ -46,7 +46,7 @@ fn handle_array(arr: ast::Array) -> JsonArray {
 }
 
 fn handle_object(obj: ast::Object) -> JsonObject {
-  let mut props = HashMap::new();
+  let mut props = Map::with_capacity(obj.properties.len());
   for prop in obj.properties.into_iter() {
     let prop_name = prop.name.into_string();
     let prop_value = handle_value(prop.value);
@@ -74,7 +74,7 @@ mod tests {
     .unwrap()
     .unwrap();
 
-    let mut object_map = HashMap::new();
+    let mut object_map = Map::new();
     object_map.insert(String::from("a"), JsonValue::Null);
     object_map.insert(
       String::from("b"),
