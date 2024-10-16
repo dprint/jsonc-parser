@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::rc::Rc;
+use std::rc::Weak;
 
 use super::common::Ranged;
 use crate::ast;
@@ -21,7 +22,7 @@ macro_rules! create_inner {
 macro_rules! add_parent_info_methods {
   () => {
     pub fn parent(&self) -> Option<CstContainerNode> {
-      self.parent_info().map(|p| p.parent)
+      self.parent_info().map(|p| p.parent.as_container_node())
     }
 
     pub fn child_index(&self) -> usize {
@@ -33,12 +34,18 @@ macro_rules! add_parent_info_methods {
       if parent_info.child_index == 0 {
         return None;
       }
-      parent_info.parent.child_at_index(parent_info.child_index - 1)
+      parent_info
+        .parent
+        .as_container_node()
+        .child_at_index(parent_info.child_index - 1)
     }
 
     pub fn next_sibling(&self) -> Option<CstNode> {
       let parent_info = self.parent_info()?;
-      parent_info.parent.child_at_index(parent_info.child_index + 1)
+      parent_info
+        .parent
+        .as_container_node()
+        .child_at_index(parent_info.child_index + 1)
     }
 
     pub fn root_node(&self) -> Option<CstRootNode> {
@@ -138,9 +145,38 @@ macro_rules! impl_leaf_methods {
   };
 }
 
+#[derive(Debug, Clone)]
+enum WeakParent {
+  Root(Weak<CstRootNodeInner>),
+  Object(Weak<CstObjectInner>),
+  ObjectProp(Weak<CstObjectPropInner>),
+  Array(Weak<CstArrayInner>),
+}
+
+impl WeakParent {
+  pub fn from_container(container: &CstContainerNode) -> Self {
+    match container {
+      CstContainerNode::Root(node) => WeakParent::Root(Rc::downgrade(&node.0)),
+      CstContainerNode::Object(node) => WeakParent::Object(Rc::downgrade(&node.0)),
+      CstContainerNode::ObjectProp(node) => WeakParent::ObjectProp(Rc::downgrade(&node.0)),
+      CstContainerNode::Array(node) => WeakParent::Array(Rc::downgrade(&node.0)),
+    }
+  }
+
+  pub fn as_container_node(&self) -> CstContainerNode {
+    const PANIC_MSG: &str = "Programming error. Ensure you keep around the RootNode for the duration of using the CST.";
+    match self {
+      WeakParent::Root(weak) => CstRootNode(weak.upgrade().expect(PANIC_MSG)).into(),
+      WeakParent::Object(weak) => CstObject(weak.upgrade().expect(PANIC_MSG)).into(),
+      WeakParent::ObjectProp(weak) => CstObjectProp(weak.upgrade().expect(PANIC_MSG)).into(),
+      WeakParent::Array(weak) => CstArray(weak.upgrade().expect(PANIC_MSG)).into(),
+    }
+  }
+}
+
 #[derive(Clone, Debug)]
 struct ParentInfo {
-  pub parent: CstContainerNode,
+  pub parent: WeakParent,
   pub child_index: usize,
 }
 
@@ -401,20 +437,9 @@ impl From<CstLeafNode> for CstNode {
   }
 }
 
+type CstRootNodeInner = RefCell<CstChildrenInner>;
 #[derive(Debug, Clone)]
-pub struct CstRootNode(Rc<RefCell<CstChildrenInner>>, Option<Rc<()>>);
-
-impl Drop for CstRootNode {
-  fn drop(&mut self) {
-    if let Some(user_ref_count) = &self.1 {
-      let count = Rc::strong_count(user_ref_count);
-      if count == 1 {
-        // this is the last remaining user reference to the root, so destroy it
-        self.destroy();
-      }
-    }
-  }
-}
+pub struct CstRootNode(Rc<CstRootNodeInner>);
 
 impl_container_methods!(CstRootNode, Root);
 
@@ -550,9 +575,11 @@ impl Display for CstNullKeyword {
   }
 }
 
+type CstObjectInner = RefCell<CstChildrenInner>;
+
 /// Represents an object that may contain properties (ex. `{}`, `{ "prop": 4 }`).
 #[derive(Debug, Clone)]
-pub struct CstObject(Rc<RefCell<CstChildrenInner>>);
+pub struct CstObject(Rc<CstObjectInner>);
 
 impl_container_methods!(CstObject, Object);
 
@@ -565,8 +592,10 @@ impl Display for CstObject {
   }
 }
 
+type CstObjectPropInner = RefCell<CstChildrenInner>;
+
 #[derive(Debug, Clone)]
-pub struct CstObjectProp(Rc<RefCell<CstChildrenInner>>);
+pub struct CstObjectProp(Rc<CstObjectPropInner>);
 
 impl_container_methods!(CstObjectProp, ObjectProp);
 
@@ -661,8 +690,10 @@ impl From<ObjectPropName> for CstNode {
   }
 }
 
+type CstArrayInner = RefCell<CstChildrenInner>;
+
 #[derive(Debug, Clone)]
-pub struct CstArray(Rc<RefCell<CstChildrenInner>>);
+pub struct CstArray(Rc<CstArrayInner>);
 
 impl_container_methods!(CstArray, Array);
 
@@ -723,14 +754,10 @@ struct CstBuilder<'a> {
 
 impl<'a> CstBuilder<'a> {
   pub fn build(&mut self, ast_value: Option<crate::ast::Value<'a>>) -> CstRootNode {
-    let root_node = CstContainerNode::Root(CstRootNode(
-      Rc::new(RefCell::new(CstChildrenInner {
-        parent: None,
-        value: Vec::new(),
-      })),
-      // ensure child nodes only get a None reference here
-      None,
-    ));
+    let root_node = CstContainerNode::Root(CstRootNode(Rc::new(RefCell::new(CstChildrenInner {
+      parent: None,
+      value: Vec::new(),
+    }))));
 
     if let Some(ast_value) = ast_value {
       let range = ast_value.range();
@@ -887,7 +914,7 @@ impl<'a> CstBuilder<'a> {
   }
 
   fn raw_append_child(&self, container: &CstContainerNode, child: CstNode) {
-    let cloned_self = container.clone();
+    let weak_parent = WeakParent::from_container(container);
     let mut container = match container {
       CstContainerNode::Root(node) => node.0.borrow_mut(),
       CstContainerNode::Object(node) => node.0.borrow_mut(),
@@ -895,7 +922,7 @@ impl<'a> CstBuilder<'a> {
       CstContainerNode::Array(node) => node.0.borrow_mut(),
     };
     let parent_info = ParentInfo {
-      parent: cloned_self,
+      parent: weak_parent,
       child_index: container.value.len(),
     };
     child.set_parent(Some(parent_info));
