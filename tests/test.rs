@@ -30,6 +30,7 @@ fn test_specs() {
   }
 }
 
+#[cfg(feature = "cst")]
 #[test]
 fn test_cst() {
   for json_path in get_json_file_paths_in_dir(&Path::new("./tests/specs")) {
