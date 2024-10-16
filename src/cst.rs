@@ -466,7 +466,7 @@ impl CstRootNode {
   /// Computes the single indentation text of the file.
   pub fn single_indent_text(&self) -> Option<String> {
     let root_value = self.root_value()?;
-    let first_non_trivia_child = root_value.children_exclude_trivia().get(0)?.clone();
+    let first_non_trivia_child = root_value.children_exclude_trivia().first()?.clone();
     let mut looking_node = first_non_trivia_child;
     while let Some(previous_trivia) = looking_node.previous_sibling() {
       if let CstNode::Leaf(CstLeafNode::Whitespace(whitespace)) = &previous_trivia {
@@ -618,10 +618,10 @@ impl CstObjectProp {
     let name = self.name()?;
     let parent_info = name.parent_info().unwrap(); // todo(THIS PR): do not unwrap
     let children = &self.0.borrow().value;
-    let mut children = (&children[parent_info.child_index + 1..]).iter();
+    let mut children = children[parent_info.child_index + 1..].iter();
 
     // first, skip over the colon token
-    while let Some(child) = children.next() {
+    for child in children.by_ref() {
       if let CstNode::Leaf(CstLeafNode::Token(token)) = child {
         if token.value() == ':' {
           break;
@@ -630,7 +630,7 @@ impl CstObjectProp {
     }
 
     // now find the value
-    while let Some(child) = children.next() {
+    for child in children {
       match child {
         CstNode::Leaf(leaf) => match leaf {
           CstLeafNode::BooleanLit(_)
