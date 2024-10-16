@@ -27,6 +27,19 @@ macro_rules! add_parent_info_methods {
     pub fn child_index(&self) -> usize {
       self.parent_info().map(|p| p.child_index).unwrap_or(0)
     }
+
+    pub fn previous_sibling(&self) -> Option<CstNode> {
+      let parent_info = self.parent_info()?;
+      if parent_info.child_index == 0 {
+        return None;
+      }
+      parent_info.parent.child_at_index(parent_info.child_index - 1)
+    }
+
+    pub fn next_sibling(&self) -> Option<CstNode> {
+      let parent_info = self.parent_info()?;
+      parent_info.parent.child_at_index(parent_info.child_index + 1)
+    }
   };
 }
 
@@ -66,6 +79,25 @@ macro_rules! impl_container_methods {
 
     impl $node_name {
       add_parent_methods!();
+
+      pub fn children(&self) -> Vec<CstNode> {
+        self.0.borrow().value.clone()
+      }
+
+      pub fn children_exclude_trivia(&self) -> Vec<CstNode> {
+        self
+          .0
+          .borrow()
+          .value
+          .iter()
+          .filter(|n| !n.is_trivia())
+          .cloned()
+          .collect()
+      }
+
+      pub fn child_at_index(&self, index: usize) -> Option<CstNode> {
+        self.0.borrow().value.get(index).cloned()
+      }
     }
   };
 }
@@ -102,6 +134,42 @@ pub enum CstNode {
 
 impl CstNode {
   add_parent_info_methods!();
+
+  /// Gets if this node is comments, whitespace, or a non-literal token (ex. brace, colon).
+  pub fn is_trivia(&self) -> bool {
+    match self {
+      CstNode::Leaf(leaf) => match leaf {
+        CstLeafNode::BooleanLit(_)
+        | CstLeafNode::NullKeyword(_)
+        | CstLeafNode::NumberLit(_)
+        | CstLeafNode::StringLit(_)
+        | CstLeafNode::WordLit(_) => false,
+        CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Comment(_) => true,
+      },
+      CstNode::Container(_) => false,
+    }
+  }
+
+  pub fn children(&self) -> Vec<CstNode> {
+    match self {
+      CstNode::Container(n) => n.children(),
+      CstNode::Leaf(_) => Vec::new(),
+    }
+  }
+
+  pub fn children_exclude_trivia(&self) -> Vec<CstNode> {
+    match self {
+      CstNode::Container(n) => n.children_exclude_trivia(),
+      CstNode::Leaf(_) => Vec::new(),
+    }
+  }
+
+  pub fn child_at_index(&self, index: usize) -> Option<CstNode> {
+    match self {
+      CstNode::Container(n) => n.child_at_index(index),
+      CstNode::Leaf(_) => None,
+    }
+  }
 
   fn parent_info(&self) -> Option<ParentInfo> {
     match self {
@@ -155,6 +223,33 @@ pub enum CstContainerNode {
 
 impl CstContainerNode {
   add_parent_info_methods!();
+
+  pub fn children(&self) -> Vec<CstNode> {
+    match self {
+      CstContainerNode::Root(n) => n.children(),
+      CstContainerNode::Object(n) => n.children(),
+      CstContainerNode::ObjectProp(n) => n.children(),
+      CstContainerNode::Array(n) => n.children(),
+    }
+  }
+
+  pub fn children_exclude_trivia(&self) -> Vec<CstNode> {
+    match self {
+      CstContainerNode::Root(n) => n.children_exclude_trivia(),
+      CstContainerNode::Object(n) => n.children_exclude_trivia(),
+      CstContainerNode::ObjectProp(n) => n.children_exclude_trivia(),
+      CstContainerNode::Array(n) => n.children_exclude_trivia(),
+    }
+  }
+
+  pub fn child_at_index(&self, index: usize) -> Option<CstNode> {
+    match self {
+      CstContainerNode::Root(node) => node.child_at_index(index),
+      CstContainerNode::Object(node) => node.child_at_index(index),
+      CstContainerNode::ObjectProp(node) => node.child_at_index(index),
+      CstContainerNode::Array(node) => node.child_at_index(index),
+    }
+  }
 
   fn parent_info(&self) -> Option<ParentInfo> {
     match self {
@@ -271,7 +366,6 @@ impl CstRootNode {
       parse_options,
     )?;
 
-    // turn the AST into a CST
     Ok(
       CstBuilder {
         text,
@@ -279,6 +373,36 @@ impl CstRootNode {
       }
       .build(parse_result.value),
     )
+  }
+
+  /// Computes the single indentation text of the file.
+  pub fn single_indent_text(&self) -> Option<String> {
+    let root_value = self.root_value()?;
+    let first_non_trivia_child = root_value.children_exclude_trivia().get(0)?.clone();
+    let mut looking_node = first_non_trivia_child;
+    while let Some(previous_trivia) = looking_node.previous_sibling() {
+      if let CstNode::Leaf(CstLeafNode::Whitespace(whitespace)) = &previous_trivia {
+        let whitespace = whitespace.0.borrow();
+        if whitespace.value.contains('\n') {
+          let last_line = whitespace.value.lines().last()?;
+          if !last_line.is_empty() {
+            return Some(last_line.to_string());
+          }
+        }
+      }
+
+      looking_node = previous_trivia;
+    }
+    None
+  }
+
+  pub fn root_value(&self) -> Option<CstNode> {
+    for child in &self.0.borrow().value {
+      if !child.is_trivia() {
+        return Some(child.clone());
+      }
+    }
+    None
   }
 }
 
@@ -296,6 +420,16 @@ impl Display for CstRootNode {
 pub struct CstStringLit(Rc<RefCell<CstValueInner<String>>>);
 
 impl_leaf_methods!(CstStringLit, StringLit);
+
+impl CstStringLit {
+  /// Sets the raw escaped value of the string.
+  ///
+  /// Note: This value should escape quotes otherwise a syntax error will
+  /// happen when printing.
+  pub fn set_raw_escaped_value(&self, value: String) {
+    self.0.borrow_mut().value = value;
+  }
+}
 
 impl Display for CstStringLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -371,9 +505,9 @@ impl Display for CstObject {
 #[derive(Debug, Clone)]
 pub struct CstObjectProp(Rc<RefCell<CstChildrenInner>>);
 
-impl CstObjectProp {
-  add_parent_methods!();
+impl_container_methods!(CstObjectProp, ObjectProp);
 
+impl CstObjectProp {
   pub fn name(&self) -> Result<ObjectPropName, ParseError> {
     for child in &self.0.borrow().value {
       match child {
@@ -690,5 +824,58 @@ impl<'a> CstBuilder<'a> {
     };
     child.set_parent(Some(parent_info));
     container.value.push(child);
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::CstRootNode;
+
+  #[test]
+  fn single_indent_text() {
+    let cases = [
+      (
+        "  ",
+        r#"
+{
+  "prop": {
+    "nested": 4
+  }
+}
+    "#,
+      ),
+      (
+        "  ",
+        r#"
+{
+  /* test */ "prop": {}
+}
+    "#,
+      ),
+      (
+        "    ",
+        r#"
+{
+    /* test */  "prop": {}
+}
+    "#,
+      ),
+      (
+        "\t",
+        "
+{
+\t/* test */  \"prop\": {}
+}
+    ",
+      ),
+    ];
+    for (expected, text) in cases {
+      let root = build_cts(text);
+      assert_eq!(root.single_indent_text(), Some(expected.to_string()));
+    }
+  }
+
+  fn build_cts(text: &str) -> CstRootNode {
+    CstRootNode::parse(text, &crate::ParseOptions::default()).unwrap()
   }
 }
