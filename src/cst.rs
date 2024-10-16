@@ -44,6 +44,42 @@ macro_rules! add_parent_methods {
   };
 }
 
+macro_rules! impl_from_leaf_or_container {
+  ($node_name:ident, $variant:ident, $leaf_or_container:ident, $leaf_or_container_variant:ident) => {
+    impl From<$node_name> for CstNode {
+      fn from(value: $node_name) -> Self {
+        CstNode::$leaf_or_container_variant($leaf_or_container::$variant(value))
+      }
+    }
+
+    impl From<$node_name> for $leaf_or_container {
+      fn from(value: $node_name) -> Self {
+        $leaf_or_container::$variant(value)
+      }
+    }
+  };
+}
+
+macro_rules! impl_container_methods {
+  ($node_name:ident, $variant:ident) => {
+    impl_from_leaf_or_container!($node_name, $variant, CstContainerNode, Container);
+
+    impl $node_name {
+      add_parent_methods!();
+    }
+  };
+}
+
+macro_rules! impl_leaf_methods {
+  ($node_name:ident, $variant:ident) => {
+    impl_from_leaf_or_container!($node_name, $variant, CstLeafNode, Leaf);
+
+    impl $node_name {
+      add_parent_methods!();
+    }
+  };
+}
+
 #[derive(Clone, Debug)]
 struct ParentInfo {
   pub parent: CstContainerNode,
@@ -57,42 +93,6 @@ struct CstValueInner<T> {
 }
 
 type CstChildrenInner = CstValueInner<Vec<CstNode>>;
-
-#[derive(Debug, Clone)]
-pub struct CstRootNode(Rc<RefCell<CstChildrenInner>>);
-
-impl CstRootNode {
-  add_parent_methods!();
-
-  pub fn parse(text: &str, parse_options: &ParseOptions) -> Result<Self, ParseError> {
-    let parse_result = parse_to_ast(
-      text,
-      &crate::CollectOptions {
-        comments: crate::CommentCollectionStrategy::AsTokens,
-        tokens: true,
-      },
-      parse_options,
-    )?;
-
-    // turn the AST into a CST
-    Ok(
-      CstBuilder {
-        text,
-        tokens: parse_result.tokens.unwrap().into_iter().collect(),
-      }
-      .build(parse_result.value),
-    )
-  }
-}
-
-impl Display for CstRootNode {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    for child in &self.0.borrow().value {
-      write!(f, "{}", child)?;
-    }
-    Ok(())
-  }
-}
 
 #[derive(Debug, Clone)]
 pub enum CstNode {
@@ -175,6 +175,12 @@ impl CstContainerNode {
   }
 }
 
+impl From<CstContainerNode> for CstNode {
+  fn from(value: CstContainerNode) -> Self {
+    CstNode::Container(value)
+  }
+}
+
 impl Display for CstContainerNode {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
@@ -243,13 +249,53 @@ impl Display for CstLeafNode {
   }
 }
 
+impl From<CstLeafNode> for CstNode {
+  fn from(value: CstLeafNode) -> Self {
+    CstNode::Leaf(value)
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct CstRootNode(Rc<RefCell<CstChildrenInner>>);
+
+impl_container_methods!(CstRootNode, Root);
+
+impl CstRootNode {
+  pub fn parse(text: &str, parse_options: &ParseOptions) -> Result<Self, ParseError> {
+    let parse_result = parse_to_ast(
+      text,
+      &crate::CollectOptions {
+        comments: crate::CommentCollectionStrategy::AsTokens,
+        tokens: true,
+      },
+      parse_options,
+    )?;
+
+    // turn the AST into a CST
+    Ok(
+      CstBuilder {
+        text,
+        tokens: parse_result.tokens.unwrap().into_iter().collect(),
+      }
+      .build(parse_result.value),
+    )
+  }
+}
+
+impl Display for CstRootNode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for child in &self.0.borrow().value {
+      write!(f, "{}", child)?;
+    }
+    Ok(())
+  }
+}
+
 /// Node surrounded in double quotes (ex. `"my string"`).
 #[derive(Debug, Clone)]
 pub struct CstStringLit(Rc<RefCell<CstValueInner<String>>>);
 
-impl CstStringLit {
-  add_parent_methods!();
-}
+impl_leaf_methods!(CstStringLit, StringLit);
 
 impl Display for CstStringLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -260,9 +306,7 @@ impl Display for CstStringLit {
 #[derive(Debug, Clone)]
 pub struct CstWordLit(Rc<RefCell<CstValueInner<String>>>);
 
-impl CstWordLit {
-  add_parent_methods!();
-}
+impl_leaf_methods!(CstWordLit, WordLit);
 
 impl Display for CstWordLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -273,9 +317,7 @@ impl Display for CstWordLit {
 #[derive(Debug, Clone)]
 pub struct CstNumberLit(Rc<RefCell<CstValueInner<String>>>);
 
-impl CstNumberLit {
-  add_parent_methods!();
-}
+impl_leaf_methods!(CstNumberLit, NumberLit);
 
 impl Display for CstNumberLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -287,9 +329,7 @@ impl Display for CstNumberLit {
 #[derive(Debug, Clone)]
 pub struct CstBooleanLit(Rc<RefCell<CstValueInner<bool>>>);
 
-impl CstBooleanLit {
-  add_parent_methods!();
-}
+impl_leaf_methods!(CstBooleanLit, BooleanLit);
 
 impl Display for CstBooleanLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -305,9 +345,7 @@ impl Display for CstBooleanLit {
 #[derive(Debug, Clone)]
 pub struct CstNullKeyword(Rc<RefCell<CstValueInner<()>>>);
 
-impl CstNullKeyword {
-  add_parent_methods!();
-}
+impl_leaf_methods!(CstNullKeyword, NullKeyword);
 
 impl Display for CstNullKeyword {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -319,9 +357,7 @@ impl Display for CstNullKeyword {
 #[derive(Debug, Clone)]
 pub struct CstObject(Rc<RefCell<CstChildrenInner>>);
 
-impl CstObject {
-  add_parent_methods!();
-}
+impl_container_methods!(CstObject, Object);
 
 impl Display for CstObject {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -338,11 +374,11 @@ pub struct CstObjectProp(Rc<RefCell<CstChildrenInner>>);
 impl CstObjectProp {
   add_parent_methods!();
 
-  pub fn name(&self) -> ObjectPropName {
+  pub fn name(&self) -> Result<ObjectPropName, ParseError> {
     for child in &self.0.borrow().value {
       match child {
-        CstNode::Leaf(CstLeafNode::StringLit(node)) => return ObjectPropName::String(node.clone()),
-        CstNode::Leaf(CstLeafNode::WordLit(node)) => return ObjectPropName::Word(node.clone()),
+        CstNode::Leaf(CstLeafNode::StringLit(node)) => return Ok(ObjectPropName::String(node.clone())),
+        CstNode::Leaf(CstLeafNode::WordLit(node)) => return Ok(ObjectPropName::Word(node.clone())),
         _ => {
           // someone may have manipulated this object such that this is no longer there
         }
@@ -352,8 +388,8 @@ impl CstObjectProp {
     unreachable!();
   }
 
-  pub fn value(&self) -> CstNode {
-    let name = self.name();
+  pub fn value(&self) -> Result<CstNode, ParseError> {
+    let name = self.name()?;
     let parent_info = name.parent_info().unwrap(); // todo(THIS PR): do not unwrap
     let children = &self.0.borrow().value;
     let mut children = (&children[parent_info.child_index + 1..]).iter();
@@ -375,13 +411,13 @@ impl CstObjectProp {
           | CstLeafNode::NullKeyword(_)
           | CstLeafNode::NumberLit(_)
           | CstLeafNode::StringLit(_)
-          | CstLeafNode::WordLit(_) => return child.clone(),
+          | CstLeafNode::WordLit(_) => return Ok(child.clone()),
           CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Comment(_) => {
             // ignore
           }
         },
         CstNode::Container(container) => match container {
-          CstContainerNode::Object(_) | CstContainerNode::Array(_) => return child.clone(),
+          CstContainerNode::Object(_) | CstContainerNode::Array(_) => return Ok(child.clone()),
           CstContainerNode::Root(_) | CstContainerNode::ObjectProp(_) => todo!(), // todo(THIS PR): surface error
         },
       }
@@ -422,9 +458,9 @@ impl ObjectPropName {
 #[derive(Debug, Clone)]
 pub struct CstArray(Rc<RefCell<CstChildrenInner>>);
 
-impl CstArray {
-  add_parent_methods!();
-}
+impl_container_methods!(CstArray, Array);
+
+impl CstArray {}
 
 impl Display for CstArray {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -438,9 +474,9 @@ impl Display for CstArray {
 #[derive(Debug, Clone)]
 pub struct CstToken(Rc<RefCell<CstValueInner<char>>>);
 
-impl CstToken {
-  add_parent_methods!();
+impl_leaf_methods!(CstToken, Token);
 
+impl CstToken {
   pub fn value(&self) -> char {
     self.0.borrow().value
   }
@@ -455,9 +491,7 @@ impl Display for CstToken {
 #[derive(Debug, Clone)]
 pub struct CstWhitespace(Rc<RefCell<CstValueInner<String>>>);
 
-impl CstWhitespace {
-  add_parent_methods!();
-}
+impl_leaf_methods!(CstWhitespace, Whitespace);
 
 impl Display for CstWhitespace {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -468,9 +502,7 @@ impl Display for CstWhitespace {
 #[derive(Debug, Clone)]
 pub struct CstComment(Rc<RefCell<CstValueInner<String>>>);
 
-impl CstComment {
-  add_parent_methods!();
-}
+impl_leaf_methods!(CstComment, Comment);
 
 impl Display for CstComment {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -539,9 +571,7 @@ impl<'a> CstBuilder<'a> {
           crate::tokens::Token::CommentLine(_) | crate::tokens::Token::CommentBlock(_) => {
             self.raw_append_child(
               container,
-              CstNode::Leaf(CstLeafNode::Comment(CstComment(create_inner!(self.text
-                [token.range.start..token.range.end]
-                .to_string())))),
+              CstComment(create_inner!(self.text[token.range.start..token.range.end].to_string())).into(),
             );
           }
         }
@@ -561,26 +591,20 @@ impl<'a> CstBuilder<'a> {
       ast::Value::StringLit(string_lit) => self.build_string_lit(container, string_lit),
       ast::Value::NumberLit(number_lit) => self.raw_append_child(
         container,
-        CstNode::Leaf(CstLeafNode::NumberLit(CstNumberLit(create_inner!(number_lit
-          .value
-          .to_string())))),
+        CstNumberLit(create_inner!(number_lit.value.to_string())).into(),
       ),
-      ast::Value::BooleanLit(boolean_lit) => self.raw_append_child(
-        container,
-        CstNode::Leaf(CstLeafNode::BooleanLit(CstBooleanLit(create_inner!(boolean_lit.value)))),
-      ),
+      ast::Value::BooleanLit(boolean_lit) => {
+        self.raw_append_child(container, CstBooleanLit(create_inner!(boolean_lit.value)).into())
+      }
       ast::Value::Object(object) => {
         let object = self.build_object(object);
-        self.raw_append_child(container, CstNode::Container(object))
+        self.raw_append_child(container, object.into())
       }
       ast::Value::Array(array) => {
         let array = self.build_array(array);
-        self.raw_append_child(container, CstNode::Container(array))
+        self.raw_append_child(container, array.into())
       }
-      ast::Value::NullKeyword(_) => self.raw_append_child(
-        container,
-        CstNode::Leaf(CstLeafNode::NullKeyword(CstNullKeyword(create_inner!(())))),
-      ),
+      ast::Value::NullKeyword(_) => self.raw_append_child(container, CstNullKeyword(create_inner!(())).into()),
     }
   }
 
@@ -608,12 +632,7 @@ impl<'a> CstBuilder<'a> {
         self.build_string_lit(&container, string_lit);
       }
       ast::ObjectPropName::Word(word_lit) => {
-        self.raw_append_child(
-          &container,
-          CstNode::Leaf(CstLeafNode::WordLit(CstWordLit(create_inner!(word_lit
-            .value
-            .to_string())))),
-        );
+        self.raw_append_child(&container, CstWordLit(create_inner!(word_lit.value.to_string())).into());
       }
     }
     self.scan_from_to(&container, name_range.end, value_range.start);
@@ -623,28 +642,23 @@ impl<'a> CstBuilder<'a> {
   }
 
   fn build_token(&self, container: &CstContainerNode, value: char) {
-    self.raw_append_child(
-      container,
-      CstNode::Leaf(CstLeafNode::Token(CstToken(create_inner!(value)))),
-    );
+    self.raw_append_child(container, CstToken(create_inner!(value)).into());
   }
 
   fn build_whitespace(&self, container: &CstContainerNode, value: String) {
     if value.is_empty() {
       return;
     }
-    self.raw_append_child(
-      container,
-      CstNode::Leaf(CstLeafNode::Whitespace(CstWhitespace(create_inner!(value)))),
-    );
+    self.raw_append_child(container, CstWhitespace(create_inner!(value)).into());
   }
 
   fn build_string_lit(&self, container: &CstContainerNode, lit: ast::StringLit<'_>) {
     self.raw_append_child(
       container,
-      CstNode::Leaf(CstLeafNode::StringLit(CstStringLit(create_inner!(self.text
-        [lit.range.start + 1..lit.range.end - 1]
-        .to_string())))),
+      CstStringLit(create_inner!(
+        self.text[lit.range.start + 1..lit.range.end - 1].to_string()
+      ))
+      .into(),
     );
   }
 
