@@ -119,16 +119,10 @@ macro_rules! impl_container_methods {
         self.0.borrow().value.get(index).cloned()
       }
 
-      // destroying doesn't update the parent so this is not public
-      fn destroy(&self) {
-        self.clear_children();
-      }
-
       pub fn clear_children(&self) {
         let children = std::mem::take(&mut self.0.borrow_mut().value);
         for child in children {
           child.set_parent(None);
-          child.destroy();
         }
       }
     }
@@ -209,13 +203,6 @@ impl CstNode {
         CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Comment(_) => true,
       },
       CstNode::Container(_) => false,
-    }
-  }
-
-  fn destroy(self) {
-    match self {
-      CstNode::Container(node) => node.destroy(),
-      CstNode::Leaf(node) => node.set_parent(None),
     }
   }
 
@@ -326,15 +313,6 @@ impl CstContainerNode {
       CstContainerNode::Object(n) => n.clear_children(),
       CstContainerNode::ObjectProp(n) => n.clear_children(),
       CstContainerNode::Array(n) => n.clear_children(),
-    }
-  }
-
-  fn destroy(self) {
-    match self {
-      CstContainerNode::Root(n) => n.destroy(),
-      CstContainerNode::Object(n) => n.destroy(),
-      CstContainerNode::ObjectProp(n) => n.destroy(),
-      CstContainerNode::Array(n) => n.destroy(),
     }
   }
 
