@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod common;
+#[cfg(feature = "serde")]
 pub mod cst;
 pub mod errors;
 mod parse_to_ast;

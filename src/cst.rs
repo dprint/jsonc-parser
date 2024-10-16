@@ -233,7 +233,7 @@ impl CstStringLit {
 
 impl Display for CstStringLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "\"{}\"", self.0.borrow().value.replace("\"", "\\\""))
+    write!(f, "\"{}\"", self.0.borrow().value)
   }
 }
 
@@ -554,7 +554,7 @@ impl<'a> CstBuilder<'a> {
 
     let mut last_from = from;
     while let Some(token) = self.tokens.front() {
-      if token.range.end < from {
+      if token.range.end <= from {
         self.tokens.pop_front();
       } else if token.range.start < to {
         if token.range.start > last_from {
@@ -574,7 +574,10 @@ impl<'a> CstBuilder<'a> {
           | crate::tokens::Token::String(_)
           | crate::tokens::Token::Word(_)
           | crate::tokens::Token::Boolean(_)
-          | crate::tokens::Token::Number(_) => unreachable!(),
+          | crate::tokens::Token::Number(_) => unreachable!(
+            "programming error parsing cst {:?} scanning {} to {}",
+            token.token, from, to
+          ),
           crate::tokens::Token::CommentLine(_) | crate::tokens::Token::CommentBlock(_) => {
             self.raw_append_child(
               container,
@@ -588,6 +591,10 @@ impl<'a> CstBuilder<'a> {
       } else {
         break;
       }
+    }
+
+    if last_from < to {
+      self.build_whitespace(container, self.text[last_from..to].to_string());
     }
   }
 
@@ -665,6 +672,9 @@ impl<'a> CstBuilder<'a> {
   }
 
   fn build_whitespace(&self, container: &CstContainerNode, value: String) {
+    if value.is_empty() {
+      return;
+    }
     self.raw_append_child(
       container,
       CstNode::Leaf(CstLeafNode::Whitespace(CstWhitespace(create_inner!(value)))),
@@ -674,9 +684,9 @@ impl<'a> CstBuilder<'a> {
   fn build_string_lit(&self, container: &CstContainerNode, lit: ast::StringLit<'_>) {
     self.raw_append_child(
       container,
-      CstNode::Leaf(CstLeafNode::StringLit(CstStringLit(create_inner!(lit
-        .value
-        .into_owned())))),
+      CstNode::Leaf(CstLeafNode::StringLit(CstStringLit(create_inner!(self.text
+        [lit.range.start + 1..lit.range.end - 1]
+        .to_string())))),
     );
   }
 

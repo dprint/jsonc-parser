@@ -13,9 +13,7 @@ use std::rc::Rc;
 fn test_specs() {
   for json_path in get_json_file_paths_in_dir(&Path::new("./tests/specs")) {
     let text_file_path = json_path.with_extension("txt");
-    let json_file_text = fs::read_to_string(&json_path)
-      .expect("Expected to read file.")
-      .replace("\r\n", "\n");
+    let json_file_text = fs::read_to_string(&json_path).unwrap().replace("\r\n", "\n");
     let result = parse_to_ast(
       &json_file_text,
       &CollectOptions {
@@ -26,11 +24,21 @@ fn test_specs() {
     )
     .expect("Expected no error.");
     let result_text = parse_result_to_test_str(&result);
-    let expected_text = fs::read_to_string(&text_file_path)
-      .expect("Expected to read expected file.")
-      .replace("\r\n", "\n");
+    let expected_text = fs::read_to_string(&text_file_path).unwrap().replace("\r\n", "\n");
     // fs::write(&text_file_path, result_text.clone()).unwrap();
     assert_eq!(result_text.trim(), expected_text.trim());
+  }
+}
+
+#[test]
+fn test_cst() {
+  for json_path in get_json_file_paths_in_dir(&Path::new("./tests/specs")) {
+    let json_file_text = fs::read_to_string(&json_path).unwrap().replace("\r\n", "\n");
+
+    eprintln!("Parsing: {:?}", json_path);
+    let value = jsonc_parser::cst::CstRootNode::parse(&json_file_text, &ParseOptions::default()).unwrap();
+    let cst_string = value.to_string();
+    assert_eq!(cst_string, json_file_text);
   }
 }
 
