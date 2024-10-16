@@ -40,6 +40,19 @@ macro_rules! add_parent_info_methods {
       let parent_info = self.parent_info()?;
       parent_info.parent.child_at_index(parent_info.child_index + 1)
     }
+
+    pub fn root_node(&self) -> Option<CstRootNode> {
+      let mut current_node: CstNode = self.clone().into();
+      while let Some(parent) = current_node.parent() {
+        match parent {
+          CstContainerNode::Root(node) => return Some(node),
+          _ => {
+            current_node = CstNode::Container(parent);
+          }
+        }
+      }
+      None
+    }
   };
 }
 
@@ -98,6 +111,19 @@ macro_rules! impl_container_methods {
       pub fn child_at_index(&self, index: usize) -> Option<CstNode> {
         self.0.borrow().value.get(index).cloned()
       }
+
+      // destroying doesn't update the parent so this is not public
+      fn destroy(&self) {
+        self.clear_children();
+      }
+
+      pub fn clear_children(&self) {
+        let children = std::mem::take(&mut self.0.borrow_mut().value);
+        for child in children {
+          child.set_parent(None);
+          child.destroy();
+        }
+      }
     }
   };
 }
@@ -147,6 +173,13 @@ impl CstNode {
         CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Comment(_) => true,
       },
       CstNode::Container(_) => false,
+    }
+  }
+
+  fn destroy(self) {
+    match self {
+      CstNode::Container(node) => node.destroy(),
+      CstNode::Leaf(node) => node.set_parent(None),
     }
   }
 
@@ -251,6 +284,24 @@ impl CstContainerNode {
     }
   }
 
+  pub fn clear_children(&self) {
+    match self {
+      CstContainerNode::Root(n) => n.clear_children(),
+      CstContainerNode::Object(n) => n.clear_children(),
+      CstContainerNode::ObjectProp(n) => n.clear_children(),
+      CstContainerNode::Array(n) => n.clear_children(),
+    }
+  }
+
+  fn destroy(self) {
+    match self {
+      CstContainerNode::Root(n) => n.destroy(),
+      CstContainerNode::Object(n) => n.destroy(),
+      CstContainerNode::ObjectProp(n) => n.destroy(),
+      CstContainerNode::Array(n) => n.destroy(),
+    }
+  }
+
   fn parent_info(&self) -> Option<ParentInfo> {
     match self {
       CstContainerNode::Root(node) => node.parent_info(),
@@ -351,7 +402,19 @@ impl From<CstLeafNode> for CstNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct CstRootNode(Rc<RefCell<CstChildrenInner>>);
+pub struct CstRootNode(Rc<RefCell<CstChildrenInner>>, Option<Rc<()>>);
+
+impl Drop for CstRootNode {
+  fn drop(&mut self) {
+    if let Some(user_ref_count) = &self.1 {
+      let count = Rc::strong_count(user_ref_count);
+      if count == 1 {
+        // this is the last remaining user reference to the root, so destroy it
+        self.destroy();
+      }
+    }
+  }
+}
 
 impl_container_methods!(CstRootNode, Root);
 
@@ -589,6 +652,15 @@ impl ObjectPropName {
   }
 }
 
+impl From<ObjectPropName> for CstNode {
+  fn from(value: ObjectPropName) -> Self {
+    match value {
+      ObjectPropName::String(n) => n.into(),
+      ObjectPropName::Word(n) => n.into(),
+    }
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct CstArray(Rc<RefCell<CstChildrenInner>>);
 
@@ -651,10 +723,14 @@ struct CstBuilder<'a> {
 
 impl<'a> CstBuilder<'a> {
   pub fn build(&mut self, ast_value: Option<crate::ast::Value<'a>>) -> CstRootNode {
-    let root_node = CstContainerNode::Root(CstRootNode(Rc::new(RefCell::new(CstChildrenInner {
-      parent: None,
-      value: Vec::new(),
-    }))));
+    let root_node = CstContainerNode::Root(CstRootNode(
+      Rc::new(RefCell::new(CstChildrenInner {
+        parent: None,
+        value: Vec::new(),
+      })),
+      // ensure child nodes only get a None reference here
+      None,
+    ));
 
     if let Some(ast_value) = ast_value {
       let range = ast_value.range();
