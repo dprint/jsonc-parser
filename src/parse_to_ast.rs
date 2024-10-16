@@ -14,11 +14,19 @@ use super::tokens::TokenAndRange;
 /// next token start or end of the file.
 pub type CommentMap<'a> = HashMap<usize, Rc<Vec<Comment<'a>>>>;
 
+#[derive(Default, Debug, PartialEq, Clone)]
+pub enum CommentCollectionStrategy {
+  #[default]
+  Off,
+  Separate,
+  AsTokens,
+}
+
 /// Options for collecting comments and tokens.
 #[derive(Default, Clone)]
 pub struct CollectOptions {
   /// Include comments in the result.
-  pub comments: bool,
+  pub comments: CommentCollectionStrategy,
   /// Include tokens in the result.
   pub tokens: bool,
 }
@@ -67,6 +75,7 @@ struct Context<'a> {
   last_token_end: usize,
   range_stack: Vec<Range>,
   tokens: Option<Vec<TokenAndRange<'a>>>,
+  collect_comments_as_tokens: bool,
   allow_comments: bool,
   allow_trailing_commas: bool,
   allow_loose_object_property_names: bool,
@@ -87,16 +96,9 @@ impl<'a> Context<'a> {
       }
     }
 
-    // capture the token
     if let Some(token) = &token {
       if self.tokens.is_some() {
-        let range = self.create_range_from_last_token();
-        if let Some(tokens) = self.tokens.as_mut() {
-          tokens.push(TokenAndRange {
-            token: token.clone(),
-            range,
-          });
-        }
+        self.capture_token(token.clone());
       }
     }
 
@@ -147,6 +149,9 @@ impl<'a> Context<'a> {
     loop {
       let token = self.scanner.scan()?;
       match token {
+        Some(token @ Token::CommentLine(_) | token @ Token::CommentBlock(_)) if self.collect_comments_as_tokens => {
+          self.capture_token(token);
+        }
         Some(Token::CommentLine(text)) => {
           self.handle_comment(Comment::Line(CommentLine {
             range: self.create_range_from_last_token(),
@@ -164,19 +169,30 @@ impl<'a> Context<'a> {
     }
   }
 
+  fn capture_token(&mut self, token: Token<'a>) {
+    let range = self.create_range_from_last_token();
+    if let Some(tokens) = self.tokens.as_mut() {
+      tokens.push(TokenAndRange {
+        token: token.clone(),
+        range,
+      });
+    }
+  }
+
   fn handle_comment(&mut self, comment: Comment<'a>) -> Result<(), ParseError> {
     if !self.allow_comments {
-      Err(self.create_error("Comments are not allowed"))
-    } else {
-      if self.comments.is_some() {
-        if let Some(comments) = self.current_comments.as_mut() {
-          comments.push(comment);
-        } else {
-          self.current_comments = Some(vec![comment]);
-        }
-      }
-      Ok(())
+      return Err(self.create_error("Comments are not allowed"));
     }
+
+    if self.comments.is_some() {
+      if let Some(comments) = self.current_comments.as_mut() {
+        comments.push(comment);
+      } else {
+        self.current_comments = Some(vec![comment]);
+      }
+    }
+
+    Ok(())
   }
 }
 
@@ -186,11 +202,12 @@ impl<'a> Context<'a> {
 ///
 /// ```
 /// use jsonc_parser::CollectOptions;
+/// use jsonc_parser::CommentCollectionStrategy;
 /// use jsonc_parser::parse_to_ast;
 /// use jsonc_parser::ParseOptions;
 ///
 /// let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &CollectOptions {
-///     comments: true, // include comments in result
+///     comments: CommentCollectionStrategy::Separate, // include comments in result
 ///     tokens: true, // include tokens in result
 /// }, &Default::default()).expect("Should parse.");
 /// // ...inspect parse_result for value, tokens, and comments here...
@@ -202,15 +219,15 @@ pub fn parse_to_ast<'a>(
 ) -> Result<ParseResult<'a>, ParseError> {
   let mut context = Context {
     scanner: Scanner::new(text),
-    comments: if collect_options.comments {
-      Some(HashMap::new())
-    } else {
-      None
+    comments: match collect_options.comments {
+      CommentCollectionStrategy::Separate => Some(Default::default()),
+      CommentCollectionStrategy::Off | CommentCollectionStrategy::AsTokens => None,
     },
     current_comments: None,
     last_token_end: 0,
     range_stack: Vec::new(),
     tokens: if collect_options.tokens { Some(Vec::new()) } else { None },
+    collect_comments_as_tokens: collect_options.comments == CommentCollectionStrategy::AsTokens,
     allow_comments: parse_options.allow_comments,
     allow_trailing_commas: parse_options.allow_trailing_commas,
     allow_loose_object_property_names: parse_options.allow_loose_object_property_names,
@@ -533,7 +550,7 @@ mod tests {
     let result = parse_to_ast(
       "{} // 2",
       &CollectOptions {
-        comments: true,
+        comments: CommentCollectionStrategy::Separate,
         ..Default::default()
       },
       &Default::default(),

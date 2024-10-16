@@ -19,7 +19,7 @@ fn test_specs() {
     let result = parse_to_ast(
       &json_file_text,
       &CollectOptions {
-        comments: true,
+        comments: CommentCollectionStrategy::Separate,
         tokens: true,
       },
       &Default::default(),
@@ -99,7 +99,7 @@ fn value_to_test_str(value: &Value) -> String {
   }
 }
 
-fn range_to_test_str(range: &Range) -> String {
+fn range_to_test_str(range: Range) -> String {
   let mut text = String::new();
   text.push_str("\"range\": {\n");
   text.push_str(&format!("  \"start\": {},\n", range.start));
@@ -109,22 +109,22 @@ fn range_to_test_str(range: &Range) -> String {
 }
 
 fn string_lit_to_test_str(lit: &StringLit) -> String {
-  lit_to_test_str("string", &lit.value, &lit.range)
+  lit_to_test_str("string", &lit.value, lit.range)
 }
 
 fn word_lit_to_test_str(lit: &WordLit) -> String {
-  lit_to_test_str("word", lit.value, &lit.range)
+  lit_to_test_str("word", lit.value, lit.range)
 }
 
 fn number_lit_to_test_str(lit: &NumberLit) -> String {
-  lit_to_test_str("number", lit.value, &lit.range)
+  lit_to_test_str("number", lit.value, lit.range)
 }
 
 fn boolean_lit_to_test_str(lit: &BooleanLit) -> String {
-  lit_to_test_str("boolean", &lit.value.to_string(), &lit.range)
+  lit_to_test_str("boolean", &lit.value.to_string(), lit.range)
 }
 
-fn lit_to_test_str(lit_type: &str, value: &str, range: &Range) -> String {
+fn lit_to_test_str(lit_type: &str, value: &str, range: Range) -> String {
   let mut text = String::new();
   text.push_str("{\n");
   text.push_str(&format!("  \"type\": \"{}\",\n", lit_type));
@@ -138,7 +138,7 @@ fn object_to_test_str(obj: &Object) -> String {
   let mut text = String::new();
   text.push_str("{\n");
   text.push_str("  \"type\": \"object\",\n");
-  text.push_str(&format!("  {},\n", range_to_test_str(&obj.range).replace("\n", "\n  ")));
+  text.push_str(&format!("  {},\n", range_to_test_str(obj.range).replace("\n", "\n  ")));
   text.push_str("  \"properties\": [");
   let prop_count = obj.properties.len();
   for (i, prop) in obj.properties.iter().enumerate() {
@@ -159,7 +159,7 @@ fn object_prop_to_test_str(obj_prop: &ObjectProp) -> String {
   text.push_str("  \"type\": \"objectProp\",\n");
   text.push_str(&format!(
     "  {},\n",
-    range_to_test_str(&obj_prop.range).replace("\n", "\n  ")
+    range_to_test_str(obj_prop.range).replace("\n", "\n  ")
   ));
   text.push_str(&format!(
     "  \"name\": {},\n",
@@ -184,7 +184,7 @@ fn array_to_test_str(arr: &Array) -> String {
   let mut text = String::new();
   text.push_str("{\n");
   text.push_str("  \"type\": \"array\",\n");
-  text.push_str(&format!("  {},\n", range_to_test_str(&arr.range).replace("\n", "\n  ")));
+  text.push_str(&format!("  {},\n", range_to_test_str(arr.range).replace("\n", "\n  ")));
   text.push_str("  \"elements\": [");
   let elements_count = arr.elements.len();
   for (i, element) in arr.elements.iter().enumerate() {
@@ -205,7 +205,7 @@ fn null_keyword_to_test_str(null_keyword: &NullKeyword) -> String {
   text.push_str("  \"type\": \"null\",\n");
   text.push_str(&format!(
     "  {}\n",
-    range_to_test_str(&null_keyword.range).replace("\n", "\n  ")
+    range_to_test_str(null_keyword.range).replace("\n", "\n  ")
   ));
   text.push_str("}");
   text
@@ -237,11 +237,11 @@ fn comment_to_test_str(comment: &Comment) -> String {
 }
 
 fn comment_line_to_test_str(line: &CommentLine) -> String {
-  lit_to_test_str("line", line.text, &line.range)
+  lit_to_test_str("line", line.text, line.range)
 }
 
 fn comment_block_to_test_str(block: &CommentBlock) -> String {
-  lit_to_test_str("block", block.text, &block.range)
+  lit_to_test_str("block", block.text, block.range)
 }
 
 fn escape_json_str(text: &str) -> String {

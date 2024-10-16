@@ -16,7 +16,7 @@ pub struct ParseError {
 
 impl ParseError {
   pub(crate) fn new(range: Range, message: &str, file_text: &str) -> ParseError {
-    let display_message = get_message_with_range(&range, message, file_text);
+    let display_message = get_message_with_range(range, message, file_text);
     ParseError {
       message: message.to_string(),
       range,
@@ -37,7 +37,7 @@ impl Error for ParseError {
   }
 }
 
-fn get_message_with_range(range: &Range, message: &str, file_text: &str) -> String {
+fn get_message_with_range(range: Range, message: &str, file_text: &str) -> String {
   let mut line_index = 0;
   let mut column_index = 0;
   for c in file_text[..range.start].chars() {

@@ -19,7 +19,7 @@ pub fn parse_to_value<'a>(text: &'a str, options: &ParseOptions) -> Result<Optio
   let value = parse_to_ast(
     text,
     &CollectOptions {
-      comments: false,
+      comments: crate::CommentCollectionStrategy::Off,
       tokens: false,
     },
     options,
