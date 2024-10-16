@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::fmt::Display;
 
 use super::common::Range;
 use super::common::Ranged;
@@ -33,6 +34,15 @@ impl CstRootNode {
   }
 }
 
+impl Display for CstRootNode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for child in &self.children {
+      write!(f, "{}", child)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum CstNode {
   StringLit(CstStringLit),
@@ -44,8 +54,26 @@ pub enum CstNode {
   NullKeyword(CstNullKeyword),
   WordLit(CstWordLit),
   Token(CstToken),
-  Whitespace(Whitespace),
+  Whitespace(CstWhitespace),
   Comment(CstComment),
+}
+
+impl Display for CstNode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      CstNode::StringLit(node) => write!(f, "{}", node),
+      CstNode::NumberLit(node) => write!(f, "{}", node),
+      CstNode::BooleanLit(node) => write!(f, "{}", node),
+      CstNode::Object(node) => write!(f, "{}", node),
+      CstNode::ObjectProp(node) => write!(f, "{}", node),
+      CstNode::Array(node) => write!(f, "{}", node),
+      CstNode::NullKeyword(node) => write!(f, "{}", node),
+      CstNode::WordLit(node) => write!(f, "{}", node),
+      CstNode::Token(node) => write!(f, "{}", node),
+      CstNode::Whitespace(node) => write!(f, "{}", node),
+      CstNode::Comment(node) => write!(f, "{}", node),
+    }
+  }
 }
 
 impl Ranged for CstNode {
@@ -73,16 +101,34 @@ pub struct CstStringLit {
   pub value: String,
 }
 
+impl Display for CstStringLit {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "\"{}\"", self.value)
+  }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct CstWordLit {
   pub range: Range,
   pub value: String,
 }
 
+impl Display for CstWordLit {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.value)
+  }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct CstNumberLit {
   pub range: Range,
   pub value: String,
+}
+
+impl Display for CstNumberLit {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.value)
+  }
 }
 
 /// Represents a boolean (ex. `true` or `false`).
@@ -92,10 +138,26 @@ pub struct CstBooleanLit {
   pub value: bool,
 }
 
+impl Display for CstBooleanLit {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    if self.value {
+      write!(f, "true")
+    } else {
+      write!(f, "false")
+    }
+  }
+}
+
 /// Represents the null keyword (ex. `null`).
 #[derive(Debug, PartialEq, Clone)]
 pub struct CstNullKeyword {
   pub range: Range,
+}
+
+impl Display for CstNullKeyword {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "null")
+  }
 }
 
 /// Represents an object that may contain properties (ex. `{}`, `{ "prop": 4 }`).
@@ -105,10 +167,28 @@ pub struct CstObject {
   pub children: Vec<CstNode>,
 }
 
+impl Display for CstObject {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for child in &self.children {
+      write!(f, "{}", child)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct CstObjectProp {
   pub range: Range,
   pub children: Vec<CstNode>,
+}
+
+impl Display for CstObjectProp {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for child in &self.children {
+      write!(f, "{}", child)?;
+    }
+    Ok(())
+  }
 }
 
 /// Represents an object property name that may or may not be in quotes.
@@ -124,22 +204,49 @@ pub struct CstArray {
   pub children: Vec<CstNode>,
 }
 
+impl Display for CstArray {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for child in &self.children {
+      write!(f, "{}", child)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct CstToken {
   pub range: Range,
   pub char: char,
 }
 
+impl Display for CstToken {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.char)
+  }
+}
+
 #[derive(Debug, PartialEq, Clone)]
-pub struct Whitespace {
+pub struct CstWhitespace {
   pub range: Range,
   pub text: String,
+}
+
+impl Display for CstWhitespace {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.text)
+  }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CstComment {
   pub range: Range,
   pub text: String,
+}
+
+impl Display for CstComment {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.text)
+  }
 }
 
 struct CstBuilder<'a> {
@@ -174,7 +281,7 @@ impl<'a> CstBuilder<'a> {
         self.tokens.pop_front();
       } else if token.range.start < to {
         if token.range.start > last_from {
-          trivia.push(CstNode::Whitespace(Whitespace {
+          trivia.push(CstNode::Whitespace(CstWhitespace {
             range: Range::new(last_from, token.range.start),
             text: self.text[last_from..token.range.start].to_string(),
           }));
