@@ -18,8 +18,34 @@ macro_rules! create_inner {
   };
 }
 
+macro_rules! add_parent_info_methods {
+  () => {
+    pub fn parent(&self) -> Option<CstContainerNode> {
+      self.parent_info().map(|p| p.parent)
+    }
+
+    pub fn child_index(&self) -> usize {
+      self.parent_info().map(|p| p.child_index).unwrap_or(0)
+    }
+  };
+}
+
+macro_rules! add_parent_methods {
+  () => {
+    add_parent_info_methods!();
+
+    fn parent_info(&self) -> Option<ParentInfo> {
+      self.0.borrow().parent.clone()
+    }
+
+    fn set_parent(&self, parent: Option<ParentInfo>) {
+      self.0.borrow_mut().parent = parent;
+    }
+  };
+}
+
 #[derive(Clone, Debug)]
-pub struct ParentInfo {
+struct ParentInfo {
   pub parent: CstContainerNode,
   pub child_index: usize,
 }
@@ -36,6 +62,8 @@ type CstChildrenInner = CstValueInner<Vec<CstNode>>;
 pub struct CstRootNode(Rc<RefCell<CstChildrenInner>>);
 
 impl CstRootNode {
+  add_parent_methods!();
+
   pub fn parse(text: &str, parse_options: &ParseOptions) -> Result<Self, ParseError> {
     let parse_result = parse_to_ast(
       text,
@@ -55,14 +83,6 @@ impl CstRootNode {
       .build(parse_result.value),
     )
   }
-
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
 }
 
 impl Display for CstRootNode {
@@ -81,7 +101,9 @@ pub enum CstNode {
 }
 
 impl CstNode {
-  pub fn parent_info(&self) -> Option<ParentInfo> {
+  add_parent_info_methods!();
+
+  fn parent_info(&self) -> Option<ParentInfo> {
     match self {
       CstNode::Container(node) => node.parent_info(),
       CstNode::Leaf(node) => node.parent_info(),
@@ -132,7 +154,9 @@ pub enum CstContainerNode {
 }
 
 impl CstContainerNode {
-  pub fn parent_info(&self) -> Option<ParentInfo> {
+  add_parent_info_methods!();
+
+  fn parent_info(&self) -> Option<ParentInfo> {
     match self {
       CstContainerNode::Root(node) => node.parent_info(),
       CstContainerNode::Object(node) => node.parent_info(),
@@ -175,6 +199,21 @@ pub enum CstLeafNode {
 }
 
 impl CstLeafNode {
+  add_parent_info_methods!();
+
+  fn parent_info(&self) -> Option<ParentInfo> {
+    match self {
+      CstLeafNode::BooleanLit(node) => node.parent_info(),
+      CstLeafNode::NullKeyword(node) => node.parent_info(),
+      CstLeafNode::NumberLit(node) => node.parent_info(),
+      CstLeafNode::StringLit(node) => node.parent_info(),
+      CstLeafNode::WordLit(node) => node.parent_info(),
+      CstLeafNode::Token(node) => node.parent_info(),
+      CstLeafNode::Whitespace(node) => node.parent_info(),
+      CstLeafNode::Comment(node) => node.parent_info(),
+    }
+  }
+
   fn set_parent(&self, parent: Option<ParentInfo>) {
     match self {
       CstLeafNode::BooleanLit(node) => node.set_parent(parent),
@@ -185,19 +224,6 @@ impl CstLeafNode {
       CstLeafNode::Token(node) => node.set_parent(parent),
       CstLeafNode::Whitespace(node) => node.set_parent(parent),
       CstLeafNode::Comment(node) => node.set_parent(parent),
-    }
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    match self {
-      CstLeafNode::BooleanLit(node) => node.parent_info(),
-      CstLeafNode::NullKeyword(node) => node.parent_info(),
-      CstLeafNode::NumberLit(node) => node.parent_info(),
-      CstLeafNode::StringLit(node) => node.parent_info(),
-      CstLeafNode::WordLit(node) => node.parent_info(),
-      CstLeafNode::Token(node) => node.parent_info(),
-      CstLeafNode::Whitespace(node) => node.parent_info(),
-      CstLeafNode::Comment(node) => node.parent_info(),
     }
   }
 }
@@ -222,13 +248,7 @@ impl Display for CstLeafNode {
 pub struct CstStringLit(Rc<RefCell<CstValueInner<String>>>);
 
 impl CstStringLit {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstStringLit {
@@ -241,13 +261,7 @@ impl Display for CstStringLit {
 pub struct CstWordLit(Rc<RefCell<CstValueInner<String>>>);
 
 impl CstWordLit {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstWordLit {
@@ -260,13 +274,7 @@ impl Display for CstWordLit {
 pub struct CstNumberLit(Rc<RefCell<CstValueInner<String>>>);
 
 impl CstNumberLit {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstNumberLit {
@@ -280,13 +288,7 @@ impl Display for CstNumberLit {
 pub struct CstBooleanLit(Rc<RefCell<CstValueInner<bool>>>);
 
 impl CstBooleanLit {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstBooleanLit {
@@ -304,13 +306,7 @@ impl Display for CstBooleanLit {
 pub struct CstNullKeyword(Rc<RefCell<CstValueInner<()>>>);
 
 impl CstNullKeyword {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstNullKeyword {
@@ -324,13 +320,7 @@ impl Display for CstNullKeyword {
 pub struct CstObject(Rc<RefCell<CstChildrenInner>>);
 
 impl CstObject {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstObject {
@@ -346,13 +336,7 @@ impl Display for CstObject {
 pub struct CstObjectProp(Rc<RefCell<CstChildrenInner>>);
 
 impl CstObjectProp {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 
   pub fn name(&self) -> ObjectPropName {
     for child in &self.0.borrow().value {
@@ -425,7 +409,9 @@ pub enum ObjectPropName {
 }
 
 impl ObjectPropName {
-  pub fn parent_info(&self) -> Option<ParentInfo> {
+  add_parent_info_methods!();
+
+  fn parent_info(&self) -> Option<ParentInfo> {
     match self {
       ObjectPropName::String(n) => n.parent_info(),
       ObjectPropName::Word(n) => n.parent_info(),
@@ -437,13 +423,7 @@ impl ObjectPropName {
 pub struct CstArray(Rc<RefCell<CstChildrenInner>>);
 
 impl CstArray {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstArray {
@@ -459,17 +439,7 @@ impl Display for CstArray {
 pub struct CstToken(Rc<RefCell<CstValueInner<char>>>);
 
 impl CstToken {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
-
-  pub fn set_value(&self, value: char) {
-    self.0.borrow_mut().value = value;
-  }
+  add_parent_methods!();
 
   pub fn value(&self) -> char {
     self.0.borrow().value
@@ -486,13 +456,7 @@ impl Display for CstToken {
 pub struct CstWhitespace(Rc<RefCell<CstValueInner<String>>>);
 
 impl CstWhitespace {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstWhitespace {
@@ -505,13 +469,7 @@ impl Display for CstWhitespace {
 pub struct CstComment(Rc<RefCell<CstValueInner<String>>>);
 
 impl CstComment {
-  fn set_parent(&self, parent: Option<ParentInfo>) {
-    self.0.borrow_mut().parent = parent;
-  }
-
-  pub fn parent_info(&self) -> Option<ParentInfo> {
-    self.0.borrow().parent.clone()
-  }
+  add_parent_methods!();
 }
 
 impl Display for CstComment {
