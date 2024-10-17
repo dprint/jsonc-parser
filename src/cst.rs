@@ -27,9 +27,7 @@ macro_rules! add_parent_info_methods {
     }
 
     pub fn ancestors(&self) -> impl Iterator<Item = CstContainerNode> {
-      AncestorIterator {
-        current_node: self.clone().into(),
-      }
+      AncestorIterator::new(self.clone().into())
     }
 
     pub fn child_index(&self) -> usize {
@@ -48,9 +46,7 @@ macro_rules! add_parent_info_methods {
     }
 
     pub fn previous_siblings(&self) -> impl Iterator<Item = CstNode> {
-      PreviousSiblingIterator {
-        current_node: self.clone().into(),
-      }
+      PreviousSiblingIterator::new(self.clone().into())
     }
 
     pub fn next_sibling(&self) -> Option<CstNode> {
@@ -62,9 +58,7 @@ macro_rules! add_parent_info_methods {
     }
 
     pub fn next_siblings(&self) -> impl Iterator<Item = CstNode> {
-      NextSiblingIterator {
-        current_node: self.clone().into(),
-      }
+      NextSiblingIterator::new(self.clone().into())
     }
 
     pub fn root_node(&self) -> Option<CstRootNode> {
@@ -153,13 +147,13 @@ macro_rules! impl_container_methods {
         self.0.borrow().value.clone()
       }
 
-      pub fn children_exclude_trivia(&self) -> Vec<CstNode> {
+      pub fn children_exclude_trivia_and_tokens(&self) -> Vec<CstNode> {
         self
           .0
           .borrow()
           .value
           .iter()
-          .filter(|n| !n.is_trivia())
+          .filter(|n| !n.is_trivia() && !n.is_token())
           .cloned()
           .collect()
       }
@@ -178,8 +172,17 @@ macro_rules! impl_container_methods {
       fn remove_child_set_no_parent(&self, index: usize) {
         let mut inner = self.0.borrow_mut();
         if index < inner.value.len() {
+          let container = self.clone().into();
           let child = inner.value.remove(index);
           child.set_parent(None);
+
+          // update the index of the remaining children
+          for index in index..inner.value.len() {
+            inner.value[index].set_parent(Some(ParentInfo {
+              parent: WeakParent::from_container(&container),
+              child_index: index,
+            }));
+          }
         }
       }
     }
@@ -263,10 +266,32 @@ impl CstNode {
         | CstLeafNode::NullKeyword(_)
         | CstLeafNode::NumberLit(_)
         | CstLeafNode::StringLit(_)
+        | CstLeafNode::Token(_)
         | CstLeafNode::WordLit(_) => false,
-        CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => true,
+        CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => true,
       },
       CstNode::Container(_) => false,
+    }
+  }
+
+  pub fn is_newline(&self) -> bool {
+    match self {
+      CstNode::Leaf(CstLeafNode::Newline(_)) => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_comma(&self) -> bool {
+    match self {
+      CstNode::Leaf(CstLeafNode::Token(t)) => t.value() == ',',
+      _ => false,
+    }
+  }
+
+  pub fn is_token(&self) -> bool {
+    match self {
+      CstNode::Leaf(CstLeafNode::Token(_)) => true,
+      _ => false,
     }
   }
 
@@ -277,9 +302,9 @@ impl CstNode {
     }
   }
 
-  pub fn children_exclude_trivia(&self) -> Vec<CstNode> {
+  pub fn children_exclude_trivia_and_tokens(&self) -> Vec<CstNode> {
     match self {
-      CstNode::Container(n) => n.children_exclude_trivia(),
+      CstNode::Container(n) => n.children_exclude_trivia_and_tokens(),
       CstNode::Leaf(_) => Vec::new(),
     }
   }
@@ -444,12 +469,12 @@ impl CstContainerNode {
     }
   }
 
-  pub fn children_exclude_trivia(&self) -> Vec<CstNode> {
+  pub fn children_exclude_trivia_and_tokens(&self) -> Vec<CstNode> {
     match self {
-      CstContainerNode::Root(n) => n.children_exclude_trivia(),
-      CstContainerNode::Object(n) => n.children_exclude_trivia(),
-      CstContainerNode::ObjectProp(n) => n.children_exclude_trivia(),
-      CstContainerNode::Array(n) => n.children_exclude_trivia(),
+      CstContainerNode::Root(n) => n.children_exclude_trivia_and_tokens(),
+      CstContainerNode::Object(n) => n.children_exclude_trivia_and_tokens(),
+      CstContainerNode::ObjectProp(n) => n.children_exclude_trivia_and_tokens(),
+      CstContainerNode::Array(n) => n.children_exclude_trivia_and_tokens(),
     }
   }
 
@@ -612,7 +637,7 @@ impl CstRootNode {
   /// Computes the single indentation text of the file.
   pub fn single_indent_text(&self) -> Option<String> {
     let root_value = self.root_value()?;
-    let first_non_trivia_child = root_value.children_exclude_trivia().first()?.clone();
+    let first_non_trivia_child = root_value.children_exclude_trivia_and_tokens().first()?.clone();
     let mut last_whitespace = None;
     for previous_trivia in first_non_trivia_child.previous_siblings() {
       match previous_trivia {
@@ -916,21 +941,46 @@ impl CstObjectProp {
 
   pub fn remove(self) {
     let has_trailing_comma = self.has_trailing_comma();
-    self
-      .previous_siblings()
-      .take_while(|n| n.is_trivia() && n.as_newline().is_none())
-      .for_each(|t| t.remove_raw());
-    if has_trailing_comma {
-      self
-        .next_siblings()
-        .take_while(|n| n.as_token().is_none())
-        .for_each(|t| t.remove_raw());
-    } else {
-      self
-        .next_siblings()
-        .take_while(|n| n.is_trivia() && n.as_newline().is_none())
-        .for_each(|t| t.remove_raw());
+    for previous in self.previous_siblings() {
+      if previous.is_trivia() && !previous.is_newline() {
+        previous.remove_raw();
+      } else {
+        break;
+      }
     }
+
+    let mut found_newline = false;
+    let mut next_siblings = self.next_siblings();
+
+    // remove up to the trailing comma
+    if has_trailing_comma {
+      for next in next_siblings.by_ref() {
+        let is_comma = next.is_comma();
+        if next.is_newline() {
+          found_newline = true;
+        }
+        next.remove_raw();
+        if is_comma {
+          break;
+        }
+      }
+    }
+
+    // remove up to the newline
+    if !found_newline {
+      for next in next_siblings {
+        if next.is_trivia() {
+          if next.is_newline() {
+            next.remove_raw();
+            break;
+          }
+          next.remove_raw();
+        } else {
+          break;
+        }
+      }
+    }
+
     self.remove_raw();
   }
 }
@@ -1280,44 +1330,73 @@ impl<'a> CstBuilder<'a> {
 }
 
 struct AncestorIterator {
-  current_node: CstNode,
+  // pre-emptively store the next ancestor in case
+  // the currently returned sibling is removed
+  next: Option<CstContainerNode>,
+}
+
+impl AncestorIterator {
+  pub fn new(node: CstNode) -> Self {
+    Self {
+      next: node.parent_info().map(|i| i.parent.as_container_node()),
+    }
+  }
 }
 
 impl Iterator for AncestorIterator {
   type Item = CstContainerNode;
 
   fn next(&mut self) -> Option<Self::Item> {
-    let parent_info = self.current_node.parent_info()?;
-    let container = parent_info.parent.as_container_node();
-    self.current_node = container.clone().into();
-    Some(container)
+    let next = self.next.take()?;
+    self.next = next.parent_info().map(|i| i.parent.as_container_node());
+    Some(next)
   }
 }
 
 struct NextSiblingIterator {
-  current_node: CstNode,
+  // pre-emptively store the next sibling in case
+  // the currently returned sibling is removed
+  next: Option<CstNode>,
+}
+
+impl NextSiblingIterator {
+  pub fn new(node: CstNode) -> Self {
+    Self {
+      next: node.next_sibling(),
+    }
+  }
 }
 
 impl Iterator for NextSiblingIterator {
   type Item = CstNode;
 
   fn next(&mut self) -> Option<Self::Item> {
-    let next_sibling = self.current_node.next_sibling()?;
-    self.current_node = next_sibling.clone();
+    let next_sibling = self.next.take()?;
+    self.next = next_sibling.next_sibling();
     Some(next_sibling)
   }
 }
 
 struct PreviousSiblingIterator {
-  current_node: CstNode,
+  // pre-emptively store the previous sibling in case
+  // the currently returned sibling is removed
+  previous: Option<CstNode>,
+}
+
+impl PreviousSiblingIterator {
+  pub fn new(node: CstNode) -> Self {
+    Self {
+      previous: node.previous_sibling(),
+    }
+  }
 }
 
 impl Iterator for PreviousSiblingIterator {
   type Item = CstNode;
 
   fn next(&mut self) -> Option<Self::Item> {
-    let previous_sibling = self.current_node.previous_sibling()?;
-    self.current_node = previous_sibling.clone();
+    let previous_sibling = self.previous.take()?;
+    self.previous = previous_sibling.previous_sibling();
     Some(previous_sibling)
   }
 }
@@ -1368,7 +1447,7 @@ mod test {
     ];
     for (expected, text) in cases {
       let root = build_cts(text);
-      assert_eq!(root.single_indent_text(), Some(expected.to_string()));
+      assert_eq!(root.single_indent_text(), Some(expected.to_string()), "Text: {}", text);
     }
   }
 
@@ -1469,6 +1548,7 @@ mod test {
       prop.remove();
       assert_eq!(cst.to_string(), expected);
     }
+
     run_test(
       "value2",
       r#"{
@@ -1481,6 +1561,22 @@ mod test {
     "value": 5,
     // comment
     value3: true
+}"#,
+    );
+
+    run_test(
+      "value2",
+      r#"{
+    "value": 5,
+    // comment
+    "value2": "hello"
+    ,value3: true
+}"#,
+      // this is fine... people doing stupid things
+      r#"{
+    "value": 5,
+    // comment
+value3: true
 }"#,
     );
   }
