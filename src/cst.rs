@@ -26,6 +26,12 @@ macro_rules! add_parent_info_methods {
       self.parent_info().map(|p| p.parent.as_container_node())
     }
 
+    pub fn ancestors(&self) -> impl Iterator<Item = CstContainerNode> {
+      AncestorIterator {
+        current_node: self.clone().into(),
+      }
+    }
+
     pub fn child_index(&self) -> usize {
       self.parent_info().map(|p| p.child_index).unwrap_or(0)
     }
@@ -41,6 +47,12 @@ macro_rules! add_parent_info_methods {
         .child_at_index(parent_info.child_index - 1)
     }
 
+    pub fn previous_siblings(&self) -> impl Iterator<Item = CstNode> {
+      PreviousSiblingIterator {
+        current_node: self.clone().into(),
+      }
+    }
+
     pub fn next_sibling(&self) -> Option<CstNode> {
       let parent_info = self.parent_info()?;
       parent_info
@@ -49,14 +61,39 @@ macro_rules! add_parent_info_methods {
         .child_at_index(parent_info.child_index + 1)
     }
 
+    pub fn next_siblings(&self) -> impl Iterator<Item = CstNode> {
+      NextSiblingIterator {
+        current_node: self.clone().into(),
+      }
+    }
+
     pub fn root_node(&self) -> Option<CstRootNode> {
-      let mut current_node: CstNode = self.clone().into();
-      while let Some(parent) = current_node.parent() {
-        match parent {
-          CstContainerNode::Root(node) => return Some(node),
-          _ => {
-            current_node = CstNode::Container(parent);
-          }
+      for parent in self.ancestors() {
+        if let CstContainerNode::Root(node) = parent {
+          return Some(node);
+        }
+      }
+      None
+    }
+
+    /// Returns the indentation text if it can be determined.
+    pub fn indent_text(&self) -> Option<String> {
+      let mut last_whitespace: Option<CstWhitespace> = None;
+      for previous_sibling in self.previous_siblings() {
+        match previous_sibling {
+          CstNode::Container(_) => return None,
+          CstNode::Leaf(leaf) => match leaf {
+            CstLeafNode::Newline(_) => {
+              return last_whitespace.map(|whitespace| whitespace.value());
+            }
+            CstLeafNode::Whitespace(whitespace) => {
+              last_whitespace = Some(whitespace);
+            }
+            CstLeafNode::Comment(_) => {
+              last_whitespace = None;
+            }
+            _ => return None,
+          },
         }
       }
       None
@@ -159,6 +196,9 @@ impl WeakParent {
   }
 
   pub fn as_container_node(&self) -> CstContainerNode {
+    // It's much better to panic here to let the developer know an ancestor has been
+    // lost due to being dropped because if we did something like returning None then
+    // it might create strange bugs that are hard to track down.
     const PANIC_MSG: &str = "Programming error. Ensure you keep around the RootNode for the duration of using the CST.";
     match self {
       WeakParent::Root(weak) => CstRootNode(weak.upgrade().expect(PANIC_MSG)).into(),
@@ -192,7 +232,7 @@ pub enum CstNode {
 impl CstNode {
   add_parent_info_methods!();
 
-  /// Gets if this node is comments, whitespace, or a non-literal token (ex. brace, colon).
+  /// Gets if this node is comments, whitespace, newlines, or a non-literal token (ex. brace, colon).
   pub fn is_trivia(&self) -> bool {
     match self {
       CstNode::Leaf(leaf) => match leaf {
@@ -201,7 +241,7 @@ impl CstNode {
         | CstLeafNode::NumberLit(_)
         | CstLeafNode::StringLit(_)
         | CstLeafNode::WordLit(_) => false,
-        CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Comment(_) => true,
+        CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => true,
       },
       CstNode::Container(_) => false,
     }
@@ -294,6 +334,13 @@ impl CstNode {
   pub fn as_token(&self) -> Option<&CstToken> {
     match self {
       CstNode::Leaf(CstLeafNode::Token(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_newline(&self) -> Option<&CstNewline> {
+    match self {
+      CstNode::Leaf(CstLeafNode::Newline(node)) => Some(node),
       _ => None,
     }
   }
@@ -446,6 +493,7 @@ pub enum CstLeafNode {
   WordLit(CstWordLit),
   Token(CstToken),
   Whitespace(CstWhitespace),
+  Newline(CstNewline),
   Comment(CstComment),
 }
 
@@ -461,6 +509,7 @@ impl CstLeafNode {
       CstLeafNode::WordLit(node) => node.parent_info(),
       CstLeafNode::Token(node) => node.parent_info(),
       CstLeafNode::Whitespace(node) => node.parent_info(),
+      CstLeafNode::Newline(node) => node.parent_info(),
       CstLeafNode::Comment(node) => node.parent_info(),
     }
   }
@@ -474,6 +523,7 @@ impl CstLeafNode {
       CstLeafNode::WordLit(node) => node.set_parent(parent),
       CstLeafNode::Token(node) => node.set_parent(parent),
       CstLeafNode::Whitespace(node) => node.set_parent(parent),
+      CstLeafNode::Newline(node) => node.set_parent(parent),
       CstLeafNode::Comment(node) => node.set_parent(parent),
     }
   }
@@ -489,6 +539,7 @@ impl Display for CstLeafNode {
       CstLeafNode::WordLit(node) => node.fmt(f),
       CstLeafNode::Token(node) => node.fmt(f),
       CstLeafNode::Whitespace(node) => node.fmt(f),
+      CstLeafNode::Newline(node) => node.fmt(f),
       CstLeafNode::Comment(node) => node.fmt(f),
     }
   }
@@ -530,19 +581,19 @@ impl CstRootNode {
   pub fn single_indent_text(&self) -> Option<String> {
     let root_value = self.root_value()?;
     let first_non_trivia_child = root_value.children_exclude_trivia().first()?.clone();
-    let mut looking_node = first_non_trivia_child;
-    while let Some(previous_trivia) = looking_node.previous_sibling() {
-      if let CstNode::Leaf(CstLeafNode::Whitespace(whitespace)) = &previous_trivia {
-        let whitespace = whitespace.0.borrow();
-        if whitespace.value.contains('\n') {
-          let last_line = whitespace.value.lines().last()?;
-          if !last_line.is_empty() {
-            return Some(last_line.to_string());
-          }
+    let mut last_whitespace = None;
+    for previous_trivia in first_non_trivia_child.previous_siblings() {
+      match previous_trivia {
+        CstNode::Leaf(CstLeafNode::Whitespace(whitespace)) => {
+          last_whitespace = Some(whitespace);
+        }
+        CstNode::Leaf(CstLeafNode::Newline(_)) => {
+          return last_whitespace.map(|whitespace| whitespace.0.borrow().value.clone());
+        }
+        _ => {
+          last_whitespace = None;
         }
       }
-
-      looking_node = previous_trivia;
     }
     None
   }
@@ -579,7 +630,13 @@ impl CstStringLit {
     self.0.borrow_mut().value = value;
   }
 
-  pub fn value(&self) -> Result<String, ParseStringErrorKind> {
+  /// Gets the raw unescaped value including quotes.
+  pub fn raw_value(&self) -> String {
+    self.0.borrow().value.clone()
+  }
+
+  /// Gets the decoded string value.
+  pub fn decoded_value(&self) -> Result<String, ParseStringErrorKind> {
     let inner = self.0.borrow();
     crate::string::parse_string(&inner.value)
       .map(|value| value.into_owned())
@@ -597,6 +654,13 @@ impl Display for CstStringLit {
 pub struct CstWordLit(Rc<RefCell<CstValueInner<String>>>);
 
 impl_leaf_methods!(CstWordLit, WordLit);
+
+impl CstWordLit {
+  /// Sets the raw value of the word literal.
+  pub fn set_raw_value(&self, value: String) {
+    self.0.borrow_mut().value = value;
+  }
+}
 
 impl Display for CstWordLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -671,7 +735,7 @@ impl CstObject {
         let Ok(prop_name) = prop.name() else {
           continue;
         };
-        let Ok(prop_name_str) = prop_name.value() else {
+        let Ok(prop_name_str) = prop_name.decoded_value() else {
           continue;
         };
         if prop_name_str == name {
@@ -680,6 +744,25 @@ impl CstObject {
       }
     }
     None
+  }
+
+  pub fn properties(&self) -> Vec<CstObjectProp> {
+    self
+      .0
+      .borrow()
+      .value
+      .iter()
+      .filter_map(|child| match child {
+        CstNode::Container(CstContainerNode::ObjectProp(prop)) => Some(prop.clone()),
+        _ => None,
+      })
+      .collect()
+  }
+
+  pub fn insert_property(&self, index: usize, name: &str, value: serde_json::Value) {
+    let properties = self.properties();
+    let previous_prop = if index == 0 { None } else { properties.get(index - 1) };
+    let next_prop = properties.get(index);
   }
 }
 
@@ -738,7 +821,7 @@ impl CstObjectProp {
           | CstLeafNode::NumberLit(_)
           | CstLeafNode::StringLit(_)
           | CstLeafNode::WordLit(_) => return Ok(child.clone()),
-          CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Comment(_) => {
+          CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => {
             // ignore
           }
         },
@@ -751,6 +834,52 @@ impl CstObjectProp {
 
     // todo(THIS PR): make this return an error when not found
     unreachable!();
+  }
+
+  pub fn previous_property(&self) -> Option<CstObjectProp> {
+    for sibling in self.previous_siblings() {
+      if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = sibling {
+        return Some(prop);
+      }
+    }
+    None
+  }
+
+  pub fn next_property(&self) -> Option<CstObjectProp> {
+    for sibling in self.next_siblings() {
+      if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = sibling {
+        return Some(prop);
+      }
+    }
+    None
+  }
+
+  pub fn has_trailing_comma(&self) -> bool {
+    let current_node = self.clone();
+    for next_sibling in current_node.next_siblings() {
+      match next_sibling {
+        CstNode::Container(_) => return false,
+        CstNode::Leaf(leaf) => match leaf {
+          CstLeafNode::BooleanLit(_)
+          | CstLeafNode::NullKeyword(_)
+          | CstLeafNode::NumberLit(_)
+          | CstLeafNode::StringLit(_)
+          | CstLeafNode::WordLit(_) => return false,
+          CstLeafNode::Token(token) => {
+            if token.value() == ',' {
+              return true;
+            } else {
+              return false;
+            }
+          }
+          CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => {
+            // skip over
+          }
+        },
+      }
+    }
+
+    false
   }
 }
 
@@ -773,9 +902,23 @@ pub enum ObjectPropName {
 impl ObjectPropName {
   add_parent_info_methods!();
 
-  pub fn value(&self) -> Result<String, ParseStringErrorKind> {
+  pub fn as_string_lit(&self) -> Option<&CstStringLit> {
     match self {
-      ObjectPropName::String(n) => n.value(),
+      ObjectPropName::String(n) => Some(n),
+      ObjectPropName::Word(_) => None,
+    }
+  }
+
+  pub fn as_word_lit(&self) -> Option<&CstWordLit> {
+    match self {
+      ObjectPropName::String(_) => None,
+      ObjectPropName::Word(n) => Some(n),
+    }
+  }
+
+  pub fn decoded_value(&self) -> Result<String, ParseStringErrorKind> {
+    match self {
+      ObjectPropName::String(n) => n.decoded_value(),
       ObjectPropName::Word(n) => Ok(n.0.borrow().value.clone()),
     }
   }
@@ -837,9 +980,35 @@ pub struct CstWhitespace(Rc<RefCell<CstValueInner<String>>>);
 
 impl_leaf_methods!(CstWhitespace, Whitespace);
 
+impl CstWhitespace {
+  pub fn value(&self) -> String {
+    self.0.borrow().value.clone()
+  }
+}
+
 impl Display for CstWhitespace {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", self.0.borrow().value)
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CstNewlineKind {
+  LineFeed,
+  CarriageReturnLineFeed,
+}
+
+#[derive(Debug, Clone)]
+pub struct CstNewline(Rc<RefCell<CstValueInner<CstNewlineKind>>>);
+
+impl_leaf_methods!(CstNewline, Newline);
+
+impl Display for CstNewline {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self.0.borrow().value {
+      CstNewlineKind::LineFeed => write!(f, "\n"),
+      CstNewlineKind::CarriageReturnLineFeed => write!(f, "\r\n"),
+    }
   }
 }
 
@@ -892,7 +1061,7 @@ impl<'a> CstBuilder<'a> {
         self.tokens.pop_front();
       } else if token.range.start < to {
         if token.range.start > last_from {
-          self.build_whitespace(container, self.text[last_from..token.range.start].to_string());
+          self.build_whitespace(container, &self.text[last_from..token.range.start]);
         }
         let token = self.tokens.pop_front().unwrap();
         match token.token {
@@ -926,7 +1095,7 @@ impl<'a> CstBuilder<'a> {
     }
 
     if last_from < to {
-      self.build_whitespace(container, self.text[last_from..to].to_string());
+      self.build_whitespace(container, &self.text[last_from..to]);
     }
   }
 
@@ -989,11 +1158,35 @@ impl<'a> CstBuilder<'a> {
     self.raw_append_child(container, CstToken(create_inner!(value)).into());
   }
 
-  fn build_whitespace(&self, container: &CstContainerNode, value: String) {
+  fn build_whitespace(&self, container: &CstContainerNode, value: &str) {
     if value.is_empty() {
       return;
     }
-    self.raw_append_child(container, CstWhitespace(create_inner!(value)).into());
+
+    let mut last_found_index = 0;
+    let mut chars = value.char_indices().peekable();
+    let maybe_add_previous_text = |from: usize, to: usize| {
+      let text = &value[from..to];
+      if !text.is_empty() {
+        self.raw_append_child(container, CstWhitespace(create_inner!(text.to_string())).into());
+      }
+    };
+    while let Some((i, c)) = chars.next() {
+      if c == '\r' && chars.peek().map(|(_, c)| *c) == Some('\n') {
+        maybe_add_previous_text(last_found_index, i);
+        self.raw_append_child(
+          container,
+          CstNewline(create_inner!(CstNewlineKind::CarriageReturnLineFeed)).into(),
+        );
+        last_found_index = i + 2;
+      } else if c == '\n' {
+        maybe_add_previous_text(last_found_index, i);
+        self.raw_append_child(container, CstNewline(create_inner!(CstNewlineKind::LineFeed)).into());
+        last_found_index = i + 1;
+      }
+    }
+
+    maybe_add_previous_text(last_found_index, value.len());
   }
 
   fn build_string_lit(&self, container: &CstContainerNode, lit: ast::StringLit<'_>) {
@@ -1034,8 +1227,53 @@ impl<'a> CstBuilder<'a> {
   }
 }
 
+struct AncestorIterator {
+  current_node: CstNode,
+}
+
+impl Iterator for AncestorIterator {
+  type Item = CstContainerNode;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let parent_info = self.current_node.parent_info()?;
+    let container = parent_info.parent.as_container_node();
+    self.current_node = container.clone().into();
+    Some(container)
+  }
+}
+
+struct NextSiblingIterator {
+  current_node: CstNode,
+}
+
+impl Iterator for NextSiblingIterator {
+  type Item = CstNode;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let next_sibling = self.current_node.next_sibling()?;
+    self.current_node = next_sibling.clone();
+    Some(next_sibling)
+  }
+}
+
+struct PreviousSiblingIterator {
+  current_node: CstNode,
+}
+
+impl Iterator for PreviousSiblingIterator {
+  type Item = CstNode;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let previous_sibling = self.current_node.previous_sibling()?;
+    self.current_node = previous_sibling.clone();
+    Some(previous_sibling)
+  }
+}
+
 #[cfg(test)]
 mod test {
+  use pretty_assertions::assert_eq;
+
   use super::CstRootNode;
 
   #[test]
@@ -1088,26 +1326,83 @@ mod test {
       r#"{
     "value": 5,
     // comment
-    "value2": "hello"
+    "value2": "hello",
+    value3: true
 }"#,
     );
 
     let root_value = cst.root_value().unwrap();
     let root_obj = root_value.as_object().unwrap();
-    let prop = root_obj.property_by_name("value2").unwrap();
-    prop
-      .value()
-      .unwrap()
-      .as_string_lit()
-      .unwrap()
-      .set_raw_value("\"5\"".to_string());
+    {
+      let prop = root_obj.property_by_name("value").unwrap();
+      prop
+        .value()
+        .unwrap()
+        .as_number_lit()
+        .unwrap()
+        .set_raw_value("10".to_string());
+      assert!(prop.has_trailing_comma());
+      assert!(prop.previous_property().is_none());
+      assert_eq!(
+        prop.next_property().unwrap().name().unwrap().decoded_value().unwrap(),
+        "value2"
+      );
+      assert_eq!(prop.indent_text().unwrap(), "    ");
+    }
+    {
+      let prop = root_obj.property_by_name("value2").unwrap();
+      prop
+        .value()
+        .unwrap()
+        .as_string_lit()
+        .unwrap()
+        .set_raw_value("\"5\"".to_string());
+      assert!(prop.has_trailing_comma());
+      assert_eq!(
+        prop
+          .previous_property()
+          .unwrap()
+          .name()
+          .unwrap()
+          .decoded_value()
+          .unwrap(),
+        "value"
+      );
+      assert_eq!(
+        prop.next_property().unwrap().name().unwrap().decoded_value().unwrap(),
+        "value3"
+      );
+    }
+    {
+      let prop = root_obj.property_by_name("value3").unwrap();
+      prop.value().unwrap().as_boolean_lit().unwrap().set_value(false);
+      prop
+        .name()
+        .unwrap()
+        .as_word_lit()
+        .unwrap()
+        .set_raw_value("value4".to_string());
+      assert!(!prop.has_trailing_comma());
+      assert_eq!(
+        prop
+          .previous_property()
+          .unwrap()
+          .name()
+          .unwrap()
+          .decoded_value()
+          .unwrap(),
+        "value2"
+      );
+      assert!(prop.next_property().is_none());
+    }
 
     assert_eq!(
       cst.to_string(),
       r#"{
-    "value": 5,
+    "value": 10,
     // comment
-    "value2": "5"
+    "value2": "5",
+    value4: false
 }"#
     );
   }
