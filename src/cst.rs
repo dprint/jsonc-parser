@@ -98,6 +98,17 @@ macro_rules! add_parent_info_methods {
       }
       None
     }
+
+    /// Removes the node from the tree without making adjustments to any siblings.
+    fn remove_raw(self) {
+      let Some(parent_info) = self.parent_info() else {
+        return; // already removed
+      };
+      parent_info
+        .parent
+        .as_container_node()
+        .remove_child_set_no_parent(parent_info.child_index);
+    }
   };
 }
 
@@ -163,6 +174,14 @@ macro_rules! impl_container_methods {
           child.set_parent(None);
         }
       }
+
+      fn remove_child_set_no_parent(&self, index: usize) {
+        let mut inner = self.0.borrow_mut();
+        if index < inner.value.len() {
+          let child = inner.value.remove(index);
+          child.set_parent(None);
+        }
+      }
     }
   };
 }
@@ -173,6 +192,10 @@ macro_rules! impl_leaf_methods {
 
     impl $node_name {
       add_parent_methods!();
+
+      pub fn remove(self) {
+        self.remove_raw()
+      }
     }
   };
 }
@@ -445,6 +468,15 @@ impl CstContainerNode {
       CstContainerNode::Object(n) => n.clear_children(),
       CstContainerNode::ObjectProp(n) => n.clear_children(),
       CstContainerNode::Array(n) => n.clear_children(),
+    }
+  }
+
+  pub fn remove_child_set_no_parent(&self, index: usize) {
+    match self {
+      CstContainerNode::Root(n) => n.remove_child_set_no_parent(index),
+      CstContainerNode::Object(n) => n.remove_child_set_no_parent(index),
+      CstContainerNode::ObjectProp(n) => n.remove_child_set_no_parent(index),
+      CstContainerNode::Array(n) => n.remove_child_set_no_parent(index),
     }
   }
 
@@ -759,11 +791,11 @@ impl CstObject {
       .collect()
   }
 
-  pub fn insert_property(&self, index: usize, name: &str, value: serde_json::Value) {
-    let properties = self.properties();
-    let previous_prop = if index == 0 { None } else { properties.get(index - 1) };
-    let next_prop = properties.get(index);
-  }
+  // pub fn insert_property(&self, index: usize, name: &str, value: serde_json::Value) {
+  //   let properties = self.properties();
+  //   let previous_prop = if index == 0 { None } else { properties.get(index - 1) };
+  //   let next_prop = properties.get(index);
+  // }
 }
 
 impl Display for CstObject {
@@ -880,6 +912,26 @@ impl CstObjectProp {
     }
 
     false
+  }
+
+  pub fn remove(self) {
+    let has_trailing_comma = self.has_trailing_comma();
+    self
+      .previous_siblings()
+      .take_while(|n| n.is_trivia() && n.as_newline().is_none())
+      .for_each(|t| t.remove_raw());
+    if has_trailing_comma {
+      self
+        .next_siblings()
+        .take_while(|n| n.as_token().is_none())
+        .for_each(|t| t.remove_raw());
+    } else {
+      self
+        .next_siblings()
+        .take_while(|n| n.is_trivia() && n.as_newline().is_none())
+        .for_each(|t| t.remove_raw());
+    }
+    self.remove_raw();
   }
 }
 
@@ -1404,6 +1456,32 @@ mod test {
     "value2": "5",
     value4: false
 }"#
+    );
+  }
+
+  #[test]
+  fn remove_properties() {
+    fn run_test(prop_name: &str, json: &str, expected: &str) {
+      let cst = build_cts(json);
+      let root_value = cst.root_value().unwrap();
+      let root_obj = root_value.as_object().unwrap();
+      let prop = root_obj.property_by_name(prop_name).unwrap();
+      prop.remove();
+      assert_eq!(cst.to_string(), expected);
+    }
+    run_test(
+      "value2",
+      r#"{
+    "value": 5,
+    // comment
+    "value2": "hello",
+    value3: true
+}"#,
+      r#"{
+    "value": 5,
+    // comment
+    value3: true
+}"#,
     );
   }
 
