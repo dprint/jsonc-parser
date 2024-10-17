@@ -8,6 +8,7 @@ use super::common::Ranged;
 use crate::ast;
 use crate::errors::ParseError;
 use crate::parse_to_ast;
+use crate::string::ParseStringErrorKind;
 use crate::ParseOptions;
 
 macro_rules! create_inner {
@@ -224,6 +225,90 @@ impl CstNode {
     match self {
       CstNode::Container(n) => n.child_at_index(index),
       CstNode::Leaf(_) => None,
+    }
+  }
+
+  pub fn as_root_node(&self) -> Option<&CstRootNode> {
+    match self {
+      CstNode::Container(CstContainerNode::Root(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_object(&self) -> Option<&CstObject> {
+    match self {
+      CstNode::Container(CstContainerNode::Object(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_array(&self) -> Option<&CstArray> {
+    match self {
+      CstNode::Container(CstContainerNode::Array(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_object_prop(&self) -> Option<&CstObjectProp> {
+    match self {
+      CstNode::Container(CstContainerNode::ObjectProp(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_boolean_lit(&self) -> Option<&CstBooleanLit> {
+    match self {
+      CstNode::Leaf(CstLeafNode::BooleanLit(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_null_keyword(&self) -> Option<&CstNullKeyword> {
+    match self {
+      CstNode::Leaf(CstLeafNode::NullKeyword(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_number_lit(&self) -> Option<&CstNumberLit> {
+    match self {
+      CstNode::Leaf(CstLeafNode::NumberLit(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_string_lit(&self) -> Option<&CstStringLit> {
+    match self {
+      CstNode::Leaf(CstLeafNode::StringLit(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_word_lit(&self) -> Option<&CstWordLit> {
+    match self {
+      CstNode::Leaf(CstLeafNode::WordLit(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_token(&self) -> Option<&CstToken> {
+    match self {
+      CstNode::Leaf(CstLeafNode::Token(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_whitespace(&self) -> Option<&CstWhitespace> {
+    match self {
+      CstNode::Leaf(CstLeafNode::Whitespace(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_comment(&self) -> Option<&CstComment> {
+    match self {
+      CstNode::Leaf(CstLeafNode::Comment(node)) => Some(node),
+      _ => None,
     }
   }
 
@@ -462,6 +547,7 @@ impl CstRootNode {
     None
   }
 
+  /// Gets the root value found in the file.
   pub fn root_value(&self) -> Option<CstNode> {
     for child in &self.0.borrow().value {
       if !child.is_trivia() {
@@ -488,18 +574,22 @@ pub struct CstStringLit(Rc<RefCell<CstValueInner<String>>>);
 impl_leaf_methods!(CstStringLit, StringLit);
 
 impl CstStringLit {
-  /// Sets the raw escaped value of the string.
-  ///
-  /// Note: This value should escape quotes otherwise a syntax error will
-  /// happen when printing.
-  pub fn set_raw_escaped_value(&self, value: String) {
+  /// Sets the raw value of the string INCLUDING SURROUNDING QUOTES.
+  pub fn set_raw_value(&self, value: String) {
     self.0.borrow_mut().value = value;
+  }
+
+  pub fn value(&self) -> Result<String, ParseStringErrorKind> {
+    let inner = self.0.borrow();
+    crate::string::parse_string(&inner.value)
+      .map(|value| value.into_owned())
+      .map_err(|err| err.kind)
   }
 }
 
 impl Display for CstStringLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "\"{}\"", self.0.borrow().value)
+    write!(f, "{}", self.0.borrow().value)
   }
 }
 
@@ -519,6 +609,13 @@ pub struct CstNumberLit(Rc<RefCell<CstValueInner<String>>>);
 
 impl_leaf_methods!(CstNumberLit, NumberLit);
 
+impl CstNumberLit {
+  /// Sets the raw string value of the number literal.
+  pub fn set_raw_value(&self, value: String) {
+    self.0.borrow_mut().value = value;
+  }
+}
+
 impl Display for CstNumberLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", self.0.borrow().value)
@@ -530,6 +627,12 @@ impl Display for CstNumberLit {
 pub struct CstBooleanLit(Rc<RefCell<CstValueInner<bool>>>);
 
 impl_leaf_methods!(CstBooleanLit, BooleanLit);
+
+impl CstBooleanLit {
+  pub fn set_value(&self, value: bool) {
+    self.0.borrow_mut().value = value;
+  }
+}
 
 impl Display for CstBooleanLit {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -560,6 +663,25 @@ type CstObjectInner = RefCell<CstChildrenInner>;
 pub struct CstObject(Rc<CstObjectInner>);
 
 impl_container_methods!(CstObject, Object);
+
+impl CstObject {
+  pub fn property_by_name(&self, name: &str) -> Option<CstObjectProp> {
+    for child in &self.0.borrow().value {
+      if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = child {
+        let Ok(prop_name) = prop.name() else {
+          continue;
+        };
+        let Ok(prop_name_str) = prop_name.value() else {
+          continue;
+        };
+        if prop_name_str == name {
+          return Some(prop.clone());
+        }
+      }
+    }
+    None
+  }
+}
 
 impl Display for CstObject {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -650,6 +772,13 @@ pub enum ObjectPropName {
 
 impl ObjectPropName {
   add_parent_info_methods!();
+
+  pub fn value(&self) -> Result<String, ParseStringErrorKind> {
+    match self {
+      ObjectPropName::String(n) => n.value(),
+      ObjectPropName::Word(n) => Ok(n.0.borrow().value.clone()),
+    }
+  }
 
   fn parent_info(&self) -> Option<ParentInfo> {
     match self {
@@ -870,10 +999,7 @@ impl<'a> CstBuilder<'a> {
   fn build_string_lit(&self, container: &CstContainerNode, lit: ast::StringLit<'_>) {
     self.raw_append_child(
       container,
-      CstStringLit(create_inner!(
-        self.text[lit.range.start + 1..lit.range.end - 1].to_string()
-      ))
-      .into(),
+      CstStringLit(create_inner!(self.text[lit.range.start..lit.range.end].to_string())).into(),
     );
   }
 
@@ -954,6 +1080,36 @@ mod test {
       let root = build_cts(text);
       assert_eq!(root.single_indent_text(), Some(expected.to_string()));
     }
+  }
+
+  #[test]
+  fn modify_values() {
+    let cst = build_cts(
+      r#"{
+    "value": 5,
+    // comment
+    "value2": "hello"
+}"#,
+    );
+
+    let root_value = cst.root_value().unwrap();
+    let root_obj = root_value.as_object().unwrap();
+    let prop = root_obj.property_by_name("value2").unwrap();
+    prop
+      .value()
+      .unwrap()
+      .as_string_lit()
+      .unwrap()
+      .set_raw_value("\"5\"".to_string());
+
+    assert_eq!(
+      cst.to_string(),
+      r#"{
+    "value": 5,
+    // comment
+    "value2": "5"
+}"#
+    );
   }
 
   fn build_cts(text: &str) -> CstRootNode {
