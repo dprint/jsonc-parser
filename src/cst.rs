@@ -62,48 +62,73 @@ macro_rules! add_parent_info_methods {
     }
 
     pub fn root_node(&self) -> Option<CstRootNode> {
-      for parent in self.ancestors() {
-        if let CstContainerNode::Root(node) = parent {
-          return Some(node);
-        }
-      }
-      None
+      self
+        .ancestors()
+        .filter_map(|parent| match parent {
+          CstContainerNode::Root(node) => Some(node),
+          _ => None,
+        })
+        .next()
     }
 
     /// Returns the indentation text if it can be determined.
     pub fn indent_text(&self) -> Option<String> {
-      let mut last_whitespace: Option<CstWhitespace> = None;
-      for previous_sibling in self.previous_siblings() {
-        match previous_sibling {
-          CstNode::Container(_) => return None,
-          CstNode::Leaf(leaf) => match leaf {
-            CstLeafNode::Newline(_) => {
-              return last_whitespace.map(|whitespace| whitespace.value());
-            }
-            CstLeafNode::Whitespace(whitespace) => {
-              last_whitespace = Some(whitespace);
-            }
-            CstLeafNode::Comment(_) => {
-              last_whitespace = None;
-            }
-            _ => return None,
-          },
-        }
-      }
-      None
+      indent_text(&self.clone().into())
     }
 
-    /// Removes the node from the tree without making adjustments to any siblings.
-    fn remove_raw(self) {
-      let Some(parent_info) = self.parent_info() else {
-        return; // already removed
-      };
-      parent_info
-        .parent
-        .as_container_node()
-        .remove_child_set_no_parent(parent_info.child_index);
+    pub fn trailing_comma(&self) -> Option<CstToken> {
+      find_trailing_comma(&self.clone().into())
     }
   };
+}
+
+fn indent_text(node: &CstNode) -> Option<String> {
+  let mut last_whitespace: Option<CstWhitespace> = None;
+  for previous_sibling in node.previous_siblings() {
+    match previous_sibling {
+      CstNode::Container(_) => return None,
+      CstNode::Leaf(leaf) => match leaf {
+        CstLeafNode::Newline(_) => {
+          return last_whitespace.map(|whitespace| whitespace.value());
+        }
+        CstLeafNode::Whitespace(whitespace) => {
+          last_whitespace = Some(whitespace);
+        }
+        CstLeafNode::Comment(_) => {
+          last_whitespace = None;
+        }
+        _ => return None,
+      },
+    }
+  }
+  None
+}
+
+fn find_trailing_comma(node: &CstNode) -> Option<CstToken> {
+  for next_sibling in node.next_siblings() {
+    match next_sibling {
+      CstNode::Container(_) => return None,
+      CstNode::Leaf(leaf) => match leaf {
+        CstLeafNode::BooleanLit(_)
+        | CstLeafNode::NullKeyword(_)
+        | CstLeafNode::NumberLit(_)
+        | CstLeafNode::StringLit(_)
+        | CstLeafNode::WordLit(_) => return None,
+        CstLeafNode::Token(token) => {
+          if token.value() == ',' {
+            return Some(token);
+          } else {
+            return None;
+          }
+        }
+        CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => {
+          // skip over
+        }
+      },
+    }
+  }
+
+  None
 }
 
 macro_rules! add_parent_methods {
@@ -195,10 +220,6 @@ macro_rules! impl_leaf_methods {
 
     impl $node_name {
       add_parent_methods!();
-
-      pub fn remove(self) {
-        self.remove_raw()
-      }
     }
   };
 }
@@ -288,9 +309,23 @@ impl CstNode {
     }
   }
 
+  pub fn is_comment(&self) -> bool {
+    match self {
+      CstNode::Leaf(CstLeafNode::Comment(_)) => true,
+      _ => false,
+    }
+  }
+
   pub fn is_token(&self) -> bool {
     match self {
       CstNode::Leaf(CstLeafNode::Token(_)) => true,
+      _ => false,
+    }
+  }
+
+  pub fn is_whitespace(&self) -> bool {
+    match self {
+      CstNode::Leaf(CstLeafNode::Whitespace(_)) => true,
       _ => false,
     }
   }
@@ -407,6 +442,13 @@ impl CstNode {
     }
   }
 
+  pub fn remove(self) {
+    match self {
+      CstNode::Container(n) => n.remove(),
+      CstNode::Leaf(n) => n.remove(),
+    }
+  }
+
   fn parent_info(&self) -> Option<ParentInfo> {
     match self {
       CstNode::Container(node) => node.parent_info(),
@@ -419,6 +461,17 @@ impl CstNode {
       CstNode::Container(node) => node.set_parent(parent),
       CstNode::Leaf(node) => node.set_parent(parent),
     }
+  }
+
+  /// Removes the node from the tree without making adjustments to any siblings.
+  fn remove_raw(self) {
+    let Some(parent_info) = self.parent_info() else {
+      return; // already removed
+    };
+    parent_info
+      .parent
+      .as_container_node()
+      .remove_child_set_no_parent(parent_info.child_index);
   }
 }
 
@@ -452,13 +505,57 @@ impl Display for CstNode {
 #[derive(Debug, Clone)]
 pub enum CstContainerNode {
   Root(CstRootNode),
+  Array(CstArray),
   Object(CstObject),
   ObjectProp(CstObjectProp),
-  Array(CstArray),
 }
 
 impl CstContainerNode {
   add_parent_info_methods!();
+
+  pub fn is_root(&self) -> bool {
+    matches!(self, CstContainerNode::Root(_))
+  }
+
+  pub fn is_array(&self) -> bool {
+    matches!(self, CstContainerNode::Array(_))
+  }
+
+  pub fn is_object(&self) -> bool {
+    matches!(self, CstContainerNode::Object(_))
+  }
+
+  pub fn is_object_prop(&self) -> bool {
+    matches!(self, CstContainerNode::ObjectProp(_))
+  }
+
+  pub fn as_root(&self) -> Option<&CstRootNode> {
+    match self {
+      CstContainerNode::Root(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_array(&self) -> Option<&CstArray> {
+    match self {
+      CstContainerNode::Array(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_object(&self) -> Option<&CstObject> {
+    match self {
+      CstContainerNode::Object(node) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn as_object_prop(&self) -> Option<&CstObjectProp> {
+    match self {
+      CstContainerNode::ObjectProp(node) => Some(node),
+      _ => None,
+    }
+  }
 
   pub fn children(&self) -> Vec<CstNode> {
     match self {
@@ -502,6 +599,15 @@ impl CstContainerNode {
       CstContainerNode::Object(n) => n.remove_child_set_no_parent(index),
       CstContainerNode::ObjectProp(n) => n.remove_child_set_no_parent(index),
       CstContainerNode::Array(n) => n.remove_child_set_no_parent(index),
+    }
+  }
+
+  pub fn remove(self) {
+    match self {
+      CstContainerNode::Root(n) => n.remove(),
+      CstContainerNode::Object(n) => n.remove(),
+      CstContainerNode::ObjectProp(n) => n.remove(),
+      CstContainerNode::Array(n) => n.remove(),
     }
   }
 
@@ -556,6 +662,20 @@ pub enum CstLeafNode {
 
 impl CstLeafNode {
   add_parent_info_methods!();
+
+  pub fn remove(self) {
+    match self {
+      CstLeafNode::BooleanLit(n) => n.remove(),
+      CstLeafNode::NullKeyword(n) => n.remove(),
+      CstLeafNode::NumberLit(n) => n.remove(),
+      CstLeafNode::StringLit(n) => n.remove(),
+      CstLeafNode::WordLit(n) => n.remove(),
+      CstLeafNode::Token(n) => n.remove(),
+      CstLeafNode::Whitespace(n) => n.remove(),
+      CstLeafNode::Newline(n) => n.remove(),
+      CstLeafNode::Comment(n) => n.remove(),
+    }
+  }
 
   fn parent_info(&self) -> Option<ParentInfo> {
     match self {
@@ -664,6 +784,10 @@ impl CstRootNode {
     }
     None
   }
+
+  pub fn remove(self) {
+    self.clear_children();
+  }
 }
 
 impl Display for CstRootNode {
@@ -699,6 +823,10 @@ impl CstStringLit {
       .map(|value| value.into_owned())
       .map_err(|err| err.kind)
   }
+
+  pub fn remove(self) {
+    remove_comma_separated(self.into())
+  }
 }
 
 impl Display for CstStringLit {
@@ -716,6 +844,10 @@ impl CstWordLit {
   /// Sets the raw value of the word literal.
   pub fn set_raw_value(&self, value: String) {
     self.0.borrow_mut().value = value;
+  }
+
+  pub fn remove(self) {
+    remove_comma_separated(self.into())
   }
 }
 
@@ -735,6 +867,10 @@ impl CstNumberLit {
   pub fn set_raw_value(&self, value: String) {
     self.0.borrow_mut().value = value;
   }
+
+  pub fn remove(self) {
+    remove_comma_separated(self.into())
+  }
 }
 
 impl Display for CstNumberLit {
@@ -753,6 +889,10 @@ impl CstBooleanLit {
   pub fn set_value(&self, value: bool) {
     self.0.borrow_mut().value = value;
   }
+
+  pub fn remove(self) {
+    remove_comma_separated(self.into())
+  }
 }
 
 impl Display for CstBooleanLit {
@@ -768,6 +908,12 @@ impl Display for CstBooleanLit {
 /// Represents the null keyword (ex. `null`).
 #[derive(Debug, Clone)]
 pub struct CstNullKeyword(Rc<RefCell<CstValueInner<()>>>);
+
+impl CstNullKeyword {
+  pub fn remove(self) {
+    remove_comma_separated(self.into())
+  }
+}
 
 impl_leaf_methods!(CstNullKeyword, NullKeyword);
 
@@ -821,6 +967,10 @@ impl CstObject {
   //   let previous_prop = if index == 0 { None } else { properties.get(index - 1) };
   //   let next_prop = properties.get(index);
   // }
+
+  pub fn remove(self) {
+    remove_comma_separated(self.into())
+  }
 }
 
 impl Display for CstObject {
@@ -911,77 +1061,8 @@ impl CstObjectProp {
     None
   }
 
-  pub fn has_trailing_comma(&self) -> bool {
-    let current_node = self.clone();
-    for next_sibling in current_node.next_siblings() {
-      match next_sibling {
-        CstNode::Container(_) => return false,
-        CstNode::Leaf(leaf) => match leaf {
-          CstLeafNode::BooleanLit(_)
-          | CstLeafNode::NullKeyword(_)
-          | CstLeafNode::NumberLit(_)
-          | CstLeafNode::StringLit(_)
-          | CstLeafNode::WordLit(_) => return false,
-          CstLeafNode::Token(token) => {
-            if token.value() == ',' {
-              return true;
-            } else {
-              return false;
-            }
-          }
-          CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => {
-            // skip over
-          }
-        },
-      }
-    }
-
-    false
-  }
-
   pub fn remove(self) {
-    let has_trailing_comma = self.has_trailing_comma();
-    for previous in self.previous_siblings() {
-      if previous.is_trivia() && !previous.is_newline() {
-        previous.remove_raw();
-      } else {
-        break;
-      }
-    }
-
-    let mut found_newline = false;
-    let mut next_siblings = self.next_siblings();
-
-    // remove up to the trailing comma
-    if has_trailing_comma {
-      for next in next_siblings.by_ref() {
-        let is_comma = next.is_comma();
-        if next.is_newline() {
-          found_newline = true;
-        }
-        next.remove_raw();
-        if is_comma {
-          break;
-        }
-      }
-    }
-
-    // remove up to the newline
-    if !found_newline {
-      for next in next_siblings {
-        if next.is_trivia() {
-          if next.is_newline() {
-            next.remove_raw();
-            break;
-          }
-          next.remove_raw();
-        } else {
-          break;
-        }
-      }
-    }
-
-    self.remove_raw();
+    remove_comma_separated(self.into())
   }
 }
 
@@ -1049,7 +1130,34 @@ pub struct CstArray(Rc<CstArrayInner>);
 
 impl_container_methods!(CstArray, Array);
 
-impl CstArray {}
+impl CstArray {
+  pub fn elements(&self) -> Vec<CstNode> {
+    self
+      .0
+      .borrow()
+      .value
+      .iter()
+      .filter_map(|child| match child {
+        CstNode::Container(_) => Some(child),
+        CstNode::Leaf(leaf) => match leaf {
+          CstLeafNode::BooleanLit(_)
+          | CstLeafNode::NullKeyword(_)
+          | CstLeafNode::NumberLit(_)
+          | CstLeafNode::StringLit(_)
+          | CstLeafNode::WordLit(_) => Some(child),
+          CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => {
+            None
+          }
+        },
+      })
+      .cloned()
+      .collect()
+  }
+
+  pub fn remove(self) {
+    remove_comma_separated(self.into())
+  }
+}
 
 impl Display for CstArray {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1069,6 +1177,10 @@ impl CstToken {
   pub fn value(&self) -> char {
     self.0.borrow().value
   }
+
+  pub fn remove(self) {
+    Into::<CstNode>::into(self).remove_raw()
+  }
 }
 
 impl Display for CstToken {
@@ -1085,6 +1197,10 @@ impl_leaf_methods!(CstWhitespace, Whitespace);
 impl CstWhitespace {
   pub fn value(&self) -> String {
     self.0.borrow().value.clone()
+  }
+
+  pub fn remove(self) {
+    Into::<CstNode>::into(self).remove_raw()
   }
 }
 
@@ -1105,6 +1221,12 @@ pub struct CstNewline(Rc<RefCell<CstValueInner<CstNewlineKind>>>);
 
 impl_leaf_methods!(CstNewline, Newline);
 
+impl CstNewline {
+  pub fn remove(self) {
+    Into::<CstNode>::into(self).remove_raw()
+  }
+}
+
 impl Display for CstNewline {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self.0.borrow().value {
@@ -1118,6 +1240,37 @@ impl Display for CstNewline {
 pub struct CstComment(Rc<RefCell<CstValueInner<String>>>);
 
 impl_leaf_methods!(CstComment, Comment);
+
+impl CstComment {
+  pub fn is_line_comment(&self) -> bool {
+    self.0.borrow().value.starts_with("//")
+  }
+
+  pub fn set_raw_value(&self, value: String) {
+    self.0.borrow_mut().value = value;
+  }
+
+  pub fn raw_value(&self) -> String {
+    self.0.borrow().value.clone()
+  }
+
+  pub fn remove(self) {
+    if self.is_line_comment() {
+      for node in self.previous_siblings() {
+        if node.is_whitespace() {
+          node.remove_raw();
+        } else {
+          if node.is_newline() {
+            node.remove_raw();
+          }
+          break;
+        }
+      }
+    }
+
+    Into::<CstNode>::into(self).remove_raw()
+  }
+}
 
 impl Display for CstComment {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1329,6 +1482,121 @@ impl<'a> CstBuilder<'a> {
   }
 }
 
+fn remove_comma_separated(node: CstNode) {
+  fn check_next_node_same_line(trailing_comma: &CstToken) -> bool {
+    for sibling in trailing_comma.next_siblings() {
+      match sibling {
+        CstNode::Container(_) => return true,
+        CstNode::Leaf(n) => match n {
+          CstLeafNode::BooleanLit(_)
+          | CstLeafNode::NullKeyword(_)
+          | CstLeafNode::NumberLit(_)
+          | CstLeafNode::StringLit(_)
+          | CstLeafNode::WordLit(_)
+          | CstLeafNode::Token(_) => return true,
+          CstLeafNode::Whitespace(_) | CstLeafNode::Comment(_) => {
+            // keep going
+          }
+          CstLeafNode::Newline(_) => return false,
+        },
+      }
+    }
+
+    true
+  }
+
+  let parent = node.parent();
+  let trailing_comma = node.trailing_comma();
+  let is_in_array_or_obj = parent
+    .as_ref()
+    .map(|p| matches!(p, CstContainerNode::Array(_) | CstContainerNode::Object(_)))
+    .unwrap_or(false);
+  let remove_up_to_next_line = trailing_comma
+    .as_ref()
+    .map(|c| !check_next_node_same_line(&c))
+    .unwrap_or(true);
+
+  for previous in node.previous_siblings() {
+    if previous.is_trivia() && !previous.is_newline() {
+      previous.remove_raw();
+    } else {
+      break;
+    }
+  }
+
+  let mut found_newline = false;
+  let mut next_siblings = node.next_siblings();
+
+  // remove up to the trailing comma
+  if trailing_comma.is_some() {
+    for next in next_siblings.by_ref() {
+      let is_comma = next.is_comma();
+      if next.is_newline() {
+        found_newline = true;
+      }
+      next.remove_raw();
+      if is_comma {
+        break;
+      }
+    }
+  } else if is_in_array_or_obj {
+    if let Some(previous_comma) = node.previous_siblings().find(|n| n.is_comma()) {
+      previous_comma.remove();
+    }
+  }
+
+  // remove up to the newline
+  if remove_up_to_next_line && !found_newline {
+    let mut next_siblings = node.next_siblings().peekable();
+    while let Some(sibling) = next_siblings.next() {
+      if sibling.is_trivia() {
+        if sibling.is_newline() {
+          sibling.remove_raw();
+          break;
+        } else if sibling.is_whitespace()
+          && next_siblings
+            .peek()
+            .map(|n| !n.is_whitespace() && !n.is_newline() && !n.is_comment())
+            .unwrap_or(false)
+        {
+          break;
+        }
+        sibling.remove_raw();
+      } else {
+        break;
+      }
+    }
+  }
+
+  node.remove_raw();
+
+  if let Some(parent) = parent {
+    match parent {
+      CstContainerNode::Root(n) => {
+        if n.children().iter().all(|c| c.is_whitespace() || c.is_newline()) {
+          n.clear_children();
+        }
+      }
+      CstContainerNode::Object(_) | CstContainerNode::Array(_) => {
+        let children = parent.children();
+        if children
+          .iter()
+          .skip(1)
+          .take(children.len() - 2)
+          .all(|c| c.is_whitespace() || c.is_newline())
+        {
+          for c in children {
+            if c.is_whitespace() || c.is_newline() {
+              c.remove();
+            }
+          }
+        }
+      }
+      CstContainerNode::ObjectProp(_) => {}
+    }
+  }
+}
+
 struct AncestorIterator {
   // pre-emptively store the next ancestor in case
   // the currently returned sibling is removed
@@ -1472,7 +1740,7 @@ mod test {
         .as_number_lit()
         .unwrap()
         .set_raw_value("10".to_string());
-      assert!(prop.has_trailing_comma());
+      assert!(prop.trailing_comma().is_some());
       assert!(prop.previous_property().is_none());
       assert_eq!(
         prop.next_property().unwrap().name().unwrap().decoded_value().unwrap(),
@@ -1488,7 +1756,7 @@ mod test {
         .as_string_lit()
         .unwrap()
         .set_raw_value("\"5\"".to_string());
-      assert!(prop.has_trailing_comma());
+      assert!(prop.trailing_comma().is_some());
       assert_eq!(
         prop
           .previous_property()
@@ -1513,7 +1781,7 @@ mod test {
         .as_word_lit()
         .unwrap()
         .set_raw_value("value4".to_string());
-      assert!(!prop.has_trailing_comma());
+      assert!(prop.trailing_comma().is_none());
       assert_eq!(
         prop
           .previous_property()
@@ -1577,6 +1845,125 @@ mod test {
     "value": 5,
     // comment
 value3: true
+}"#,
+    );
+
+    run_test("value", r#"{ "value": 5 }"#, r#"{}"#);
+    run_test("value", r#"{ "value": 5, "value2": 6 }"#, r#"{ "value2": 6 }"#);
+    run_test("value2", r#"{ "value": 5, "value2": 6 }"#, r#"{ "value": 5 }"#);
+  }
+
+  #[test]
+  fn remove_array_elements() {
+    fn run_test(index: usize, json: &str, expected: &str) {
+      let cst = build_cts(json);
+      let root_value = cst.root_value().unwrap();
+      let root_array = root_value.as_array().unwrap();
+      let element = root_array.elements().get(index).unwrap().clone();
+      element.remove();
+      assert_eq!(cst.to_string(), expected);
+    }
+
+    run_test(
+      0,
+      r#"[
+      1,
+]"#,
+      r#"[]"#,
+    );
+    run_test(
+      0,
+      r#"[
+      1,
+      2,
+]"#,
+      r#"[
+      2,
+]"#,
+    );
+    run_test(
+      0,
+      r#"[
+      1,
+      2,
+]"#,
+      r#"[
+      2,
+]"#,
+    );
+
+    run_test(
+      1,
+      r#"[
+      1, // other comment
+      2, // trailing comment
+]"#,
+      r#"[
+      1, // other comment
+]"#,
+    );
+
+    run_test(
+      1,
+      r#"[
+      1, // comment
+      2
+]"#,
+      r#"[
+      1 // comment
+]"#,
+    );
+
+    run_test(1, r#"[1, 2]"#, r#"[1]"#);
+    run_test(1, r#"[ 1, 2 /* test */ ]"#, r#"[ 1 ]"#);
+    run_test(1, r#"[1, /* test */ 2]"#, r#"[1]"#);
+    run_test(
+      1,
+      r#"[1 /* a */, /* b */ 2 /* c */, /* d */ true]"#,
+      r#"[1 /* a */, /* d */ true]"#,
+    );
+  }
+
+  #[test]
+  fn remove_comment() {
+    fn run_test(json: &str, expected: &str) {
+      let cst = build_cts(json);
+      let root_value = cst.root_value().unwrap();
+      let root_obj = root_value.as_object().unwrap();
+      root_obj
+        .children()
+        .into_iter()
+        .filter_map(|c| c.as_comment().cloned())
+        .next()
+        .unwrap()
+        .remove();
+      assert_eq!(cst.to_string(), expected);
+    }
+
+    run_test(
+      r#"{
+    "value": 5,
+    // comment
+    "value2": "hello",
+    value3: true
+}"#,
+      r#"{
+    "value": 5,
+    "value2": "hello",
+    value3: true
+}"#,
+    );
+
+    run_test(
+      r#"{
+    "value": 5,  // comment
+    "value2": "hello",
+    value3: true
+}"#,
+      r#"{
+    "value": 5,
+    "value2": "hello",
+    value3: true
 }"#,
     );
   }
