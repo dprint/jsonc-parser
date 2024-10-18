@@ -713,7 +713,45 @@ impl CstContainerNode {
         }
         array_node.raw_insert_child(index, CstToken::new(']').into());
       }
-      RawCstValue::Object(vec) => {}
+      RawCstValue::Object(elements) => {
+        let object_node: CstContainerNode = CstObject::new().into();
+        self.raw_insert_child(insert_index, object_node.clone().into());
+
+        let mut index = 0;
+        object_node.raw_insert_child(index, CstToken::new('{').into());
+        index += 1;
+        let mut elements = elements.into_iter().peekable();
+        while let Some((prop_name, value)) = elements.next() {
+          if multiline {
+            object_node.raw_insert_child(index, CstNewline::new(newline_kind).into());
+            index += 1;
+            object_node.raw_insert_child(index, CstWhitespace::new(indents.child_indent.clone()).into());
+            index += 1;
+          }
+          object_node.raw_insert_child(index, CstStringLit::new(prop_name).into());
+          index += 1;
+          object_node.raw_insert_child(index, CstToken::new(':').into());
+          index += 1;
+          if multiline {
+            object_node.raw_insert_child(index, CstWhitespace::new(indents.child_indent.clone()).into());
+            index += 1;
+          }
+          object_node.raw_insert_value_with_internal_indent(index, value, newline_kind, indents.indent());
+          index += 1;
+          // todo(dsherret): detect if the file uses trailing commas
+          if elements.peek().is_some() {
+            object_node.raw_insert_child(index, CstToken::new(',').into());
+            index += 1;
+          }
+        }
+        if multiline {
+          object_node.raw_insert_child(index, CstNewline::new(newline_kind).into());
+          index += 1;
+          object_node.raw_insert_child(index, CstWhitespace::new(indents.child_indent).into());
+          index += 1;
+        }
+        object_node.raw_insert_child(index, CstToken::new('}').into());
+      }
     }
   }
 }

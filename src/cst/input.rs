@@ -14,16 +14,16 @@ impl RawCstValue {
   pub(crate) fn force_multiline(&self) -> bool {
     match self {
       RawCstValue::Null | RawCstValue::Bool(_) | RawCstValue::Number(_) | RawCstValue::String(_) => false,
-      RawCstValue::Array(v) => v.iter().any(|v| v.is_object_or_array()),
-      RawCstValue::Object(v) => v.len() > 0,
+      RawCstValue::Array(v) => v.iter().any(|v| v.is_object_or_array_with_elements()),
+      RawCstValue::Object(v) => !v.is_empty(),
     }
   }
 
-  fn is_object_or_array(&self) -> bool {
+  fn is_object_or_array_with_elements(&self) -> bool {
     match self {
       RawCstValue::Null | RawCstValue::Bool(_) | RawCstValue::Number(_) | RawCstValue::String(_) => false,
-      RawCstValue::Array(_) => true,
-      RawCstValue::Object(_) => false,
+      RawCstValue::Array(v) => !v.is_empty(),
+      RawCstValue::Object(v) => !v.is_empty(),
     }
   }
 }
