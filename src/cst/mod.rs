@@ -591,15 +591,6 @@ impl CstContainerNode {
     }
   }
 
-  pub fn child_indent_text(&self) -> String {
-    match self {
-      CstContainerNode::Root(n) => n.child_indent_text(),
-      CstContainerNode::Object(n) => n.child_indent_text(),
-      CstContainerNode::ObjectProp(n) => n.child_indent_text(),
-      CstContainerNode::Array(n) => n.child_indent_text(),
-    }
-  }
-
   fn remove_child_set_no_parent(&self, index: usize) {
     match self {
       CstContainerNode::Root(n) => n.remove_child_set_no_parent(index),
@@ -672,7 +663,7 @@ impl CstContainerNode {
     insert_index: usize,
     value: RawCstValue,
     newline_kind: CstNewlineKind,
-    indents: Indents,
+    indents: &Indents,
   ) {
     let multiline = value.force_multiline();
     match value {
@@ -686,7 +677,10 @@ impl CstContainerNode {
         self.raw_insert_child(insert_index, CstLeafNode::NumberLit(CstNumberLit::new(value)).into());
       }
       RawCstValue::String(value) => {
-        self.raw_insert_child(insert_index, CstLeafNode::StringLit(CstStringLit::new(value)).into());
+        self.raw_insert_child(
+          insert_index,
+          CstLeafNode::StringLit(CstStringLit::new_escaped(&value)).into(),
+        );
       }
       RawCstValue::Array(vec) => {
         let array_node: CstContainerNode = CstArray::new().into();
@@ -695,20 +689,23 @@ impl CstContainerNode {
         let mut index = 0;
         array_node.raw_insert_child(index, CstToken::new('[').into());
         index += 1;
-        for value in vec {
-          if multiline {
-            array_node.raw_insert_child(index, CstNewline::new(newline_kind).into());
-            index += 1;
-            array_node.raw_insert_child(index, CstWhitespace::new(indents.child_indent.clone()).into());
+        if !vec.is_empty() {
+          let indents = indents.indent();
+          for value in vec {
+            if multiline {
+              array_node.raw_insert_child(index, CstNewline::new(newline_kind).into());
+              index += 1;
+              array_node.raw_insert_child(index, CstWhitespace::new(indents.current_indent.clone()).into());
+              index += 1;
+            }
+            array_node.raw_insert_value_with_internal_indent(index, value, newline_kind, &indents);
             index += 1;
           }
-          array_node.raw_insert_value_with_internal_indent(index, value, newline_kind, indents.indent());
-          index += 1;
         }
         if multiline {
           array_node.raw_insert_child(index, CstNewline::new(newline_kind).into());
           index += 1;
-          array_node.raw_insert_child(index, CstWhitespace::new(indents.child_indent).into());
+          array_node.raw_insert_child(index, CstWhitespace::new(indents.current_indent.clone()).into());
           index += 1;
         }
         array_node.raw_insert_child(index, CstToken::new(']').into());
@@ -720,34 +717,35 @@ impl CstContainerNode {
         let mut index = 0;
         object_node.raw_insert_child(index, CstToken::new('{').into());
         index += 1;
-        let mut elements = elements.into_iter().peekable();
-        while let Some((prop_name, value)) = elements.next() {
-          if multiline {
-            object_node.raw_insert_child(index, CstNewline::new(newline_kind).into());
+        if !elements.is_empty() {
+          let indents = indents.indent();
+          let mut elements = elements.into_iter().peekable();
+          while let Some((prop_name, value)) = elements.next() {
+            if multiline {
+              object_node.raw_insert_child(index, CstNewline::new(newline_kind).into());
+              index += 1;
+              object_node.raw_insert_child(index, CstWhitespace::new(indents.current_indent.clone()).into());
+              index += 1;
+            }
+            object_node.raw_insert_child(index, CstStringLit::new_escaped(&prop_name).into());
             index += 1;
-            object_node.raw_insert_child(index, CstWhitespace::new(indents.child_indent.clone()).into());
+            object_node.raw_insert_child(index, CstToken::new(':').into());
             index += 1;
-          }
-          object_node.raw_insert_child(index, CstStringLit::new(prop_name).into());
-          index += 1;
-          object_node.raw_insert_child(index, CstToken::new(':').into());
-          index += 1;
-          if multiline {
-            object_node.raw_insert_child(index, CstWhitespace::new(indents.child_indent.clone()).into());
+            object_node.raw_insert_child(index, CstWhitespace::new(" ".to_string()).into());
             index += 1;
-          }
-          object_node.raw_insert_value_with_internal_indent(index, value, newline_kind, indents.indent());
-          index += 1;
-          // todo(dsherret): detect if the file uses trailing commas
-          if elements.peek().is_some() {
-            object_node.raw_insert_child(index, CstToken::new(',').into());
+            object_node.raw_insert_value_with_internal_indent(index, value, newline_kind, &indents);
             index += 1;
+            // todo(dsherret): detect if the file uses trailing commas
+            if elements.peek().is_some() {
+              object_node.raw_insert_child(index, CstToken::new(',').into());
+              index += 1;
+            }
           }
         }
         if multiline {
           object_node.raw_insert_child(index, CstNewline::new(newline_kind).into());
           index += 1;
-          object_node.raw_insert_child(index, CstWhitespace::new(indents.child_indent).into());
+          object_node.raw_insert_child(index, CstWhitespace::new(indents.current_indent.clone()).into());
           index += 1;
         }
         object_node.raw_insert_child(index, CstToken::new('}').into());
@@ -918,19 +916,6 @@ impl CstRootNode {
     None
   }
 
-  /// Computes the child indentation text.
-  pub fn child_indent_text(&self) -> String {
-    if let Some(value) = self.root_value() {
-      match value {
-        CstNode::Container(cst_container_node) => cst_container_node.child_indent_text(),
-        CstNode::Leaf(_) => compute_indents(&value.into()).child_indent,
-      }
-    } else {
-      // will use the default indent
-      compute_indents(&self.clone().into()).child_indent
-    }
-  }
-
   pub fn remove(self) {
     self.clear_children();
   }
@@ -954,6 +939,10 @@ impl_leaf_methods!(CstStringLit, StringLit);
 impl CstStringLit {
   fn new(value: String) -> Self {
     Self(CstValueInner::new(value))
+  }
+
+  fn new_escaped(value: &str) -> Self {
+    Self::new(format!("\"{}\"", value.replace("\"", "\\\"")))
   }
 
   /// Sets the raw value of the string INCLUDING SURROUNDING QUOTES.
@@ -1132,19 +1121,6 @@ impl CstObject {
       .collect()
   }
 
-  /// Computes the child indentation text.
-  pub fn child_indent_text(&self) -> String {
-    // try to get the indent text from the child elements
-    let props = self.properties();
-    for prop in &props {
-      if let Some(indent_text) = prop.indent_text() {
-        return indent_text;
-      }
-    }
-
-    compute_indents(&self.clone().into()).child_indent
-  }
-
   // pub fn insert_property(&self, index: usize, name: &str, value: serde_json::Value) {
   //   let properties = self.properties();
   //   let previous_prop = if index == 0 { None } else { properties.get(index - 1) };
@@ -1248,10 +1224,6 @@ impl CstObjectProp {
     None
   }
 
-  pub fn child_indent_text(&self) -> String {
-    compute_indents(&self.clone().into()).child_indent
-  }
-
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1349,19 +1321,6 @@ impl CstArray {
       .collect()
   }
 
-  /// Computes the child indentation text.
-  pub fn child_indent_text(&self) -> String {
-    // try to get the indent text from the child elements
-    let elements = self.elements();
-    for element in &elements {
-      if let Some(indent_text) = element.indent_text() {
-        return indent_text;
-      }
-    }
-
-    compute_indents(&self.clone().into()).child_indent
-  }
-
   pub fn insert(&self, index: usize, value: RawCstValue) {
     let children = self.children();
     let elements = self.elements();
@@ -1370,10 +1329,11 @@ impl CstArray {
     let previous_node = if index == 0 { None } else { elements.get(index - 1) };
     let container = CstContainerNode::Array(self.clone());
     let newline_kind = CstNode::Container(container.clone()).detect_file_newline_kind();
-    let indents = Indents {
-      single_indent: compute_indents(&container.clone().into()).single_indent,
-      child_indent: self.child_indent_text(),
-    };
+    let indents = compute_indents(&container.clone().into());
+    let child_indents = elements
+      .get(0)
+      .map(|e| compute_indents(&e))
+      .unwrap_or_else(|| indents.indent());
     if let Some(next_node) = next_node {
     } else if let Some(previous_node) = previous_node {
     } else {
@@ -1382,24 +1342,20 @@ impl CstArray {
       let has_newline = children.iter().any(|child| child.is_newline());
       let force_newline = has_newline || value.force_multiline();
       if force_newline {
-        let parent_indent = self
-          .indent_text()
-          .or_else(|| self.parent().filter(|p| !p.is_root()).map(|p| p.child_indent_text()))
-          .unwrap_or_else(|| String::new());
         let insert_index = close_bracket_token.child_index();
         container.raw_insert_or_append_children(
           Some(insert_index),
           vec![
             CstNewline::new(newline_kind).into(),
-            CstStringLit::new(indents.child_indent.clone()).into(),
+            CstStringLit::new(child_indents.current_indent.clone()).into(),
             CstNewline::new(newline_kind).into(),
-            CstStringLit::new(parent_indent).into(),
+            CstStringLit::new(indents.current_indent.clone()).into(),
           ],
         );
-        container.raw_insert_value_with_internal_indent(insert_index + 2, value, newline_kind, indents);
+        container.raw_insert_value_with_internal_indent(insert_index + 2, value, newline_kind, &child_indents);
       } else {
         let insert_index = open_bracket_token.child_index() + 1;
-        container.raw_insert_value_with_internal_indent(insert_index, value, newline_kind, indents);
+        container.raw_insert_value_with_internal_indent(insert_index, value, newline_kind, &child_indents);
       }
     }
   }
@@ -1863,15 +1819,16 @@ fn indent_text(node: &CstNode) -> Option<String> {
   None
 }
 
+#[derive(Debug)]
 struct Indents {
-  child_indent: String,
+  current_indent: String,
   single_indent: String,
 }
 
 impl Indents {
   pub fn indent(&self) -> Indents {
     Indents {
-      child_indent: format!("{}{}", self.child_indent, self.single_indent),
+      current_indent: format!("{}{}", self.current_indent, self.single_indent),
       single_indent: self.single_indent.clone(),
     }
   }
@@ -1893,7 +1850,7 @@ fn compute_indents(node: &CstNode) -> Indents {
         Some(last_indent) => {
           if let Some(single_indent_text) = last_indent.strip_prefix(&indent_text) {
             return Indents {
-              child_indent: format!("{}{}", last_indent, single_indent_text.repeat(count)),
+              current_indent: format!("{}{}", last_indent, single_indent_text.repeat(count)),
               single_indent: single_indent_text.to_string(),
             };
           }
@@ -1911,7 +1868,7 @@ fn compute_indents(node: &CstNode) -> Indents {
   // assume two space indentation
   let single_indent = "  ";
   Indents {
-    child_indent: single_indent.repeat(count),
+    current_indent: single_indent.repeat(count),
     single_indent: single_indent.to_string(),
   }
 }
