@@ -7,21 +7,23 @@ pub enum RawCstValue {
   Number(String),
   String(String),
   Array(Vec<RawCstValue>),
-  Object(Vec<RawCstObjectValue>),
-  Comment(String),
+  Object(Vec<(String, RawCstValue)>),
 }
 
 impl RawCstValue {
   pub(crate) fn force_multiline(&self) -> bool {
     match self {
       RawCstValue::Null | RawCstValue::Bool(_) | RawCstValue::Number(_) | RawCstValue::String(_) => false,
-      RawCstValue::Array(_) | RawCstValue::Object(_) | RawCstValue::Comment(_) => true,
+      RawCstValue::Array(v) => v.iter().any(|v| v.is_object_or_array()),
+      RawCstValue::Object(v) => v.len() > 0,
     }
   }
-}
 
-#[derive(Debug, Clone)]
-pub enum RawCstObjectValue {
-  Comment(String),
-  KeyValue(String, RawCstValue),
+  fn is_object_or_array(&self) -> bool {
+    match self {
+      RawCstValue::Null | RawCstValue::Bool(_) | RawCstValue::Number(_) | RawCstValue::String(_) => false,
+      RawCstValue::Array(_) => true,
+      RawCstValue::Object(_) => false,
+    }
+  }
 }
