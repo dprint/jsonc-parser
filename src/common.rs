@@ -18,15 +18,15 @@ impl Range {
 }
 
 impl Ranged for Range {
-  fn range(&self) -> &Range {
-    self
+  fn range(&self) -> Range {
+    *self
   }
 }
 
 /// Represents an object that has a range in the text.
 pub trait Ranged {
   /// Gets the range.
-  fn range(&self) -> &Range;
+  fn range(&self) -> Range;
 
   /// Gets the byte index of the first character in the text.
   fn start(&self) -> usize {

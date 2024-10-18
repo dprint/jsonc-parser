@@ -11,26 +11,35 @@ use std::rc::Rc;
 
 #[test]
 fn test_specs() {
-  for json_path in get_json_file_paths_in_dir(&Path::new("./tests/specs")) {
+  for json_path in get_json_file_paths_in_dir(Path::new("./tests/specs")) {
     let text_file_path = json_path.with_extension("txt");
-    let json_file_text = fs::read_to_string(&json_path)
-      .expect("Expected to read file.")
-      .replace("\r\n", "\n");
+    let json_file_text = fs::read_to_string(&json_path).unwrap().replace("\r\n", "\n");
     let result = parse_to_ast(
       &json_file_text,
       &CollectOptions {
-        comments: true,
+        comments: CommentCollectionStrategy::Separate,
         tokens: true,
       },
       &Default::default(),
     )
     .expect("Expected no error.");
     let result_text = parse_result_to_test_str(&result);
-    let expected_text = fs::read_to_string(&text_file_path)
-      .expect("Expected to read expected file.")
-      .replace("\r\n", "\n");
+    let expected_text = fs::read_to_string(&text_file_path).unwrap().replace("\r\n", "\n");
     // fs::write(&text_file_path, result_text.clone()).unwrap();
     assert_eq!(result_text.trim(), expected_text.trim());
+  }
+}
+
+#[cfg(feature = "cst")]
+#[test]
+fn test_cst() {
+  for json_path in get_json_file_paths_in_dir(Path::new("./tests/specs")) {
+    let json_file_text = fs::read_to_string(&json_path).unwrap().replace("\r\n", "\n");
+
+    eprintln!("Parsing: {:?}", json_path);
+    let value = jsonc_parser::cst::CstRootNode::parse(&json_file_text, &ParseOptions::default()).unwrap();
+    let cst_string = value.to_string();
+    assert_eq!(cst_string, json_file_text);
   }
 }
 
@@ -75,12 +84,12 @@ fn parse_result_to_test_str(parse_result: &ParseResult) -> String {
   let comments = parse_result.comments.as_ref().expect("Expected comments.");
   let collection_count = comments.len();
   let mut comments = comments.iter().collect::<Vec<_>>();
-  comments.sort_by(|a, b| a.0.cmp(&b.0));
+  comments.sort_by(|a, b| a.0.cmp(b.0));
   for (i, comment_collection) in comments.into_iter().enumerate() {
     text.push_str("\n    ");
     text.push_str(&comments_to_test_str(comment_collection).replace("\n", "\n    "));
     if i + 1 < collection_count {
-      text.push_str(",");
+      text.push(',');
     }
   }
   text.push_str("\n  ]\n");
@@ -99,38 +108,38 @@ fn value_to_test_str(value: &Value) -> String {
   }
 }
 
-fn range_to_test_str(range: &Range) -> String {
+fn range_to_test_str(range: Range) -> String {
   let mut text = String::new();
   text.push_str("\"range\": {\n");
   text.push_str(&format!("  \"start\": {},\n", range.start));
   text.push_str(&format!("  \"end\": {},\n", range.end));
-  text.push_str("}");
+  text.push('}');
   text
 }
 
 fn string_lit_to_test_str(lit: &StringLit) -> String {
-  lit_to_test_str("string", &lit.value, &lit.range)
+  lit_to_test_str("string", &lit.value, lit.range)
 }
 
 fn word_lit_to_test_str(lit: &WordLit) -> String {
-  lit_to_test_str("word", lit.value, &lit.range)
+  lit_to_test_str("word", lit.value, lit.range)
 }
 
 fn number_lit_to_test_str(lit: &NumberLit) -> String {
-  lit_to_test_str("number", lit.value, &lit.range)
+  lit_to_test_str("number", lit.value, lit.range)
 }
 
 fn boolean_lit_to_test_str(lit: &BooleanLit) -> String {
-  lit_to_test_str("boolean", &lit.value.to_string(), &lit.range)
+  lit_to_test_str("boolean", &lit.value.to_string(), lit.range)
 }
 
-fn lit_to_test_str(lit_type: &str, value: &str, range: &Range) -> String {
+fn lit_to_test_str(lit_type: &str, value: &str, range: Range) -> String {
   let mut text = String::new();
   text.push_str("{\n");
   text.push_str(&format!("  \"type\": \"{}\",\n", lit_type));
   text.push_str(&format!("  {},\n", range_to_test_str(range).replace("\n", "\n  ")));
   text.push_str(&format!("  \"value\": \"{}\"\n", escape_json_str(value)));
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -138,18 +147,18 @@ fn object_to_test_str(obj: &Object) -> String {
   let mut text = String::new();
   text.push_str("{\n");
   text.push_str("  \"type\": \"object\",\n");
-  text.push_str(&format!("  {},\n", range_to_test_str(&obj.range).replace("\n", "\n  ")));
+  text.push_str(&format!("  {},\n", range_to_test_str(obj.range).replace("\n", "\n  ")));
   text.push_str("  \"properties\": [");
   let prop_count = obj.properties.len();
   for (i, prop) in obj.properties.iter().enumerate() {
     text.push_str("\n    ");
     text.push_str(&object_prop_to_test_str(prop).replace("\n", "\n    "));
     if i + 1 < prop_count {
-      text.push_str(",");
+      text.push(',');
     }
   }
   text.push_str("\n  ]\n");
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -159,7 +168,7 @@ fn object_prop_to_test_str(obj_prop: &ObjectProp) -> String {
   text.push_str("  \"type\": \"objectProp\",\n");
   text.push_str(&format!(
     "  {},\n",
-    range_to_test_str(&obj_prop.range).replace("\n", "\n  ")
+    range_to_test_str(obj_prop.range).replace("\n", "\n  ")
   ));
   text.push_str(&format!(
     "  \"name\": {},\n",
@@ -169,7 +178,7 @@ fn object_prop_to_test_str(obj_prop: &ObjectProp) -> String {
     "  \"value\": {}\n",
     value_to_test_str(&obj_prop.value).replace("\n", "\n  ")
   ));
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -184,18 +193,18 @@ fn array_to_test_str(arr: &Array) -> String {
   let mut text = String::new();
   text.push_str("{\n");
   text.push_str("  \"type\": \"array\",\n");
-  text.push_str(&format!("  {},\n", range_to_test_str(&arr.range).replace("\n", "\n  ")));
+  text.push_str(&format!("  {},\n", range_to_test_str(arr.range).replace("\n", "\n  ")));
   text.push_str("  \"elements\": [");
   let elements_count = arr.elements.len();
   for (i, element) in arr.elements.iter().enumerate() {
     text.push_str("\n    ");
     text.push_str(&value_to_test_str(element).replace("\n", "\n    "));
     if i + 1 < elements_count {
-      text.push_str(",");
+      text.push(',');
     }
   }
   text.push_str("\n  ]\n");
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -205,9 +214,9 @@ fn null_keyword_to_test_str(null_keyword: &NullKeyword) -> String {
   text.push_str("  \"type\": \"null\",\n");
   text.push_str(&format!(
     "  {}\n",
-    range_to_test_str(&null_keyword.range).replace("\n", "\n  ")
+    range_to_test_str(null_keyword.range).replace("\n", "\n  ")
   ));
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -221,11 +230,11 @@ fn comments_to_test_str(comments: (&usize, &Rc<Vec<Comment>>)) -> String {
     text.push_str("\n    ");
     text.push_str(&comment_to_test_str(comment).replace("\n", "\n    "));
     if i + 1 < comments_count {
-      text.push_str(",");
+      text.push(',');
     }
   }
   text.push_str("\n  ]\n");
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -237,11 +246,11 @@ fn comment_to_test_str(comment: &Comment) -> String {
 }
 
 fn comment_line_to_test_str(line: &CommentLine) -> String {
-  lit_to_test_str("line", line.text, &line.range)
+  lit_to_test_str("line", line.text, line.range)
 }
 
 fn comment_block_to_test_str(block: &CommentBlock) -> String {
-  lit_to_test_str("block", block.text, &block.range)
+  lit_to_test_str("block", block.text, block.range)
 }
 
 fn escape_json_str(text: &str) -> String {

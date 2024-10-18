@@ -39,9 +39,21 @@ impl<'a> From<Map<String, JsonValue<'a>>> for JsonObject<'a> {
   }
 }
 
+#[cfg(not(feature = "preserve_order"))]
+#[inline(always)]
+fn remove_entry<'a>(map: &mut Map<String, JsonValue<'a>>, key: &str) -> Option<(String, JsonValue<'a>)> {
+  map.remove_entry(key)
+}
+
+#[cfg(feature = "preserve_order")]
+#[inline(always)]
+fn remove_entry<'a>(map: &mut Map<String, JsonValue<'a>>, key: &str) -> Option<(String, JsonValue<'a>)> {
+  map.shift_remove_entry(key)
+}
+
 macro_rules! generate_take {
   ($self:ident, $name:ident, $value_type:ident) => {
-    match $self.0.remove_entry($name) {
+    match remove_entry(&mut $self.0, $name) {
       Some((_, JsonValue::$value_type(value))) => Some(value),
       Some((key, value)) => {
         // add it back
@@ -127,7 +139,7 @@ impl<'a> JsonObject<'a> {
   /// Takes a value from the object by name.
   /// Returns `None` when it doesn't exist.
   pub fn take(&mut self, name: &str) -> Option<JsonValue<'a>> {
-    self.0.remove(name)
+    remove_entry(&mut self.0, name).map(|(_, value)| value)
   }
 
   /// Takes a string property value from the object by name.

@@ -22,7 +22,7 @@ pub fn parse_to_serde_value(text: &str, parse_options: &ParseOptions) -> Result<
   let value = parse_to_ast(
     text,
     &CollectOptions {
-      comments: false,
+      comments: crate::CommentCollectionStrategy::Off,
       tokens: false,
     },
     parse_options,

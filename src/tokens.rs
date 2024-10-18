@@ -20,6 +20,32 @@ pub enum Token<'a> {
   CommentBlock(&'a str),
 }
 
+impl<'a> Token<'a> {
+  pub fn as_str(&self) -> &str {
+    match self {
+      Token::OpenBrace => "{",
+      Token::CloseBrace => "}",
+      Token::OpenBracket => "[",
+      Token::CloseBracket => "]",
+      Token::Comma => ",",
+      Token::Colon => ":",
+      Token::String(value) => value,
+      Token::Word(value) => value,
+      Token::Boolean(value) => {
+        if *value {
+          "true"
+        } else {
+          "false"
+        }
+      }
+      Token::Number(value) => value,
+      Token::Null => "null",
+      Token::CommentLine(value) => value,
+      Token::CommentBlock(value) => value,
+    }
+  }
+}
+
 /// A token with positional information.
 pub struct TokenAndRange<'a> {
   pub range: Range,
@@ -27,7 +53,7 @@ pub struct TokenAndRange<'a> {
 }
 
 impl<'a> Ranged for TokenAndRange<'a> {
-  fn range(&self) -> &Range {
-    &self.range
+  fn range(&self) -> Range {
+    self.range
   }
 }
