@@ -1321,9 +1321,18 @@ impl CstArray {
       .collect()
   }
 
+  pub fn append(&self, value: RawCstValue) {
+    self.insert_or_append(None, value);
+  }
+
   pub fn insert(&self, index: usize, value: RawCstValue) {
+    self.insert_or_append(Some(index), value);
+  }
+
+  fn insert_or_append(&self, index: Option<usize>, value: RawCstValue) {
     let children = self.children();
     let elements = self.elements();
+    let index = index.unwrap_or(elements.len());
     let index = std::cmp::min(index, elements.len());
     let next_node = elements.get(index);
     let previous_node = if index == 0 { None } else { elements.get(index - 1) };
@@ -2229,7 +2238,7 @@ value3: true
   }
 ]"#,
     );
-    //run_test(0, RawCstValue::Number("10".to_string()), r#"[]"#, r#"[10]"#);
+    run_test(0, RawCstValue::Number("10".to_string()), r#"[]"#, r#"[10]"#);
   }
 
   #[test]
