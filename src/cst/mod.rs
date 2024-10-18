@@ -514,24 +514,6 @@ impl Display for CstNode {
   }
 }
 
-// impl Ranged for CstNode {
-//   fn range(&self) -> Range {
-//     match self {
-//       CstNode::StringLit(node) => node.range,
-//       CstNode::NumberLit(node) => node.range,
-//       CstNode::BooleanLit(node) => node.range,
-//       CstNode::Object(node) => node.range,
-//       CstNode::ObjectProp(node) => node.range,
-//       CstNode::Array(node) => node.range,
-//       CstNode::NullKeyword(node) => node.range,
-//       CstNode::WordLit(node) => node.range,
-//       CstNode::Token(node) => node.range,
-//       CstNode::Whitespace(node) => node.range,
-//       CstNode::Comment(node) => node.range,
-//     }
-//   }
-// }
-
 #[derive(Debug, Clone)]
 pub enum CstContainerNode {
   Root(CstRootNode),
@@ -665,7 +647,7 @@ impl CstContainerNode {
   }
 
   #[inline(always)]
-  fn raw_insert_child(&self, index: Option<usize>, child: CstNode) {
+  fn raw_insert_child(&self, index: Option<&mut usize>, child: CstNode) {
     self.raw_insert_children(index, vec![child]);
   }
 
@@ -674,7 +656,7 @@ impl CstContainerNode {
     self.raw_insert_children(None, children);
   }
 
-  fn raw_insert_children(&self, index: Option<usize>, children: Vec<CstNode>) {
+  fn raw_insert_children(&self, index: Option<&mut usize>, children: Vec<CstNode>) {
     if children.is_empty() {
       return;
     }
@@ -686,11 +668,14 @@ impl CstContainerNode {
       CstContainerNode::ObjectProp(node) => node.0.borrow_mut(),
       CstContainerNode::Array(node) => node.0.borrow_mut(),
     };
-    let index = index.unwrap_or(container.value.len());
-    container.value.splice(index..index, children);
+    let insert_index = index.as_ref().map(|i| **i).unwrap_or(container.value.len());
+    if let Some(i) = index {
+      *i += children.len();
+    }
+    container.value.splice(insert_index..insert_index, children);
 
     // update the child index of all the nodes
-    for (i, child) in container.value.iter().enumerate().skip(index) {
+    for (i, child) in container.value.iter().enumerate().skip(insert_index) {
       child.set_parent(Some(ParentInfo {
         parent: weak_parent.clone(),
         child_index: i,
@@ -700,7 +685,7 @@ impl CstContainerNode {
 
   fn raw_insert_value_with_internal_indent(
     &self,
-    insert_index: Option<usize>,
+    insert_index: Option<&mut usize>,
     value: InsertValue,
     newline_kind: CstNewlineKind,
     indents: &Indents,
@@ -805,17 +790,17 @@ impl CstContainerNode {
         }
       }
       InsertValue::Property(prop_name, value) => {
-        let mut index = insert_index;
-        self.raw_insert_children(
-          index,
+        let prop = CstContainerNode::ObjectProp(CstObjectProp::new());
+        self.raw_insert_child(insert_index, prop.clone().into());
+        prop.raw_insert_children(
+          None,
           vec![
-            CstStringLit::new_escaped(&prop_name).into(),
+            CstStringLit::new_escaped(prop_name).into(),
             CstToken::new(':').into(),
             CstWhitespace::new(" ".to_string()).into(),
           ],
         );
-        index.as_mut().map(|i| *i += 3);
-        self.raw_insert_value_with_internal_indent(index, InsertValue::Value(value), newline_kind, indents);
+        prop.raw_insert_value_with_internal_indent(None, InsertValue::Value(value), newline_kind, indents);
       }
     }
   }
@@ -1382,16 +1367,16 @@ impl CstArray {
       .borrow()
       .value
       .iter()
-      .filter_map(|child| match child {
-        CstNode::Container(_) => Some(child),
+      .filter(|child| match child {
+        CstNode::Container(_) => true,
         CstNode::Leaf(leaf) => match leaf {
           CstLeafNode::BooleanLit(_)
           | CstLeafNode::NullKeyword(_)
           | CstLeafNode::NumberLit(_)
           | CstLeafNode::StringLit(_)
-          | CstLeafNode::WordLit(_) => Some(child),
+          | CstLeafNode::WordLit(_) => true,
           CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => {
-            None
+            false
           }
         },
       })
@@ -1508,6 +1493,7 @@ impl CstNewline {
 impl Display for CstNewline {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self.0.borrow().value {
+      #[allow(clippy::write_with_newline)] // better to be explicit
       CstNewlineKind::LineFeed => write!(f, "\n"),
       CstNewlineKind::CarriageReturnLineFeed => write!(f, "\r\n"),
     }
@@ -1769,7 +1755,7 @@ fn remove_comma_separated(node: CstNode) {
     .unwrap_or(false);
   let remove_up_to_next_line = trailing_comma
     .as_ref()
-    .map(|c| !check_next_node_same_line(&c))
+    .map(|c| !check_next_node_same_line(c))
     .unwrap_or(true);
 
   for previous in node.previous_siblings() {
@@ -1886,6 +1872,19 @@ fn insert_or_append_to_container(
   index: Option<usize>,
   value: InsertValue,
 ) {
+  fn has_separating_newline(siblings: impl Iterator<Item = CstNode>) -> bool {
+    for sibling in siblings {
+      if sibling.is_newline() {
+        return true;
+      } else if sibling.is_trivia() {
+        continue;
+      } else {
+        break;
+      }
+    }
+    false
+  }
+
   let children = container.children();
   let index = index.unwrap_or(elements.len());
   let index = std::cmp::min(index, elements.len());
@@ -1894,8 +1893,8 @@ fn insert_or_append_to_container(
   let newline_kind = CstNode::Container(container.clone()).detect_file_newline_kind();
   let indents = compute_indents(&container.clone().into());
   let child_indents = elements
-    .get(0)
-    .map(|e| compute_indents(&e))
+    .first()
+    .map(compute_indents)
     .unwrap_or_else(|| indents.indent());
   let has_newline = children.iter().any(|child| child.is_newline());
   let force_multiline = has_newline
@@ -1903,59 +1902,75 @@ fn insert_or_append_to_container(
       InsertValue::Value(v) => v.force_multiline(),
       InsertValue::Property(..) => true,
     };
-  if let Some(next_node) = next_node {
-    let mut insert_index = next_node
-      .leading_comments_same_line()
+  let mut insert_index: usize;
+  if let Some(previous_node) = previous_node {
+    if previous_node.trailing_comma().is_none() {
+      let mut index = previous_node.child_index() + 1;
+      container.raw_insert_child(Some(&mut index), CstToken::new(',').into());
+    }
+
+    let trailing_comma: CstNode = previous_node.trailing_comma().unwrap().into();
+    insert_index = trailing_comma
+      .trailing_comments_same_line()
       .last()
-      .map(|l| l.child_index())
-      .unwrap_or_else(|| next_node.child_index());
-    container.raw_insert_value_with_internal_indent(Some(insert_index), value, newline_kind, &child_indents);
-    insert_index += 1;
+      .map(|t| t.child_index())
+      .unwrap_or_else(|| trailing_comma.child_index())
+      + 1;
     if force_multiline {
       container.raw_insert_children(
-        Some(insert_index),
+        Some(&mut insert_index),
         vec![
-          CstToken::new(',').into(),
           CstNewline::new(newline_kind).into(),
           CstStringLit::new(child_indents.current_indent.clone()).into(),
         ],
       );
+      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
     } else {
-      container.raw_insert_children(
-        Some(insert_index),
-        vec![CstToken::new(',').into(), CstWhitespace::new(" ".to_string()).into()],
-      );
+      container.raw_insert_child(Some(&mut insert_index), CstWhitespace::new(" ".to_string()).into());
+      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
     }
   } else {
-    let close_bracket_token = children.last().unwrap();
-
-    if let Some(previous_node) = previous_node {
-      if previous_node.trailing_comma().is_none() {
-        container.raw_insert_child(Some(previous_node.child_index() + 1), CstToken::new(',').into());
-      }
-    }
-
+    let open_token = children.first().unwrap();
+    insert_index = open_token.child_index() + 1;
     if force_multiline {
-      let insert_index = close_bracket_token.child_index();
       container.raw_insert_children(
-        Some(insert_index),
+        Some(&mut insert_index),
         vec![
           CstNewline::new(newline_kind).into(),
           CstStringLit::new(child_indents.current_indent.clone()).into(),
-          CstNewline::new(newline_kind).into(),
-          CstStringLit::new(indents.current_indent.clone()).into(),
         ],
       );
-      container.raw_insert_value_with_internal_indent(Some(insert_index + 2), value, newline_kind, &child_indents);
-    } else {
-      if previous_node.is_some() {
-        container.raw_insert_child(
-          Some(close_bracket_token.child_index()),
-          CstWhitespace::new(" ".to_string()).into(),
+      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
+      if next_node.is_none() {
+        container.raw_insert_children(
+          Some(&mut insert_index),
+          vec![
+            CstNewline::new(newline_kind).into(),
+            CstStringLit::new(indents.current_indent.clone()).into(),
+          ],
         );
       }
-      let insert_index = close_bracket_token.child_index();
-      container.raw_insert_value_with_internal_indent(Some(insert_index), value, newline_kind, &child_indents);
+    } else {
+      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
+    }
+  }
+
+  if next_node.is_some() {
+    container.raw_insert_children(Some(&mut insert_index), vec![CstToken::new(',').into()]);
+
+    if force_multiline {
+      let comma_token = container.child_at_index(insert_index - 1).unwrap();
+      if !has_separating_newline(comma_token.next_siblings()) {
+        container.raw_insert_children(
+          Some(&mut insert_index),
+          vec![
+            CstNewline::new(newline_kind).into(),
+            CstStringLit::new(indents.current_indent.clone()).into(),
+          ],
+        );
+      }
+    } else {
+      container.raw_insert_child(Some(&mut insert_index), CstWhitespace::new(" ".to_string()).into());
     }
   }
 }
@@ -2289,7 +2304,7 @@ value3: true
       let root_value = cst.root_value().unwrap();
       let root_obj = root_value.as_object().unwrap();
       root_obj.insert(index, prop_name, value);
-      assert_eq!(cst.to_string(), expected);
+      assert_eq!(cst.to_string(), expected, "Initial text: {}", json);
     }
 
     run_test(
@@ -2299,6 +2314,54 @@ value3: true
       r#"{}"#,
       r#"{
   "propName": [1]
+}"#,
+    );
+
+    // inserting before first prop
+    run_test(
+      0,
+      "value0",
+      json!([1]),
+      r#"{
+    "value1": 5
+}"#,
+      r#"{
+    "value0": [1],
+    "value1": 5
+}"#,
+    );
+
+    // inserting before first prop with leading comment
+    run_test(
+      0,
+      "value0",
+      json!([1]),
+      r#"{
+    // some comment
+    "value1": 5
+}"#,
+      r#"{
+    "value0": [1],
+    // some comment
+    "value1": 5
+}"#,
+    );
+
+    // inserting after last prop with trailing comment
+    run_test(
+      1,
+      "value1",
+      json!({
+        "value": 1
+      }),
+      r#"{
+    "value0": 5 // comment
+}"#,
+      r#"{
+    "value0": 5, // comment
+    "value1": {
+        "value": 1
+    }
 }"#,
     );
   }
@@ -2381,7 +2444,7 @@ value3: true
       let root_value = cst.root_value().unwrap();
       let root_array = root_value.as_array().unwrap();
       root_array.insert(index, value);
-      assert_eq!(cst.to_string(), expected);
+      assert_eq!(cst.to_string(), expected, "Initial text: {}", json);
     }
 
     run_test(0, json!([1]), r#"[]"#, r#"[[1]]"#);
