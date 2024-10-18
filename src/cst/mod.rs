@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt::Display;
+use std::iter::Peekable;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -1995,6 +1996,8 @@ fn insert_or_append_to_container(
     false
   }
 
+  trim_inner_start_and_end_blanklines(container);
+
   let children = container.children();
   let index = index.unwrap_or(elements.len());
   let index = std::cmp::min(index, elements.len());
@@ -2043,8 +2046,18 @@ fn insert_or_append_to_container(
       container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
     }
   } else {
-    let open_token = children.first().unwrap();
-    insert_index = open_token.child_index() + 1;
+    insert_index = if elements.is_empty() {
+      children
+        .iter()
+        .rev()
+        .skip(1)
+        .take_while(|t| t.is_whitespace() || t.is_newline())
+        .last()
+        .unwrap_or_else(|| children.last().unwrap())
+        .child_index()
+    } else {
+      children.first().unwrap().child_index() + 1
+    };
     if force_multiline {
       container.raw_insert_children(
         Some(&mut insert_index),
@@ -2054,7 +2067,9 @@ fn insert_or_append_to_container(
         ],
       );
       container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
-      if next_node.is_none() {
+      if next_node.is_none()
+        && !has_separating_newline(container.child_at_index(insert_index - 1).unwrap().next_siblings())
+      {
         container.raw_insert_children(
           Some(&mut insert_index),
           vec![
@@ -2088,6 +2103,44 @@ fn insert_or_append_to_container(
   }
 }
 
+fn trim_inner_start_and_end_blanklines(node: &CstContainerNode) {
+  fn remove_blank_lines_after_first(children: &mut Peekable<impl Iterator<Item = CstNode>>) {
+    // try to find the first newline
+    while let Some(child) = children.next() {
+      if child.is_whitespace() {
+        // keep searching
+      } else if child.is_newline() {
+        break; // found
+      } else {
+        return; // stop, no leading blank lines
+      }
+    }
+
+    while let Some(child) = children.next() {
+      if child.is_whitespace() && children.peek().map(|c| c.is_newline()).unwrap_or(false) {
+        child.remove();
+      } else if child.is_newline() {
+        child.remove();
+      } else {
+        break;
+      }
+    }
+  }
+
+  let children = node.children();
+  let len = children.len();
+
+  if len < 2 {
+    return; // should never happen because this should only be called for array and object
+  }
+
+  // remove blank lines from the front and back
+  let mut children = children.into_iter().skip(1).take(len - 2).peekable();
+  remove_blank_lines_after_first(&mut children);
+  let mut children = children.rev().peekable();
+  remove_blank_lines_after_first(&mut children);
+}
+
 #[derive(Debug)]
 struct Indents {
   current_indent: String,
@@ -2104,7 +2157,7 @@ impl Indents {
 }
 
 fn compute_indents(node: &CstNode) -> Indents {
-  let mut count = 0;
+  let mut indent_level = 0;
   let mut stored_last_indent = node.indent_text();
 
   for ancestor in node.ancestors() {
@@ -2112,14 +2165,16 @@ fn compute_indents(node: &CstNode) -> Indents {
       break;
     }
 
-    count += 1;
+    if !ancestor.is_object_prop() {
+      indent_level += 1;
+    }
 
     if let Some(indent_text) = ancestor.indent_text() {
       match stored_last_indent {
         Some(last_indent) => {
           if let Some(single_indent_text) = last_indent.strip_prefix(&indent_text) {
             return Indents {
-              current_indent: format!("{}{}", last_indent, single_indent_text.repeat(count)),
+              current_indent: format!("{}{}", last_indent, single_indent_text.repeat(indent_level)),
               single_indent: single_indent_text.to_string(),
             };
           }
@@ -2134,7 +2189,7 @@ fn compute_indents(node: &CstNode) -> Indents {
     }
   }
 
-  if count == 1 {
+  if indent_level == 1 {
     if let Some(indent_text) = node.indent_text() {
       return Indents {
         current_indent: indent_text.clone(),
@@ -2143,10 +2198,22 @@ fn compute_indents(node: &CstNode) -> Indents {
     }
   }
 
+  // try to discover the single indent level by looking at the root node's children
+  if let Some(root_value) = node.root_node().and_then(|r| r.root_value()) {
+    for child in root_value.children() {
+      if let Some(single_indent) = child.indent_text() {
+        return Indents {
+          current_indent: single_indent.repeat(indent_level),
+          single_indent,
+        };
+      }
+    }
+  }
+
   // assume two space indentation
   let single_indent = "  ";
   Indents {
-    current_indent: single_indent.repeat(count),
+    current_indent: single_indent.repeat(indent_level),
     single_indent: single_indent.to_string(),
   }
 }
@@ -2552,6 +2619,7 @@ value3: true
 
   #[test]
   fn insert_array_element() {
+    #[track_caller]
     fn run_test(index: usize, value: RawCstValue, json: &str, expected: &str) {
       let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
@@ -2599,6 +2667,39 @@ value3: true
         "value": 1,
       }),
       r#"[]"#,
+      r#"[
+  {
+    "value": 1
+  }
+]"#,
+    );
+
+    // only comment
+    run_test(
+      0,
+      cst_value!({
+        "value": 1,
+      }),
+      r#"[
+    // comment
+]"#,
+      r#"[
+    // comment
+    {
+        "value": 1
+    }
+]"#,
+    );
+
+    // blank line
+    run_test(
+      0,
+      cst_value!({
+        "value": 1,
+      }),
+      r#"[
+
+]"#,
       r#"[
   {
     "value": 1
@@ -2710,6 +2811,46 @@ value3: true
   2,
   /* test */ 3
 ]"#
+      );
+    }
+    // elements deep
+    {
+      let cst = build_cst(
+        r#"{
+  "prop": {
+    "value": [  1,   2, /* test */ 3  ]
+  }
+}"#,
+      );
+      cst
+        .root_value()
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .property_by_name("prop")
+        .unwrap()
+        .value()
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .property_by_name("value")
+        .unwrap()
+        .value()
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .ensure_multiline();
+      assert_eq!(
+        cst.to_string(),
+        r#"{
+  "prop": {
+    "value": [
+      1,
+      2,
+      /* test */ 3
+    ]
+  }
+}"#
       );
     }
   }
