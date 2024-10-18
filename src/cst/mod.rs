@@ -11,14 +11,9 @@ use crate::parse_to_ast;
 use crate::string::ParseStringErrorKind;
 use crate::ParseOptions;
 
-macro_rules! create_inner {
-  ($value:expr) => {
-    Rc::new(RefCell::new(CstValueInner {
-      parent: None,
-      value: $value,
-    }))
-  };
-}
+mod input;
+
+pub use input::*;
 
 macro_rules! add_parent_info_methods {
   () => {
@@ -80,28 +75,6 @@ macro_rules! add_parent_info_methods {
       find_trailing_comma(&self.clone().into())
     }
   };
-}
-
-fn indent_text(node: &CstNode) -> Option<String> {
-  let mut last_whitespace: Option<CstWhitespace> = None;
-  for previous_sibling in node.previous_siblings() {
-    match previous_sibling {
-      CstNode::Container(_) => return None,
-      CstNode::Leaf(leaf) => match leaf {
-        CstLeafNode::Newline(_) => {
-          return last_whitespace.map(|whitespace| whitespace.value());
-        }
-        CstLeafNode::Whitespace(whitespace) => {
-          last_whitespace = Some(whitespace);
-        }
-        CstLeafNode::Comment(_) => {
-          last_whitespace = None;
-        }
-        _ => return None,
-      },
-    }
-  }
-  None
 }
 
 fn find_trailing_comma(node: &CstNode) -> Option<CstToken> {
@@ -266,6 +239,12 @@ struct ParentInfo {
 struct CstValueInner<T> {
   parent: Option<ParentInfo>,
   value: T,
+}
+
+impl<T> CstValueInner<T> {
+  fn new(value: T) -> Rc<RefCell<Self>> {
+    Rc::new(RefCell::new(CstValueInner { parent: None, value }))
+  }
 }
 
 type CstChildrenInner = CstValueInner<Vec<CstNode>>;
@@ -449,6 +428,25 @@ impl CstNode {
     }
   }
 
+  pub fn detect_file_newline_kind(&self) -> CstNewlineKind {
+    let check_node_kind = |node: &CstNode| match node {
+      CstNode::Leaf(CstLeafNode::Newline(newline)) => Some(newline.kind()),
+      _ => None,
+    };
+
+    if let Some(kind) = check_node_kind(self) {
+      return kind;
+    }
+
+    for ancestor in self.ancestors() {
+      if let Some(kind) = check_node_kind(&ancestor.into()) {
+        return kind;
+      }
+    }
+
+    CstNewlineKind::LineFeed
+  }
+
   fn parent_info(&self) -> Option<ParentInfo> {
     match self {
       CstNode::Container(node) => node.parent_info(),
@@ -593,7 +591,16 @@ impl CstContainerNode {
     }
   }
 
-  pub fn remove_child_set_no_parent(&self, index: usize) {
+  pub fn child_indent_text(&self) -> String {
+    match self {
+      CstContainerNode::Root(n) => n.child_indent_text(),
+      CstContainerNode::Object(n) => n.child_indent_text(),
+      CstContainerNode::ObjectProp(n) => n.child_indent_text(),
+      CstContainerNode::Array(n) => n.child_indent_text(),
+    }
+  }
+
+  fn remove_child_set_no_parent(&self, index: usize) {
     match self {
       CstContainerNode::Root(n) => n.remove_child_set_no_parent(index),
       CstContainerNode::Object(n) => n.remove_child_set_no_parent(index),
@@ -627,6 +634,43 @@ impl CstContainerNode {
       CstContainerNode::ObjectProp(node) => node.set_parent(parent),
       CstContainerNode::Array(node) => node.set_parent(parent),
     }
+  }
+
+  fn raw_append_child(&self, child: CstNode) {
+    self.raw_insert_or_append_children(None, vec![child]);
+  }
+
+  fn raw_insert_child(&self, index: usize, child: CstNode) {
+    self.raw_insert_or_append_children(Some(index), vec![child]);
+  }
+
+  fn raw_insert_or_append_children(&self, index: Option<usize>, children: Vec<CstNode>) {
+    let weak_parent = WeakParent::from_container(self);
+    let mut container = match self {
+      CstContainerNode::Root(node) => node.0.borrow_mut(),
+      CstContainerNode::Object(node) => node.0.borrow_mut(),
+      CstContainerNode::ObjectProp(node) => node.0.borrow_mut(),
+      CstContainerNode::Array(node) => node.0.borrow_mut(),
+    };
+    let parent_info = ParentInfo {
+      parent: weak_parent,
+      child_index: container.value.len(),
+    };
+    for child in &children {
+      child.set_parent(Some(parent_info.clone()));
+    }
+    match index {
+      Some(index) => {
+        container.value.splice(index..index, children);
+      }
+      None => container.value.extend(children),
+    }
+  }
+
+  fn raw_insert_value_with_internal_indent(&self, insert_index: usize, value: RawCstValue, child_indent_text: String) {
+    // let value = match value {
+
+    // }
   }
 }
 
@@ -735,6 +779,13 @@ pub struct CstRootNode(Rc<CstRootNodeInner>);
 impl_container_methods!(CstRootNode, Root);
 
 impl CstRootNode {
+  /// Parses the text into a CST.
+  ///
+  /// WARNING: You MUST not drop the root node for the duration of using the CST
+  /// or a panic could occur in certain scenarios. This is because the CST uses weak
+  /// references for ancestors and if the root node is dropped then the weak reference
+  /// will be lost and the CST will panic to prevent bugs when a descendant node
+  /// attempts to access an ancestor that was dropped.
   pub fn parse(text: &str, parse_options: &ParseOptions) -> Result<Self, ParseError> {
     let parse_result = parse_to_ast(
       text,
@@ -785,6 +836,19 @@ impl CstRootNode {
     None
   }
 
+  /// Computes the child indentation text.
+  pub fn child_indent_text(&self) -> String {
+    if let Some(value) = self.root_value() {
+      match value {
+        CstNode::Container(cst_container_node) => cst_container_node.child_indent_text(),
+        CstNode::Leaf(_) => compute_child_indent_from_parent(&value.into()),
+      }
+    } else {
+      // will use the default indent
+      compute_child_indent_from_parent(&self.clone().into())
+    }
+  }
+
   pub fn remove(self) {
     self.clear_children();
   }
@@ -806,6 +870,10 @@ pub struct CstStringLit(Rc<RefCell<CstValueInner<String>>>);
 impl_leaf_methods!(CstStringLit, StringLit);
 
 impl CstStringLit {
+  fn new(value: String) -> Self {
+    Self(CstValueInner::new(value))
+  }
+
   /// Sets the raw value of the string INCLUDING SURROUNDING QUOTES.
   pub fn set_raw_value(&self, value: String) {
     self.0.borrow_mut().value = value;
@@ -841,6 +909,10 @@ pub struct CstWordLit(Rc<RefCell<CstValueInner<String>>>);
 impl_leaf_methods!(CstWordLit, WordLit);
 
 impl CstWordLit {
+  fn new(value: String) -> Self {
+    Self(CstValueInner::new(value))
+  }
+
   /// Sets the raw value of the word literal.
   pub fn set_raw_value(&self, value: String) {
     self.0.borrow_mut().value = value;
@@ -863,6 +935,10 @@ pub struct CstNumberLit(Rc<RefCell<CstValueInner<String>>>);
 impl_leaf_methods!(CstNumberLit, NumberLit);
 
 impl CstNumberLit {
+  fn new(value: String) -> Self {
+    Self(CstValueInner::new(value))
+  }
+
   /// Sets the raw string value of the number literal.
   pub fn set_raw_value(&self, value: String) {
     self.0.borrow_mut().value = value;
@@ -886,6 +962,10 @@ pub struct CstBooleanLit(Rc<RefCell<CstValueInner<bool>>>);
 impl_leaf_methods!(CstBooleanLit, BooleanLit);
 
 impl CstBooleanLit {
+  fn new(value: bool) -> Self {
+    Self(CstValueInner::new(value))
+  }
+
   pub fn set_value(&self, value: bool) {
     self.0.borrow_mut().value = value;
   }
@@ -910,6 +990,10 @@ impl Display for CstBooleanLit {
 pub struct CstNullKeyword(Rc<RefCell<CstValueInner<()>>>);
 
 impl CstNullKeyword {
+  fn new() -> Self {
+    Self(CstValueInner::new(()))
+  }
+
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -932,6 +1016,10 @@ pub struct CstObject(Rc<CstObjectInner>);
 impl_container_methods!(CstObject, Object);
 
 impl CstObject {
+  fn new() -> Self {
+    Self(CstValueInner::new(Vec::new()))
+  }
+
   pub fn property_by_name(&self, name: &str) -> Option<CstObjectProp> {
     for child in &self.0.borrow().value {
       if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = child {
@@ -962,6 +1050,19 @@ impl CstObject {
       .collect()
   }
 
+  /// Computes the child indentation text.
+  pub fn child_indent_text(&self) -> String {
+    // try to get the indent text from the child elements
+    let props = self.properties();
+    for prop in &props {
+      if let Some(indent_text) = prop.indent_text() {
+        return indent_text;
+      }
+    }
+
+    compute_child_indent_from_parent(&self.clone().into())
+  }
+
   // pub fn insert_property(&self, index: usize, name: &str, value: serde_json::Value) {
   //   let properties = self.properties();
   //   let previous_prop = if index == 0 { None } else { properties.get(index - 1) };
@@ -990,6 +1091,10 @@ pub struct CstObjectProp(Rc<CstObjectPropInner>);
 impl_container_methods!(CstObjectProp, ObjectProp);
 
 impl CstObjectProp {
+  fn new() -> Self {
+    Self(CstValueInner::new(Vec::new()))
+  }
+
   pub fn name(&self) -> Result<ObjectPropName, ParseError> {
     for child in &self.0.borrow().value {
       match child {
@@ -1059,6 +1164,10 @@ impl CstObjectProp {
       }
     }
     None
+  }
+
+  pub fn child_indent_text(&self) -> String {
+    compute_child_indent_from_parent(&self.clone().into())
   }
 
   pub fn remove(self) {
@@ -1131,6 +1240,10 @@ pub struct CstArray(Rc<CstArrayInner>);
 impl_container_methods!(CstArray, Array);
 
 impl CstArray {
+  fn new() -> Self {
+    Self(CstValueInner::new(Vec::new()))
+  }
+
   pub fn elements(&self) -> Vec<CstNode> {
     self
       .0
@@ -1154,6 +1267,56 @@ impl CstArray {
       .collect()
   }
 
+  /// Computes the child indentation text.
+  pub fn child_indent_text(&self) -> String {
+    // try to get the indent text from the child elements
+    let elements = self.elements();
+    for element in &elements {
+      if let Some(indent_text) = element.indent_text() {
+        return indent_text;
+      }
+    }
+
+    compute_child_indent_from_parent(&self.clone().into())
+  }
+
+  pub fn insert(&self, index: usize, value: RawCstValue) {
+    let children = self.children();
+    let elements = self.elements();
+    let index = std::cmp::min(index, elements.len());
+    let next_node = elements.get(index);
+    let previous_node = if index == 0 { None } else { elements.get(index - 1) };
+    let container = CstContainerNode::Array(self.clone());
+    if let Some(next_node) = next_node {
+    } else if let Some(previous_node) = previous_node {
+    } else {
+      let open_bracket_token = children.first().unwrap();
+      let close_bracket_token = children.last().unwrap();
+      let has_newline = children.iter().any(|child| child.is_newline());
+      let force_newline = has_newline || value.force_multiline();
+      if force_newline {
+        let newline_kind = CstNode::Container(container.clone()).detect_file_newline_kind();
+        let child_indent_text = self.child_indent_text();
+        let parent_indent = self
+          .indent_text()
+          .or_else(|| self.parent().filter(|p| !p.is_root()).map(|p| p.child_indent_text()))
+          .unwrap_or_else(|| String::new());
+        let insert_index = close_bracket_token.child_index();
+        container.raw_insert_or_append_children(
+          Some(insert_index),
+          vec![
+            CstNewline::new(newline_kind).into(),
+            CstStringLit::new(child_indent_text).into(),
+            CstNewline::new(newline_kind).into(),
+            CstStringLit::new(parent_indent).into(),
+          ],
+        );
+        container.raw_insert_value_with_internal_indent(insert_index + 2, value, child_indent_text);
+      } else {
+      }
+    }
+  }
+
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1174,6 +1337,10 @@ pub struct CstToken(Rc<RefCell<CstValueInner<char>>>);
 impl_leaf_methods!(CstToken, Token);
 
 impl CstToken {
+  fn new(value: char) -> Self {
+    Self(CstValueInner::new(value))
+  }
+
   pub fn value(&self) -> char {
     self.0.borrow().value
   }
@@ -1195,6 +1362,10 @@ pub struct CstWhitespace(Rc<RefCell<CstValueInner<String>>>);
 impl_leaf_methods!(CstWhitespace, Whitespace);
 
 impl CstWhitespace {
+  fn new(value: String) -> Self {
+    Self(CstValueInner::new(value))
+  }
+
   pub fn value(&self) -> String {
     self.0.borrow().value.clone()
   }
@@ -1222,6 +1393,14 @@ pub struct CstNewline(Rc<RefCell<CstValueInner<CstNewlineKind>>>);
 impl_leaf_methods!(CstNewline, Newline);
 
 impl CstNewline {
+  fn new(kind: CstNewlineKind) -> Self {
+    Self(CstValueInner::new(kind))
+  }
+
+  pub fn kind(&self) -> CstNewlineKind {
+    self.0.borrow().value
+  }
+
   pub fn remove(self) {
     Into::<CstNode>::into(self).remove_raw()
   }
@@ -1242,6 +1421,10 @@ pub struct CstComment(Rc<RefCell<CstValueInner<String>>>);
 impl_leaf_methods!(CstComment, Comment);
 
 impl CstComment {
+  fn new(value: String) -> Self {
+    Self(CstValueInner::new(value))
+  }
+
   pub fn is_line_comment(&self) -> bool {
     self.0.borrow().value.starts_with("//")
   }
@@ -1337,10 +1520,8 @@ impl<'a> CstBuilder<'a> {
             token.token, from, to
           ),
           crate::tokens::Token::CommentLine(_) | crate::tokens::Token::CommentBlock(_) => {
-            self.raw_append_child(
-              container,
-              CstComment(create_inner!(self.text[token.range.start..token.range.end].to_string())).into(),
-            );
+            container
+              .raw_append_child(CstComment::new(self.text[token.range.start..token.range.end].to_string()).into());
           }
         }
         last_from = token.range.end;
@@ -1357,33 +1538,30 @@ impl<'a> CstBuilder<'a> {
   fn build_value(&mut self, container: &CstContainerNode, ast_value: ast::Value<'_>) {
     match ast_value {
       ast::Value::StringLit(string_lit) => self.build_string_lit(container, string_lit),
-      ast::Value::NumberLit(number_lit) => self.raw_append_child(
-        container,
-        CstNumberLit(create_inner!(number_lit.value.to_string())).into(),
-      ),
-      ast::Value::BooleanLit(boolean_lit) => {
-        self.raw_append_child(container, CstBooleanLit(create_inner!(boolean_lit.value)).into())
+      ast::Value::NumberLit(number_lit) => {
+        container.raw_append_child(CstNumberLit::new(number_lit.value.to_string()).into())
       }
+      ast::Value::BooleanLit(boolean_lit) => container.raw_append_child(CstBooleanLit::new(boolean_lit.value).into()),
       ast::Value::Object(object) => {
         let object = self.build_object(object);
-        self.raw_append_child(container, object.into())
+        container.raw_append_child(object.into())
       }
       ast::Value::Array(array) => {
         let array = self.build_array(array);
-        self.raw_append_child(container, array.into())
+        container.raw_append_child(array.into())
       }
-      ast::Value::NullKeyword(_) => self.raw_append_child(container, CstNullKeyword(create_inner!(())).into()),
+      ast::Value::NullKeyword(_) => container.raw_append_child(CstNullKeyword::new().into()),
     }
   }
 
   fn build_object(&mut self, object: ast::Object<'_>) -> CstContainerNode {
-    let container = CstContainerNode::Object(CstObject(create_inner!(Vec::new())));
+    let container = CstContainerNode::Object(CstObject::new());
     let mut last_range_end = object.range.start;
     for prop in object.properties {
       self.scan_from_to(&container, last_range_end, prop.range.start);
       last_range_end = prop.range.end;
       let object_prop = self.build_object_prop(prop);
-      self.raw_append_child(&container, CstNode::Container(object_prop));
+      container.raw_append_child(CstNode::Container(object_prop));
     }
     self.scan_from_to(&container, last_range_end, object.range.end);
 
@@ -1391,7 +1569,7 @@ impl<'a> CstBuilder<'a> {
   }
 
   fn build_object_prop(&mut self, prop: ast::ObjectProp<'_>) -> CstContainerNode {
-    let container = CstContainerNode::ObjectProp(CstObjectProp(create_inner!(Vec::new())));
+    let container = CstContainerNode::ObjectProp(CstObjectProp::new());
     let name_range = prop.name.range();
     let value_range = prop.value.range();
 
@@ -1400,9 +1578,10 @@ impl<'a> CstBuilder<'a> {
         self.build_string_lit(&container, string_lit);
       }
       ast::ObjectPropName::Word(word_lit) => {
-        self.raw_append_child(&container, CstWordLit(create_inner!(word_lit.value.to_string())).into());
+        container.raw_append_child(CstWordLit::new(word_lit.value.to_string()).into());
       }
     }
+
     self.scan_from_to(&container, name_range.end, value_range.start);
     self.build_value(&container, prop.value);
 
@@ -1410,7 +1589,7 @@ impl<'a> CstBuilder<'a> {
   }
 
   fn build_token(&self, container: &CstContainerNode, value: char) {
-    self.raw_append_child(container, CstToken(create_inner!(value)).into());
+    container.raw_append_child(CstToken::new(value).into());
   }
 
   fn build_whitespace(&self, container: &CstContainerNode, value: &str) {
@@ -1423,20 +1602,17 @@ impl<'a> CstBuilder<'a> {
     let maybe_add_previous_text = |from: usize, to: usize| {
       let text = &value[from..to];
       if !text.is_empty() {
-        self.raw_append_child(container, CstWhitespace(create_inner!(text.to_string())).into());
+        container.raw_append_child(CstWhitespace::new(text.to_string()).into());
       }
     };
     while let Some((i, c)) = chars.next() {
       if c == '\r' && chars.peek().map(|(_, c)| *c) == Some('\n') {
         maybe_add_previous_text(last_found_index, i);
-        self.raw_append_child(
-          container,
-          CstNewline(create_inner!(CstNewlineKind::CarriageReturnLineFeed)).into(),
-        );
+        container.raw_append_child(CstNewline::new(CstNewlineKind::CarriageReturnLineFeed).into());
         last_found_index = i + 2;
       } else if c == '\n' {
         maybe_add_previous_text(last_found_index, i);
-        self.raw_append_child(container, CstNewline(create_inner!(CstNewlineKind::LineFeed)).into());
+        container.raw_append_child(CstNewline::new(CstNewlineKind::LineFeed).into());
         last_found_index = i + 1;
       }
     }
@@ -1445,14 +1621,11 @@ impl<'a> CstBuilder<'a> {
   }
 
   fn build_string_lit(&self, container: &CstContainerNode, lit: ast::StringLit<'_>) {
-    self.raw_append_child(
-      container,
-      CstStringLit(create_inner!(self.text[lit.range.start..lit.range.end].to_string())).into(),
-    );
+    container.raw_append_child(CstStringLit::new(self.text[lit.range.start..lit.range.end].to_string()).into());
   }
 
   fn build_array(&mut self, array: ast::Array<'_>) -> CstContainerNode {
-    let container = CstContainerNode::Array(CstArray(create_inner!(Vec::new())));
+    let container = CstContainerNode::Array(CstArray::new());
     let mut last_range_end = array.range.start;
     for element in array.elements {
       let element_range = element.range();
@@ -1463,22 +1636,6 @@ impl<'a> CstBuilder<'a> {
     self.scan_from_to(&container, last_range_end, array.range.end);
 
     container
-  }
-
-  fn raw_append_child(&self, container: &CstContainerNode, child: CstNode) {
-    let weak_parent = WeakParent::from_container(container);
-    let mut container = match container {
-      CstContainerNode::Root(node) => node.0.borrow_mut(),
-      CstContainerNode::Object(node) => node.0.borrow_mut(),
-      CstContainerNode::ObjectProp(node) => node.0.borrow_mut(),
-      CstContainerNode::Array(node) => node.0.borrow_mut(),
-    };
-    let parent_info = ParentInfo {
-      parent: weak_parent,
-      child_index: container.value.len(),
-    };
-    child.set_parent(Some(parent_info));
-    container.value.push(child);
   }
 }
 
@@ -1597,6 +1754,60 @@ fn remove_comma_separated(node: CstNode) {
   }
 }
 
+fn indent_text(node: &CstNode) -> Option<String> {
+  let mut last_whitespace: Option<CstWhitespace> = None;
+  for previous_sibling in node.previous_siblings() {
+    match previous_sibling {
+      CstNode::Container(_) => return None,
+      CstNode::Leaf(leaf) => match leaf {
+        CstLeafNode::Newline(_) => {
+          return last_whitespace.map(|whitespace| whitespace.value());
+        }
+        CstLeafNode::Whitespace(whitespace) => {
+          last_whitespace = Some(whitespace);
+        }
+        CstLeafNode::Comment(_) => {
+          last_whitespace = None;
+        }
+        _ => return None,
+      },
+    }
+  }
+  None
+}
+
+fn compute_child_indent_from_parent(parent: &CstNode) -> String {
+  let mut count = 0;
+  let mut stored_last_indent: Option<String> = None;
+
+  for ancestor in parent.ancestors() {
+    if ancestor.is_root() {
+      break;
+    }
+
+    count += 1;
+
+    if let Some(indent_text) = ancestor.indent_text() {
+      match stored_last_indent {
+        Some(last_indent) => {
+          if let Some(single_indent_text) = last_indent.strip_prefix(&indent_text) {
+            return format!("{}{}", last_indent, single_indent_text.repeat(count));
+          }
+          stored_last_indent = None;
+        }
+        None => {
+          stored_last_indent = Some(indent_text);
+        }
+      }
+    } else {
+      stored_last_indent = None;
+    }
+  }
+
+  // assume two space indentation
+  "  ".repeat(count + 1)
+}
+
 struct AncestorIterator {
   // pre-emptively store the next ancestor in case
   // the currently returned sibling is removed
@@ -1672,6 +1883,9 @@ impl Iterator for PreviousSiblingIterator {
 #[cfg(test)]
 mod test {
   use pretty_assertions::assert_eq;
+
+  use crate::cst::RawCstObjectValue;
+  use crate::cst::RawCstValue;
 
   use super::CstRootNode;
 
@@ -1922,6 +2136,32 @@ value3: true
       r#"[1 /* a */, /* b */ 2 /* c */, /* d */ true]"#,
       r#"[1 /* a */, /* d */ true]"#,
     );
+  }
+
+  #[test]
+  fn insert_array_element() {
+    fn run_test(index: usize, value: RawCstValue, json: &str, expected: &str) {
+      let cst = build_cts(json);
+      let root_value = cst.root_value().unwrap();
+      let root_array = root_value.as_array().unwrap();
+      root_array.insert(index, value);
+      assert_eq!(cst.to_string(), expected);
+    }
+
+    run_test(
+      0,
+      RawCstValue::Object(Vec::from([(RawCstObjectValue::KeyValue(
+        "value".to_string(),
+        RawCstValue::Number("1".to_string()),
+      ))])),
+      r#"[]"#,
+      r#"[
+  {
+    "value": 1
+  }
+]"#,
+    );
+    //run_test(0, RawCstValue::Number("10".to_string()), r#"[]"#, r#"[10]"#);
   }
 
   #[test]
