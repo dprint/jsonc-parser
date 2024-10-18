@@ -1478,7 +1478,7 @@ impl CstArray {
 
         // consume the next tokens until the next comma
         let mut trailing_whitespace = Vec::new();
-        while let Some(next_child) = children.next() {
+        for next_child in children.by_ref() {
           if next_child.is_whitespace() {
             trailing_whitespace.push(next_child);
           } else {
@@ -2106,7 +2106,7 @@ fn insert_or_append_to_container(
 fn trim_inner_start_and_end_blanklines(node: &CstContainerNode) {
   fn remove_blank_lines_after_first(children: &mut Peekable<impl Iterator<Item = CstNode>>) {
     // try to find the first newline
-    while let Some(child) = children.next() {
+    for child in children.by_ref() {
       if child.is_whitespace() {
         // keep searching
       } else if child.is_newline() {
@@ -2117,7 +2117,7 @@ fn trim_inner_start_and_end_blanklines(node: &CstContainerNode) {
     }
 
     let mut pending = Vec::new();
-    while let Some(child) = children.next() {
+    for child in children.by_ref() {
       if child.is_whitespace() {
         pending.push(child);
       } else if child.is_newline() {
