@@ -27,7 +27,7 @@ impl RawCstValue {
 }
 
 #[macro_export]
-macro_rules! json {
+macro_rules! cst_value {
   (null) => {
     $crate::cst::RawCstValue::Null
   };
@@ -50,13 +50,13 @@ macro_rules! json {
 
   ([ $($elems:tt),* $(,)? ]) => {
     $crate::cst::RawCstValue::Array(vec![
-      $(json!($elems)),*
+      $(cst_value!($elems)),*
     ])
   };
 
   ({ $($key:tt : $value:tt),* $(,)? }) => {
     $crate::cst::RawCstValue::Object(vec![
-      $(($key.to_string(), json!($value))),*
+      $(($key.to_string(), cst_value!($value))),*
     ])
   };
 }

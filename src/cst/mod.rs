@@ -15,6 +15,20 @@ mod input;
 
 pub use input::*;
 
+macro_rules! add_root_node_method {
+  () => {
+    pub fn root_node(&self) -> Option<CstRootNode> {
+      self
+        .ancestors()
+        .filter_map(|parent| match parent {
+          CstContainerNode::Root(node) => Some(node),
+          _ => None,
+        })
+        .next()
+    }
+  };
+}
+
 macro_rules! add_parent_info_methods {
   () => {
     pub fn parent(&self) -> Option<CstContainerNode> {
@@ -54,16 +68,6 @@ macro_rules! add_parent_info_methods {
 
     pub fn next_siblings(&self) -> impl Iterator<Item = CstNode> {
       NextSiblingIterator::new(self.clone().into())
-    }
-
-    pub fn root_node(&self) -> Option<CstRootNode> {
-      self
-        .ancestors()
-        .filter_map(|parent| match parent {
-          CstContainerNode::Root(node) => Some(node),
-          _ => None,
-        })
-        .next()
     }
 
     /// Returns the indentation text if it can be determined.
@@ -193,6 +197,7 @@ macro_rules! impl_leaf_methods {
 
     impl $node_name {
       add_parent_methods!();
+      add_root_node_method!();
     }
   };
 }
@@ -257,6 +262,7 @@ pub enum CstNode {
 
 impl CstNode {
   add_parent_info_methods!();
+  add_root_node_method!();
 
   /// Gets if this node is comments, whitespace, newlines, or a non-literal token (ex. brace, colon).
   pub fn is_trivia(&self) -> bool {
@@ -323,6 +329,13 @@ impl CstNode {
 
   pub fn is_token(&self) -> bool {
     matches!(self, CstNode::Leaf(CstLeafNode::Token(_)))
+  }
+
+  pub fn token_value(&self) -> Option<char> {
+    match self {
+      CstNode::Leaf(CstLeafNode::Token(token)) => Some(token.value()),
+      _ => None,
+    }
   }
 
   pub fn is_whitespace(&self) -> bool {
@@ -448,25 +461,6 @@ impl CstNode {
     }
   }
 
-  pub fn detect_file_newline_kind(&self) -> CstNewlineKind {
-    let check_node_kind = |node: &CstNode| match node {
-      CstNode::Leaf(CstLeafNode::Newline(newline)) => Some(newline.kind()),
-      _ => None,
-    };
-
-    if let Some(kind) = check_node_kind(self) {
-      return kind;
-    }
-
-    for ancestor in self.ancestors() {
-      if let Some(kind) = check_node_kind(&ancestor.into()) {
-        return kind;
-      }
-    }
-
-    CstNewlineKind::LineFeed
-  }
-
   fn parent_info(&self) -> Option<ParentInfo> {
     match self {
       CstNode::Container(node) => node.parent_info(),
@@ -512,6 +506,7 @@ pub enum CstContainerNode {
 
 impl CstContainerNode {
   add_parent_info_methods!();
+  add_root_node_method!();
 
   pub fn is_root(&self) -> bool {
     matches!(self, CstContainerNode::Root(_))
@@ -826,6 +821,7 @@ pub enum CstLeafNode {
 
 impl CstLeafNode {
   add_parent_info_methods!();
+  add_root_node_method!();
 
   pub fn remove(self) {
     match self {
@@ -946,6 +942,19 @@ impl CstRootNode {
     None
   }
 
+  pub fn newline_kind(&self) -> CstNewlineKind {
+    let mut current_children: VecDeque<CstNode> = VecDeque::from([self.clone().into()]);
+    while let Some(child) = current_children.pop_front() {
+      for child in child.children() {
+        if let CstNode::Leaf(CstLeafNode::Newline(node)) = child {
+          return node.kind();
+        }
+        current_children.push_back(child);
+      }
+    }
+    CstNewlineKind::LineFeed
+  }
+
   /// Gets the root value found in the file.
   pub fn root_value(&self) -> Option<CstNode> {
     for child in &self.0.borrow().value {
@@ -954,6 +963,54 @@ impl CstRootNode {
       }
     }
     None
+  }
+
+  pub fn set_root_value(&self, root_value: RawCstValue) {
+    let container: CstContainerNode = self.clone().into();
+    let newline_kind = self.newline_kind();
+    let indents = compute_indents(&self.clone().into());
+    let mut insert_index = if let Some(root_value) = self.root_value() {
+      let index = root_value.child_index();
+      root_value.remove();
+      index
+    } else {
+      let children = self.children();
+      let mut index = match children.last() {
+        Some(CstNode::Leaf(CstLeafNode::Newline(_))) => children.len() - 1,
+        _ => children.len(),
+      };
+      let previous_node = if index == 0 { None } else { children.get(index - 1) };
+      if let Some(CstNode::Leaf(CstLeafNode::Comment(_))) = previous_node {
+        // insert a newline if the last node before is a comment
+        container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
+      }
+      if self.child_at_index(index).is_none() {
+        // insert a trailing newline
+        container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
+        index -= 1;
+      }
+      index
+    };
+    container.raw_insert_value_with_internal_indent(
+      Some(&mut insert_index),
+      InsertValue::Value(root_value),
+      newline_kind,
+      &indents,
+    );
+  }
+
+  /// Gets or creates the root value as an object, return Some if successful
+  /// or None if the root value already exists and is not an object.
+  pub fn ensure_object_value(&self) -> Option<CstObject> {
+    match self.root_value() {
+      Some(CstNode::Container(CstContainerNode::Object(node))) => Some(node),
+      Some(_) => None,
+      None => {
+        self.set_root_value(RawCstValue::Object(Vec::new()));
+        // should always work, but might as well do this
+        self.root_value().and_then(|o| o.as_object().cloned())
+      }
+    }
   }
 
   pub fn remove(self) {
@@ -1127,6 +1184,8 @@ pub struct CstObject(Rc<CstObjectInner>);
 impl_container_methods!(CstObject, Object);
 
 impl CstObject {
+  add_root_node_method!();
+
   fn new() -> Self {
     Self(CstValueInner::new(Vec::new()))
   }
@@ -1134,7 +1193,7 @@ impl CstObject {
   pub fn property_by_name(&self, name: &str) -> Option<CstObjectProp> {
     for child in &self.0.borrow().value {
       if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = child {
-        let Ok(prop_name) = prop.name() else {
+        let Some(prop_name) = prop.name() else {
           continue;
         };
         let Ok(prop_name_str) = prop_name.decoded_value() else {
@@ -1200,25 +1259,26 @@ pub struct CstObjectProp(Rc<CstObjectPropInner>);
 impl_container_methods!(CstObjectProp, ObjectProp);
 
 impl CstObjectProp {
+  add_root_node_method!();
+
   fn new() -> Self {
     Self(CstValueInner::new(Vec::new()))
   }
 
-  pub fn name(&self) -> Result<ObjectPropName, ParseError> {
+  pub fn name(&self) -> Option<ObjectPropName> {
     for child in &self.0.borrow().value {
       match child {
-        CstNode::Leaf(CstLeafNode::StringLit(node)) => return Ok(ObjectPropName::String(node.clone())),
-        CstNode::Leaf(CstLeafNode::WordLit(node)) => return Ok(ObjectPropName::Word(node.clone())),
+        CstNode::Leaf(CstLeafNode::StringLit(node)) => return Some(ObjectPropName::String(node.clone())),
+        CstNode::Leaf(CstLeafNode::WordLit(node)) => return Some(ObjectPropName::Word(node.clone())),
         _ => {
           // someone may have manipulated this object such that this is no longer there
         }
       }
     }
-    // todo(THIS PR): make this return an error when not found
-    unreachable!();
+    None
   }
 
-  pub fn value(&self) -> Result<CstNode, ParseError> {
+  pub fn value(&self) -> Option<CstNode> {
     let name = self.name()?;
     let parent_info = name.parent_info().unwrap(); // todo(THIS PR): do not unwrap
     let children = &self.0.borrow().value;
@@ -1241,20 +1301,19 @@ impl CstObjectProp {
           | CstLeafNode::NullKeyword(_)
           | CstLeafNode::NumberLit(_)
           | CstLeafNode::StringLit(_)
-          | CstLeafNode::WordLit(_) => return Ok(child.clone()),
+          | CstLeafNode::WordLit(_) => return Some(child.clone()),
           CstLeafNode::Token(_) | CstLeafNode::Whitespace(_) | CstLeafNode::Newline(_) | CstLeafNode::Comment(_) => {
             // ignore
           }
         },
         CstNode::Container(container) => match container {
-          CstContainerNode::Object(_) | CstContainerNode::Array(_) => return Ok(child.clone()),
-          CstContainerNode::Root(_) | CstContainerNode::ObjectProp(_) => todo!(), // todo(THIS PR): surface error
+          CstContainerNode::Object(_) | CstContainerNode::Array(_) => return Some(child.clone()),
+          CstContainerNode::Root(_) | CstContainerNode::ObjectProp(_) => return None,
         },
       }
     }
 
-    // todo(THIS PR): make this return an error when not found
-    unreachable!();
+    None
   }
 
   pub fn previous_property(&self) -> Option<CstObjectProp> {
@@ -1297,6 +1356,7 @@ pub enum ObjectPropName {
 }
 
 impl ObjectPropName {
+  add_root_node_method!();
   add_parent_info_methods!();
 
   pub fn as_string_lit(&self) -> Option<&CstStringLit> {
@@ -1345,6 +1405,8 @@ pub struct CstArray(Rc<CstArrayInner>);
 impl_container_methods!(CstArray, Array);
 
 impl CstArray {
+  add_root_node_method!();
+
   fn new() -> Self {
     Self(CstValueInner::new(Vec::new()))
   }
@@ -1378,6 +1440,66 @@ impl CstArray {
 
   pub fn insert(&self, index: usize, value: RawCstValue) {
     self.insert_or_append(Some(index), value);
+  }
+
+  pub fn ensure_multiline(&self) {
+    let children = self.children();
+    if children.iter().any(|c| c.is_newline()) {
+      return;
+    }
+
+    let indents = compute_indents(&self.clone().into());
+    let child_indents = indents.indent();
+    let container: CstContainerNode = self.clone().into();
+    let newline_kind = self
+      .root_node()
+      .map(|r| r.newline_kind())
+      .unwrap_or(CstNewlineKind::LineFeed);
+
+    // insert a newline at the start of every part
+    let children_len = children.len();
+    let mut children = children.into_iter().skip(1).peekable().take(children_len - 2);
+    let mut index = 1;
+    while let Some(child) = children.next() {
+      if child.is_whitespace() {
+        child.remove();
+        continue;
+      } else {
+        // insert a newline
+        container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
+        container.raw_insert_child(
+          Some(&mut index),
+          CstWhitespace::new(child_indents.current_indent.clone()).into(),
+        );
+
+        // current node
+        index += 1;
+
+        // consume the next tokens until the next comma
+        let mut trailing_whitespace = Vec::new();
+        while let Some(next_child) = children.next() {
+          if next_child.is_whitespace() {
+            trailing_whitespace.push(next_child);
+          } else {
+            index += 1 + trailing_whitespace.len();
+            trailing_whitespace.clear();
+            if next_child.token_value() == Some(',') {
+              break;
+            }
+          }
+        }
+
+        for trailing_whitespace in trailing_whitespace {
+          trailing_whitespace.remove();
+        }
+      }
+    }
+
+    // insert the last newline
+    container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
+    if !indents.current_indent.is_empty() {
+      container.raw_insert_child(Some(&mut index), CstWhitespace::new(indents.current_indent).into());
+    }
   }
 
   fn insert_or_append(&self, index: Option<usize>, value: RawCstValue) {
@@ -1878,7 +2000,10 @@ fn insert_or_append_to_container(
   let index = std::cmp::min(index, elements.len());
   let next_node = elements.get(index);
   let previous_node = if index == 0 { None } else { elements.get(index - 1) };
-  let newline_kind = CstNode::Container(container.clone()).detect_file_newline_kind();
+  let newline_kind = container
+    .root_node()
+    .map(|r| r.newline_kind())
+    .unwrap_or(CstNewlineKind::LineFeed);
   let indents = compute_indents(&container.clone().into());
   let child_indents = elements
     .first()
@@ -2103,7 +2228,7 @@ mod test {
   use pretty_assertions::assert_eq;
 
   use crate::cst::RawCstValue;
-  use crate::json;
+  use crate::cst_value;
 
   use super::CstRootNode;
 
@@ -2146,14 +2271,14 @@ mod test {
       ),
     ];
     for (expected, text) in cases {
-      let root = build_cts(text);
+      let root = build_cst(text);
       assert_eq!(root.single_indent_text(), Some(expected.to_string()), "Text: {}", text);
     }
   }
 
   #[test]
   fn modify_values() {
-    let cst = build_cts(
+    let cst = build_cst(
       r#"{
     "value": 5,
     // comment
@@ -2241,7 +2366,7 @@ mod test {
   #[test]
   fn remove_properties() {
     fn run_test(prop_name: &str, json: &str, expected: &str) {
-      let cst = build_cts(json);
+      let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
       let root_obj = root_value.as_object().unwrap();
       let prop = root_obj.property_by_name(prop_name).unwrap();
@@ -2288,7 +2413,7 @@ value3: true
   #[test]
   fn insert_properties() {
     fn run_test(index: usize, prop_name: &str, value: RawCstValue, json: &str, expected: &str) {
-      let cst = build_cts(json);
+      let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
       let root_obj = root_value.as_object().unwrap();
       root_obj.insert(index, prop_name, value);
@@ -2298,7 +2423,7 @@ value3: true
     run_test(
       0,
       "propName",
-      json!([1]),
+      cst_value!([1]),
       r#"{}"#,
       r#"{
   "propName": [1]
@@ -2309,7 +2434,7 @@ value3: true
     run_test(
       0,
       "value0",
-      json!([1]),
+      cst_value!([1]),
       r#"{
     "value1": 5
 }"#,
@@ -2323,7 +2448,7 @@ value3: true
     run_test(
       0,
       "value0",
-      json!([1]),
+      cst_value!([1]),
       r#"{
     // some comment
     "value1": 5
@@ -2339,7 +2464,7 @@ value3: true
     run_test(
       1,
       "value1",
-      json!({
+      cst_value!({
         "value": 1
       }),
       r#"{
@@ -2357,7 +2482,7 @@ value3: true
   #[test]
   fn remove_array_elements() {
     fn run_test(index: usize, json: &str, expected: &str) {
-      let cst = build_cts(json);
+      let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
       let root_array = root_value.as_array().unwrap();
       let element = root_array.elements().get(index).unwrap().clone();
@@ -2428,21 +2553,26 @@ value3: true
   #[test]
   fn insert_array_element() {
     fn run_test(index: usize, value: RawCstValue, json: &str, expected: &str) {
-      let cst = build_cts(json);
+      let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
       let root_array = root_value.as_array().unwrap();
       root_array.insert(index, value);
       assert_eq!(cst.to_string(), expected, "Initial text: {}", json);
     }
 
-    run_test(0, json!([1]), r#"[]"#, r#"[[1]]"#);
-    run_test(0, json!([1, true, false, {}]), r#"[]"#, r#"[[1, true, false, {}]]"#);
-    run_test(0, json!(10), r#"[]"#, r#"[10]"#);
-    run_test(0, json!(10), r#"[1]"#, r#"[10, 1]"#);
-    run_test(1, json!(10), r#"[1]"#, r#"[1, 10]"#);
+    run_test(0, cst_value!([1]), r#"[]"#, r#"[[1]]"#);
     run_test(
       0,
-      json!(10),
+      cst_value!([1, true, false, {}]),
+      r#"[]"#,
+      r#"[[1, true, false, {}]]"#,
+    );
+    run_test(0, cst_value!(10), r#"[]"#, r#"[10]"#);
+    run_test(0, cst_value!(10), r#"[1]"#, r#"[10, 1]"#);
+    run_test(1, cst_value!(10), r#"[1]"#, r#"[1, 10]"#);
+    run_test(
+      0,
+      cst_value!(10),
       r#"[
     1
 ]"#,
@@ -2453,7 +2583,7 @@ value3: true
     );
     run_test(
       0,
-      json!(10),
+      cst_value!(10),
       r#"[
     /* test */ 1
 ]"#,
@@ -2465,7 +2595,7 @@ value3: true
 
     run_test(
       0,
-      json!({
+      cst_value!({
         "value": 1,
       }),
       r#"[]"#,
@@ -2480,7 +2610,7 @@ value3: true
   #[test]
   fn remove_comment() {
     fn run_test(json: &str, expected: &str) {
-      let cst = build_cts(json);
+      let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
       let root_obj = root_value.as_object().unwrap();
       root_obj
@@ -2521,7 +2651,70 @@ value3: true
     );
   }
 
-  fn build_cts(text: &str) -> CstRootNode {
+  #[test]
+  fn ensure_object_value() {
+    // existing
+    {
+      let cst = build_cst(r#"{ "value": 1 }"#);
+      let obj = cst.ensure_object_value().unwrap();
+      assert!(obj.property_by_name("value").is_some());
+    }
+    // empty file
+    {
+      let cst = build_cst(r#""#);
+      cst.ensure_object_value().unwrap();
+      assert_eq!(cst.to_string(), "{}\n");
+    }
+    // comment
+    {
+      let cst = build_cst("// Copyright something");
+      cst.ensure_object_value().unwrap();
+      assert_eq!(cst.to_string(), "// Copyright something\n{}\n");
+    }
+    // comment and newline
+    {
+      let cst = build_cst("// Copyright something\n");
+      cst.ensure_object_value().unwrap();
+      assert_eq!(cst.to_string(), "// Copyright something\n{}\n");
+    }
+  }
+
+  #[test]
+  fn array_ensure_multiline() {
+    // empty
+    {
+      let cst = build_cst(r#"[]"#);
+      cst.root_value().unwrap().as_array().unwrap().ensure_multiline();
+      assert_eq!(cst.to_string(), "[\n]");
+    }
+    // whitespace only
+    {
+      let cst = build_cst(r#"[   ]"#);
+      cst.root_value().unwrap().as_array().unwrap().ensure_multiline();
+      assert_eq!(cst.to_string(), "[\n]");
+    }
+    // comments only
+    {
+      let cst = build_cst(r#"[  /* test */  ]"#);
+      cst.root_value().unwrap().as_array().unwrap().ensure_multiline();
+      assert_eq!(cst.to_string(), "[\n  /* test */\n]");
+    }
+    // elements
+    {
+      let cst = build_cst(r#"[  1,   2, /* test */ 3  ]"#);
+      cst.root_value().unwrap().as_array().unwrap().ensure_multiline();
+      assert_eq!(
+        cst.to_string(),
+        r#"[
+  1,
+  2,
+  /* test */ 3
+]"#
+      );
+    }
+  }
+
+  fn build_cst(text: &str) -> CstRootNode {
     CstRootNode::parse(text, &crate::ParseOptions::default()).unwrap()
   }
 }
