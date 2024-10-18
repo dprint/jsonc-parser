@@ -2116,11 +2116,15 @@ fn trim_inner_start_and_end_blanklines(node: &CstContainerNode) {
       }
     }
 
+    let mut pending = Vec::new();
     while let Some(child) = children.next() {
-      if child.is_whitespace() && children.peek().map(|c| c.is_newline()).unwrap_or(false) {
-        child.remove();
+      if child.is_whitespace() {
+        pending.push(child);
       } else if child.is_newline() {
         child.remove();
+        for child in pending.drain(..) {
+          child.remove();
+        }
       } else {
         break;
       }
