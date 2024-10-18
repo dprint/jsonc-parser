@@ -307,10 +307,7 @@ impl CstNode {
   }
 
   pub fn is_newline(&self) -> bool {
-    match self {
-      CstNode::Leaf(CstLeafNode::Newline(_)) => true,
-      _ => false,
-    }
+    matches!(self, CstNode::Leaf(CstLeafNode::Newline(_)))
   }
 
   pub fn is_comma(&self) -> bool {
@@ -321,24 +318,15 @@ impl CstNode {
   }
 
   pub fn is_comment(&self) -> bool {
-    match self {
-      CstNode::Leaf(CstLeafNode::Comment(_)) => true,
-      _ => false,
-    }
+    matches!(self, CstNode::Leaf(CstLeafNode::Comment(_)))
   }
 
   pub fn is_token(&self) -> bool {
-    match self {
-      CstNode::Leaf(CstLeafNode::Token(_)) => true,
-      _ => false,
-    }
+    matches!(self, CstNode::Leaf(CstLeafNode::Token(_)))
   }
 
   pub fn is_whitespace(&self) -> bool {
-    match self {
-      CstNode::Leaf(CstLeafNode::Whitespace(_)) => true,
-      _ => false,
-    }
+    matches!(self, CstNode::Leaf(CstLeafNode::Whitespace(_)))
   }
 
   pub fn children(&self) -> Vec<CstNode> {

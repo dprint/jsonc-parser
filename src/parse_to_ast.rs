@@ -521,7 +521,7 @@ mod tests {
   #[test]
   fn it_should_not_include_tokens_by_default() {
     let result = parse_to_ast("{}", &Default::default(), &Default::default()).unwrap();
-    assert_eq!(result.tokens.is_none(), true);
+    assert!(result.tokens.is_none());
   }
 
   #[test]
@@ -542,7 +542,7 @@ mod tests {
   #[test]
   fn it_should_not_include_comments_by_default() {
     let result = parse_to_ast("{}", &Default::default(), &Default::default()).unwrap();
-    assert_eq!(result.comments.is_none(), true);
+    assert!(result.comments.is_none());
   }
 
   #[test]

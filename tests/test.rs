@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 #[test]
 fn test_specs() {
-  for json_path in get_json_file_paths_in_dir(&Path::new("./tests/specs")) {
+  for json_path in get_json_file_paths_in_dir(Path::new("./tests/specs")) {
     let text_file_path = json_path.with_extension("txt");
     let json_file_text = fs::read_to_string(&json_path).unwrap().replace("\r\n", "\n");
     let result = parse_to_ast(
@@ -33,7 +33,7 @@ fn test_specs() {
 #[cfg(feature = "cst")]
 #[test]
 fn test_cst() {
-  for json_path in get_json_file_paths_in_dir(&Path::new("./tests/specs")) {
+  for json_path in get_json_file_paths_in_dir(Path::new("./tests/specs")) {
     let json_file_text = fs::read_to_string(&json_path).unwrap().replace("\r\n", "\n");
 
     eprintln!("Parsing: {:?}", json_path);
@@ -84,12 +84,12 @@ fn parse_result_to_test_str(parse_result: &ParseResult) -> String {
   let comments = parse_result.comments.as_ref().expect("Expected comments.");
   let collection_count = comments.len();
   let mut comments = comments.iter().collect::<Vec<_>>();
-  comments.sort_by(|a, b| a.0.cmp(&b.0));
+  comments.sort_by(|a, b| a.0.cmp(b.0));
   for (i, comment_collection) in comments.into_iter().enumerate() {
     text.push_str("\n    ");
     text.push_str(&comments_to_test_str(comment_collection).replace("\n", "\n    "));
     if i + 1 < collection_count {
-      text.push_str(",");
+      text.push(',');
     }
   }
   text.push_str("\n  ]\n");
@@ -113,7 +113,7 @@ fn range_to_test_str(range: Range) -> String {
   text.push_str("\"range\": {\n");
   text.push_str(&format!("  \"start\": {},\n", range.start));
   text.push_str(&format!("  \"end\": {},\n", range.end));
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -139,7 +139,7 @@ fn lit_to_test_str(lit_type: &str, value: &str, range: Range) -> String {
   text.push_str(&format!("  \"type\": \"{}\",\n", lit_type));
   text.push_str(&format!("  {},\n", range_to_test_str(range).replace("\n", "\n  ")));
   text.push_str(&format!("  \"value\": \"{}\"\n", escape_json_str(value)));
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -154,11 +154,11 @@ fn object_to_test_str(obj: &Object) -> String {
     text.push_str("\n    ");
     text.push_str(&object_prop_to_test_str(prop).replace("\n", "\n    "));
     if i + 1 < prop_count {
-      text.push_str(",");
+      text.push(',');
     }
   }
   text.push_str("\n  ]\n");
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -178,7 +178,7 @@ fn object_prop_to_test_str(obj_prop: &ObjectProp) -> String {
     "  \"value\": {}\n",
     value_to_test_str(&obj_prop.value).replace("\n", "\n  ")
   ));
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -200,11 +200,11 @@ fn array_to_test_str(arr: &Array) -> String {
     text.push_str("\n    ");
     text.push_str(&value_to_test_str(element).replace("\n", "\n    "));
     if i + 1 < elements_count {
-      text.push_str(",");
+      text.push(',');
     }
   }
   text.push_str("\n  ]\n");
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -216,7 +216,7 @@ fn null_keyword_to_test_str(null_keyword: &NullKeyword) -> String {
     "  {}\n",
     range_to_test_str(null_keyword.range).replace("\n", "\n  ")
   ));
-  text.push_str("}");
+  text.push('}');
   text
 }
 
@@ -230,11 +230,11 @@ fn comments_to_test_str(comments: (&usize, &Rc<Vec<Comment>>)) -> String {
     text.push_str("\n    ");
     text.push_str(&comment_to_test_str(comment).replace("\n", "\n    "));
     if i + 1 < comments_count {
-      text.push_str(",");
+      text.push(',');
     }
   }
   text.push_str("\n  ]\n");
-  text.push_str("}");
+  text.push('}');
   text
 }
 

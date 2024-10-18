@@ -586,11 +586,11 @@ mod test {
     assert_eq!(obj.properties.len(), 2);
     assert_eq!(obj.take_number("prop"), None);
     assert_eq!(obj.properties.len(), 2);
-    assert_eq!(obj.take_string("prop").is_some(), true);
+    assert!(obj.take_string("prop").is_some());
     assert_eq!(obj.properties.len(), 1);
     assert_eq!(obj.take("something"), None);
     assert_eq!(obj.properties.len(), 1);
-    assert_eq!(obj.take("other").is_some(), true);
+    assert!(obj.take("other").is_some());
     assert_eq!(obj.properties.len(), 0);
   }
 
@@ -604,7 +604,7 @@ mod test {
 
     assert_eq!(obj.properties.len(), 1);
     assert_eq!(obj.get_string("asdf"), None);
-    assert_eq!(obj.get_string("prop").is_some(), true);
+    assert!(obj.get_string("prop").is_some());
     assert_eq!(obj.get("asdf"), None);
     assert_eq!(obj.properties.len(), 1);
   }
