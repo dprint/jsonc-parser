@@ -1,5 +1,3 @@
-// todo: write a json! macro for creating one of these easily... it's much more difficult than it seems
-
 #[derive(Debug, Clone)]
 pub enum RawCstValue {
   Null,
@@ -26,4 +24,39 @@ impl RawCstValue {
       RawCstValue::Object(v) => !v.is_empty(),
     }
   }
+}
+
+#[macro_export]
+macro_rules! json {
+  (null) => {
+    $crate::cst::RawCstValue::Null
+  };
+
+  (true) => {
+    $crate::cst::RawCstValue::Bool(true)
+  };
+
+  (false) => {
+    $crate::cst::RawCstValue::Bool(false)
+  };
+
+  ($num:literal) => {
+    $crate::cst::RawCstValue::Number($num.to_string())
+  };
+
+  ($str:literal) => {
+    $crate::cst::RawCstValue::String($str.to_string())
+  };
+
+  ([ $($elems:tt),* $(,)? ]) => {
+    $crate::cst::RawCstValue::Array(vec![
+      $(json!($elems)),*
+    ])
+  };
+
+  ({ $($key:tt : $value:tt),* $(,)? }) => {
+    $crate::cst::RawCstValue::Object(vec![
+      $(($key.to_string(), json!($value))),*
+    ])
+  };
 }
