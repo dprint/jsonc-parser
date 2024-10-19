@@ -76,7 +76,7 @@ impl<'a> Scanner<'a> {
         '/' => match self.peek_char() {
           Some('/') => Ok(self.parse_comment_line()),
           Some('*') => self.parse_comment_block(),
-          _ => Err(self.create_error_for_current_token("Unexpected token")),
+          _ => Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken)),
         },
         _ => {
           if current_char == '-' || self.is_digit() {
@@ -120,15 +120,15 @@ impl<'a> Scanner<'a> {
     self.current_token.as_ref().map(|x| x.to_owned())
   }
 
-  pub(super) fn create_error_for_current_token(&self, message: &str) -> ParseError {
-    self.create_error_for_start(self.token_start, message)
+  pub(super) fn create_error_for_current_token(&self, kind: ParseErrorKind) -> ParseError {
+    self.create_error_for_start(self.token_start, kind)
   }
 
-  pub(super) fn create_error_for_current_char(&self, message: &str) -> ParseError {
-    self.create_error_for_start(self.byte_index, message)
+  pub(super) fn create_error_for_current_char(&self, kind: ParseErrorKind) -> ParseError {
+    self.create_error_for_start(self.byte_index, kind)
   }
 
-  pub(super) fn create_error_for_start(&self, start: usize, message: &str) -> ParseError {
+  pub(super) fn create_error_for_start(&self, start: usize, kind: ParseErrorKind) -> ParseError {
     let range = Range {
       start,
       end: if let Some(c) = self.file_text[self.byte_index..].chars().next() {
@@ -137,18 +137,18 @@ impl<'a> Scanner<'a> {
         self.file_text.len()
       },
     };
-    self.create_error_for_range(range, message)
+    self.create_error_for_range(range, kind)
   }
 
-  pub(super) fn create_error_for_range(&self, range: Range, message: &str) -> ParseError {
-    ParseError::new(range, message, self.file_text)
+  pub(super) fn create_error_for_range(&self, range: Range, kind: ParseErrorKind) -> ParseError {
+    ParseError::new(range, kind, self.file_text)
   }
 
   fn parse_string(&mut self) -> Result<Token<'a>, ParseError> {
     crate::string::parse_string_with_char_provider(self)
       .map(Token::String)
       // todo(dsherret): don't convert the error kind to a string here
-      .map_err(|err| self.create_error_for_start(err.byte_index, &err.kind.to_string()))
+      .map_err(|err| self.create_error_for_start(err.byte_index, ParseErrorKind::String(err.kind)))
   }
 
   fn parse_number(&mut self) -> Result<Token<'a>, ParseError> {
@@ -166,14 +166,14 @@ impl<'a> Scanner<'a> {
         self.move_next_char();
       }
     } else {
-      return Err(self.create_error_for_current_char("Expected a digit to follow a negative sign"));
+      return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigitFollowingNegativeSign));
     }
 
     if self.is_decimal_point() {
       self.move_next_char();
 
       if !self.is_digit() {
-        return Err(self.create_error_for_current_char("Expected a digit"));
+        return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
       }
 
       while self.is_digit() {
@@ -187,12 +187,12 @@ impl<'a> Scanner<'a> {
           Some('-') | Some('+') => {
             self.move_next_char();
             if !self.is_digit() {
-              return Err(self.create_error_for_current_char("Expected a digit"));
+              return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
             }
           }
           _ => {
             if !self.is_digit() {
-              return Err(self.create_error_for_current_char("Expected plus, minus, or digit in number literal"));
+              return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedPlusMinusOrDigitInNumberLiteral));
             }
           }
         }
@@ -243,7 +243,7 @@ impl<'a> Scanner<'a> {
       self.assert_then_move_char('/');
       Ok(Token::CommentBlock(&self.file_text[start_byte_index..end_byte_index]))
     } else {
-      Err(self.create_error_for_current_token("Unterminated comment block"))
+      Err(self.create_error_for_current_token(ParseErrorKind::UnterminatedCommentBlock))
     }
   }
 
@@ -292,7 +292,7 @@ impl<'a> Scanner<'a> {
         break;
       }
       if !current_char.is_alphanumeric() && current_char != '-' {
-        return Err(self.create_error_for_current_token("Unexpected token"));
+        return Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken));
       }
 
       self.move_next_char();
@@ -301,7 +301,7 @@ impl<'a> Scanner<'a> {
     let end_byte_index = self.byte_index;
 
     if end_byte_index - start_byte_index == 0 {
-      return Err(self.create_error_for_current_token("Unexpected token"));
+      return Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken));
     }
 
     Ok(Token::Word(&self.file_text[start_byte_index..end_byte_index]))
@@ -426,6 +426,7 @@ mod tests {
 
   use super::super::tokens::Token;
   use super::*;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn it_tokenizes_string() {
@@ -444,7 +445,7 @@ mod tests {
   fn it_errors_escaping_single_quote_in_double_quote() {
     assert_has_error(
       r#""t\'est""#,
-      "Invalid escape in double quote string on line 1 column 3.",
+      "Invalid escape in double quote string on line 1 column 3",
     );
   }
 
@@ -465,13 +466,13 @@ mod tests {
   fn it_errors_escaping_double_quote_in_single_quote() {
     assert_has_error(
       r#"'t\"est'"#,
-      "Invalid escape in single quote string on line 1 column 3.",
+      "Invalid escape in single quote string on line 1 column 3",
     );
   }
 
   #[test]
   fn it_errors_for_word_starting_with_invalid_token() {
-    assert_has_error(r#"{ &test }"#, "Unexpected token on line 1 column 3.");
+    assert_has_error(r#"{ &test }"#, "Unexpected token on line 1 column 3");
   }
 
   #[test]
@@ -499,9 +500,9 @@ mod tests {
   fn it_errors_invalid_exponent() {
     assert_has_error(
       r#"1ea"#,
-      "Expected plus, minus, or digit in number literal on line 1 column 3.",
+      "Expected plus, minus, or digit in number literal on line 1 column 3",
     );
-    assert_has_error(r#"1e-a"#, "Expected a digit on line 1 column 4.");
+    assert_has_error(r#"1e-a"#, "Expected digit on line 1 column 4");
   }
 
   #[test]
@@ -554,7 +555,7 @@ mod tests {
   fn it_errors_on_invalid_utf8_char_for_issue_6() {
     assert_has_error(
       "\"\\uDF06\"",
-      "Invalid unicode escape sequence. 'DF06' is not a valid UTF8 character on line 1 column 2.",
+      "Invalid unicode escape sequence. 'DF06' is not a valid UTF8 character on line 1 column 2",
     );
   }
 

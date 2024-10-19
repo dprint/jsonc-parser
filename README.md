@@ -92,3 +92,7 @@ let json_value = parse_to_value(text, &ParseOptions {
   allow_trailing_commas: false,
 })?;
 ```
+
+## Error column number with unicode-width
+
+To to get more accurate display column numbers in error messages, enable the `error_unicode_width` cargo feature, which will pull in and use the [unicode-width](https://crates.io/crates/unicode-width) dependency internally. Otherwise it will use the character count, which isn't as accurate of a number, but will probably be good enough in most cases.

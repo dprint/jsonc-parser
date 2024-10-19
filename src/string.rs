@@ -5,7 +5,7 @@ pub struct ParseStringError {
   pub kind: ParseStringErrorKind,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ParseStringErrorKind {
   InvalidEscapeInSingleQuoteString,
   InvalidEscapeInDoubleQuoteString,
