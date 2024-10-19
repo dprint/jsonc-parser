@@ -952,7 +952,7 @@ pub enum TrailingCommaMode {
   #[default]
   Never,
   /// Use trailing commas when the object is on multiple lines.
-  Multiline,
+  IfMultiline,
 }
 
 type CstRootNodeInner = RefCell<CstChildrenInner>;
@@ -2501,7 +2501,7 @@ fn set_trailing_commas(
   let mut elems_or_props = elems_or_props.peekable();
   let use_trailing_commas = match mode {
     TrailingCommaMode::Never => false,
-    TrailingCommaMode::Multiline => true,
+    TrailingCommaMode::IfMultiline => true,
   };
   while let Some(element) = elems_or_props.next() {
     // handle last element
@@ -3353,7 +3353,7 @@ value3: true
       r#"{
     // test
 }"#,
-      TrailingCommaMode::Multiline,
+      TrailingCommaMode::IfMultiline,
       r#"{
     // test
 }"#,
@@ -3361,7 +3361,7 @@ value3: true
 
     // single-line object
     run_test(r#"{"a": 1}"#, TrailingCommaMode::Never, r#"{"a": 1}"#);
-    run_test(r#"{"a": 1}"#, TrailingCommaMode::Multiline, r#"{"a": 1}"#);
+    run_test(r#"{"a": 1}"#, TrailingCommaMode::IfMultiline, r#"{"a": 1}"#);
     // multiline object
     run_test(
       r#"{
@@ -3372,7 +3372,7 @@ value3: true
       1
   ]
 }"#,
-      TrailingCommaMode::Multiline,
+      TrailingCommaMode::IfMultiline,
       r#"{
   "a": 1,
   "b": 2,
