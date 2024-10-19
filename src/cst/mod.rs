@@ -1,3 +1,35 @@
+//! CST for manipulating JSONC.
+//!
+//! # Example
+//!
+//! ```
+//! use jsonc_parser::cst::CstRootNode;
+//! use jsonc_parser::ParseOptions;
+//! use jsonc_parser::json;
+//!
+//! let json_text = r#"{
+//!   // comment
+//!   "data": 123
+//! }"#;
+//!
+//! let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
+//! let root_obj = root.object_value_or_create().unwrap();
+//!
+//! root_obj.get("data").unwrap().set_value(json!({
+//!   "nested": true
+//! }));
+//! root_obj.append("new_key", json!([456, 789, false]));
+//!
+//! assert_eq!(root.to_string(), r#"{
+//!   // comment
+//!   "data": {
+//!     "nested": true
+//!   },
+//!   "new_key": [456, 789, false]
+//! }"#);
+//! ```
+//!
+
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt::Display;
@@ -552,6 +584,7 @@ struct StyleInfo {
   pub newline_kind: CstNewlineKind,
 }
 
+/// Enumeration of a node that has children.
 #[derive(Debug, Clone)]
 pub enum CstContainerNode {
   Root(CstRootNode),
@@ -863,6 +896,7 @@ impl Display for CstContainerNode {
   }
 }
 
+/// Enumeration of a node that has no children.
 #[derive(Debug, Clone)]
 pub enum CstLeafNode {
   BooleanLit(CstBooleanLit),
@@ -946,6 +980,7 @@ impl From<CstLeafNode> for CstNode {
   }
 }
 
+/// Mode to use for trailing commas.
 #[derive(Default, Debug, Clone, Copy)]
 pub enum TrailingCommaMode {
   /// Never use trailing commas.
@@ -956,6 +991,10 @@ pub enum TrailingCommaMode {
 }
 
 type CstRootNodeInner = RefCell<CstChildrenInner>;
+
+/// Root node in the file.
+///
+/// The root node contains one value, whitespace, and comments.
 #[derive(Debug, Clone)]
 pub struct CstRootNode(Rc<CstRootNodeInner>);
 
@@ -976,7 +1015,7 @@ impl CstRootNode {
   /// use jsonc_parser::json;
   ///
   /// let json_text = r#"{
-  ///    // comment
+  ///   // comment
   ///   "data": 123
   /// }"#;
   ///
@@ -989,7 +1028,7 @@ impl CstRootNode {
   /// root_obj.append("new_key", json!([456, 789, false]));
   ///
   /// assert_eq!(root.to_string(), r#"{
-  ///    // comment
+  ///   // comment
   ///   "data": {
   ///     "nested": true
   ///   },
@@ -1173,7 +1212,7 @@ impl Display for CstRootNode {
   }
 }
 
-/// Node surrounded in double quotes (ex. `"my string"`).
+/// Text surrounded in double quotes (ex. `"my string"`).
 #[derive(Debug, Clone)]
 pub struct CstStringLit(Rc<RefCell<CstValueInner<String>>>);
 
@@ -1223,6 +1262,7 @@ impl Display for CstStringLit {
   }
 }
 
+/// Property key that is missing quotes (ex. `prop: 4`).
 #[derive(Debug, Clone)]
 pub struct CstWordLit(Rc<RefCell<CstValueInner<String>>>);
 
@@ -1287,7 +1327,7 @@ impl Display for CstNumberLit {
   }
 }
 
-/// Represents a boolean (ex. `true` or `false`).
+/// Boolean (`true` or `false`).
 #[derive(Debug, Clone)]
 pub struct CstBooleanLit(Rc<RefCell<CstValueInner<bool>>>);
 
@@ -1329,7 +1369,7 @@ impl Display for CstBooleanLit {
   }
 }
 
-/// Represents the null keyword (ex. `null`).
+/// Null keyword (`null`).
 #[derive(Debug, Clone)]
 pub struct CstNullKeyword(Rc<RefCell<CstValueInner<()>>>);
 
@@ -1359,7 +1399,7 @@ impl Display for CstNullKeyword {
 
 type CstObjectInner = RefCell<CstChildrenInner>;
 
-/// Represents an object that may contain properties (ex. `{}`, `{ "prop": 4 }`).
+/// Object literal that may contain properties (ex. `{}`, `{ "prop": 4 }`).
 #[derive(Debug, Clone)]
 pub struct CstObject(Rc<CstObjectInner>);
 
@@ -1508,6 +1548,7 @@ impl Display for CstObject {
 
 type CstObjectPropInner = RefCell<CstChildrenInner>;
 
+/// Property in an object (ex. `"prop": 5`).
 #[derive(Debug, Clone)]
 pub struct CstObjectProp(Rc<CstObjectPropInner>);
 
@@ -1638,7 +1679,7 @@ impl Display for CstObjectProp {
   }
 }
 
-/// Represents an object property name that may or may not be in quotes.
+/// An object property name that may or may not be in quotes (ex. `"prop"` in `"prop": 5`).
 #[derive(Debug, Clone)]
 pub enum ObjectPropName {
   String(CstStringLit),
@@ -1692,6 +1733,7 @@ impl From<ObjectPropName> for CstNode {
 
 type CstArrayInner = RefCell<CstChildrenInner>;
 
+/// Represents an array that may contain elements (ex. `[]`, `[1, 2, 3]`).
 #[derive(Debug, Clone)]
 pub struct CstArray(Rc<CstArrayInner>);
 
@@ -1833,6 +1875,7 @@ impl Display for CstArray {
   }
 }
 
+/// Insigificant token found in the file (ex. colon, comma, brace, etc.).
 #[derive(Debug, Clone)]
 pub struct CstToken(Rc<RefCell<CstValueInner<char>>>);
 
@@ -1865,6 +1908,7 @@ impl Display for CstToken {
   }
 }
 
+/// Blank space excluding newlines.
 #[derive(Debug, Clone)]
 pub struct CstWhitespace(Rc<RefCell<CstValueInner<String>>>);
 
@@ -1897,6 +1941,7 @@ impl Display for CstWhitespace {
   }
 }
 
+/// Kind of newline.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CstNewlineKind {
   #[default]
@@ -1904,6 +1949,7 @@ pub enum CstNewlineKind {
   CarriageReturnLineFeed,
 }
 
+/// Newline character (Lf or crlf).
 #[derive(Debug, Clone)]
 pub struct CstNewline(Rc<RefCell<CstValueInner<CstNewlineKind>>>);
 

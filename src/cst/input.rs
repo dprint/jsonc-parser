@@ -1,3 +1,4 @@
+/// API user provided value for inserts and replaces.
 #[derive(Debug, Clone)]
 pub enum CstInputValue {
   Null,
