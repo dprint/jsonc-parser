@@ -18,6 +18,10 @@ pub use input::*;
 
 macro_rules! add_root_node_method {
   () => {
+    /// Gets the root node.
+    ///
+    /// Returns `None` if this node has become disconnected from
+    /// the tree by being removed.
     pub fn root_node(&self) -> Option<CstRootNode> {
       self
         .ancestors()
@@ -32,18 +36,26 @@ macro_rules! add_root_node_method {
 
 macro_rules! add_parent_info_methods {
   () => {
+    /// Parent of the node.
+    ///
+    /// Returns `None` if this node has become disconnected from
+    /// the tree by being removed.
     pub fn parent(&self) -> Option<CstContainerNode> {
       self.parent_info().map(|p| p.parent.as_container_node())
     }
 
+    /// An iterator of ancestors of this node.
     pub fn ancestors(&self) -> impl Iterator<Item = CstContainerNode> {
       AncestorIterator::new(self.clone().into())
     }
 
+    /// Current child index of the node within the children of the
+    /// parent node.
     pub fn child_index(&self) -> usize {
       self.parent_info().map(|p| p.child_index).unwrap_or(0)
     }
 
+    /// Node that comes before this one that shares the same parent.
     pub fn previous_sibling(&self) -> Option<CstNode> {
       let parent_info = self.parent_info()?;
       if parent_info.child_index == 0 {
@@ -55,10 +67,13 @@ macro_rules! add_parent_info_methods {
         .child_at_index(parent_info.child_index - 1)
     }
 
+    /// Siblings coming before this node. This does not
+    /// include cousins.
     pub fn previous_siblings(&self) -> impl Iterator<Item = CstNode> {
       PreviousSiblingIterator::new(self.clone().into())
     }
 
+    /// Node that comes after this one that shares the same parent.
     pub fn next_sibling(&self) -> Option<CstNode> {
       let parent_info = self.parent_info()?;
       parent_info
@@ -67,6 +82,8 @@ macro_rules! add_parent_info_methods {
         .child_at_index(parent_info.child_index + 1)
     }
 
+    /// Siblings coming after this node. This does not
+    /// include cousins.
     pub fn next_siblings(&self) -> impl Iterator<Item = CstNode> {
       NextSiblingIterator::new(self.clone().into())
     }
@@ -76,10 +93,12 @@ macro_rules! add_parent_info_methods {
       indent_text(&self.clone().into())
     }
 
+    /// Gets the trailing comma token of the node, if it exists.
     pub fn trailing_comma(&self) -> Option<CstToken> {
       find_trailing_comma(&self.clone().into())
     }
 
+    /// Infers if the node or appropriate ancestor uses trailing commas.
     pub fn uses_trailing_commas(&self) -> bool {
       uses_trailing_commas(self.clone().into())
     }
@@ -150,10 +169,12 @@ macro_rules! impl_container_methods {
     impl $node_name {
       add_parent_methods!();
 
+      /// Children of the current node.
       pub fn children(&self) -> Vec<CstNode> {
         self.0.borrow().value.clone()
       }
 
+      /// Children of the current node excluding comments, whitespace, newlines, and tokens.
       pub fn children_exclude_trivia_and_tokens(&self) -> Vec<CstNode> {
         self
           .0
@@ -165,15 +186,9 @@ macro_rules! impl_container_methods {
           .collect()
       }
 
+      /// Gets the child at the specified index.
       pub fn child_at_index(&self, index: usize) -> Option<CstNode> {
         self.0.borrow().value.get(index).cloned()
-      }
-
-      pub fn clear_children(&self) {
-        let children = std::mem::take(&mut self.0.borrow_mut().value);
-        for child in children {
-          child.set_parent(None);
-        }
       }
 
       fn remove_child_set_no_parent(&self, index: usize) {
@@ -259,6 +274,7 @@ impl<T> CstValueInner<T> {
 
 type CstChildrenInner = CstValueInner<Vec<CstNode>>;
 
+/// All the different kinds of nodes that can appear in the CST.
 #[derive(Debug, Clone)]
 pub enum CstNode {
   Container(CstContainerNode),
@@ -285,6 +301,7 @@ impl CstNode {
     }
   }
 
+  /// Comments that become before this one on the same line.
   pub fn leading_comments_same_line(&self) -> impl Iterator<Item = CstComment> {
     self
       .previous_siblings()
@@ -295,6 +312,8 @@ impl CstNode {
       })
   }
 
+  /// Comments that come after this one on the same line.
+  ///
   /// Only returns owned trailing comments on the same line and not if owned by the next node.
   pub fn trailing_comments_same_line(&self) -> impl Iterator<Item = CstComment> {
     // ensure the trailing comments are owned
@@ -317,10 +336,12 @@ impl CstNode {
     )
   }
 
+  /// If this node is a newline.
   pub fn is_newline(&self) -> bool {
     matches!(self, CstNode::Leaf(CstLeafNode::Newline(_)))
   }
 
+  /// If this node is a comma.
   pub fn is_comma(&self) -> bool {
     match self {
       CstNode::Leaf(CstLeafNode::Token(t)) => t.value() == ',',
@@ -328,25 +349,30 @@ impl CstNode {
     }
   }
 
+  /// If this node is a comment.
   pub fn is_comment(&self) -> bool {
     matches!(self, CstNode::Leaf(CstLeafNode::Comment(_)))
   }
 
+  /// If this node is a token.
   pub fn is_token(&self) -> bool {
     matches!(self, CstNode::Leaf(CstLeafNode::Token(_)))
   }
 
-  pub fn token_value(&self) -> Option<char> {
+  /// If this node is whitespace.
+  pub fn is_whitespace(&self) -> bool {
+    matches!(self, CstNode::Leaf(CstLeafNode::Whitespace(_)))
+  }
+
+  /// Token char of the node if it's a token.
+  pub fn token_char(&self) -> Option<char> {
     match self {
       CstNode::Leaf(CstLeafNode::Token(token)) => Some(token.value()),
       _ => None,
     }
   }
 
-  pub fn is_whitespace(&self) -> bool {
-    matches!(self, CstNode::Leaf(CstLeafNode::Whitespace(_)))
-  }
-
+  /// Children of this node.
   pub fn children(&self) -> Vec<CstNode> {
     match self {
       CstNode::Container(n) => n.children(),
@@ -354,6 +380,7 @@ impl CstNode {
     }
   }
 
+  /// Children of the current node excluding comments, whitespace, newlines, and tokens.
   pub fn children_exclude_trivia_and_tokens(&self) -> Vec<CstNode> {
     match self {
       CstNode::Container(n) => n.children_exclude_trivia_and_tokens(),
@@ -361,6 +388,7 @@ impl CstNode {
     }
   }
 
+  /// Child at the specified index.
   pub fn child_at_index(&self, index: usize) -> Option<CstNode> {
     match self {
       CstNode::Container(n) => n.child_at_index(index),
@@ -368,6 +396,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's the root node.
   pub fn as_root_node(&self) -> Option<&CstRootNode> {
     match self {
       CstNode::Container(CstContainerNode::Root(node)) => Some(node),
@@ -375,6 +404,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's an object.
   pub fn as_object(&self) -> Option<&CstObject> {
     match self {
       CstNode::Container(CstContainerNode::Object(node)) => Some(node),
@@ -382,6 +412,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's an array.
   pub fn as_array(&self) -> Option<&CstArray> {
     match self {
       CstNode::Container(CstContainerNode::Array(node)) => Some(node),
@@ -389,6 +420,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's an object property.
   pub fn as_object_prop(&self) -> Option<&CstObjectProp> {
     match self {
       CstNode::Container(CstContainerNode::ObjectProp(node)) => Some(node),
@@ -396,6 +428,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's a boolean literal.
   pub fn as_boolean_lit(&self) -> Option<&CstBooleanLit> {
     match self {
       CstNode::Leaf(CstLeafNode::BooleanLit(node)) => Some(node),
@@ -403,6 +436,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's a null keyword.
   pub fn as_null_keyword(&self) -> Option<&CstNullKeyword> {
     match self {
       CstNode::Leaf(CstLeafNode::NullKeyword(node)) => Some(node),
@@ -410,6 +444,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's a number literal.
   pub fn as_number_lit(&self) -> Option<&CstNumberLit> {
     match self {
       CstNode::Leaf(CstLeafNode::NumberLit(node)) => Some(node),
@@ -417,6 +452,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's a string literal.
   pub fn as_string_lit(&self) -> Option<&CstStringLit> {
     match self {
       CstNode::Leaf(CstLeafNode::StringLit(node)) => Some(node),
@@ -424,6 +460,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's a word literal.
   pub fn as_word_lit(&self) -> Option<&CstWordLit> {
     match self {
       CstNode::Leaf(CstLeafNode::WordLit(node)) => Some(node),
@@ -431,6 +468,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's a token.
   pub fn as_token(&self) -> Option<&CstToken> {
     match self {
       CstNode::Leaf(CstLeafNode::Token(node)) => Some(node),
@@ -438,6 +476,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's a newline.
   pub fn as_newline(&self) -> Option<&CstNewline> {
     match self {
       CstNode::Leaf(CstLeafNode::Newline(node)) => Some(node),
@@ -445,6 +484,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's whitespace.
   pub fn as_whitespace(&self) -> Option<&CstWhitespace> {
     match self {
       CstNode::Leaf(CstLeafNode::Whitespace(node)) => Some(node),
@@ -452,6 +492,7 @@ impl CstNode {
     }
   }
 
+  /// Node if it's a comment.
   pub fn as_comment(&self) -> Option<&CstComment> {
     match self {
       CstNode::Leaf(CstLeafNode::Comment(node)) => Some(node),
@@ -459,6 +500,9 @@ impl CstNode {
     }
   }
 
+  /// Removes the node from the JSON.
+  ///
+  /// Note: Removing certain nodes may cause syntax errors.
   pub fn remove(self) {
     match self {
       CstNode::Container(n) => n.remove(),
@@ -519,22 +563,27 @@ impl CstContainerNode {
   add_parent_info_methods!();
   add_root_node_method!();
 
+  /// If this is the root node.
   pub fn is_root(&self) -> bool {
     matches!(self, CstContainerNode::Root(_))
   }
 
+  /// If this is an array node.
   pub fn is_array(&self) -> bool {
     matches!(self, CstContainerNode::Array(_))
   }
 
+  /// If this is an object node.
   pub fn is_object(&self) -> bool {
     matches!(self, CstContainerNode::Object(_))
   }
 
+  /// If this is an object property node.
   pub fn is_object_prop(&self) -> bool {
     matches!(self, CstContainerNode::ObjectProp(_))
   }
 
+  /// Node if it's the root node.
   pub fn as_root(&self) -> Option<&CstRootNode> {
     match self {
       CstContainerNode::Root(node) => Some(node),
@@ -542,6 +591,7 @@ impl CstContainerNode {
     }
   }
 
+  /// Node if it's an array.
   pub fn as_array(&self) -> Option<&CstArray> {
     match self {
       CstContainerNode::Array(node) => Some(node),
@@ -549,6 +599,7 @@ impl CstContainerNode {
     }
   }
 
+  /// Node if it's an object.
   pub fn as_object(&self) -> Option<&CstObject> {
     match self {
       CstContainerNode::Object(node) => Some(node),
@@ -556,6 +607,7 @@ impl CstContainerNode {
     }
   }
 
+  /// Node if it's an object property.
   pub fn as_object_prop(&self) -> Option<&CstObjectProp> {
     match self {
       CstContainerNode::ObjectProp(node) => Some(node),
@@ -563,6 +615,7 @@ impl CstContainerNode {
     }
   }
 
+  /// Children of the node.
   pub fn children(&self) -> Vec<CstNode> {
     match self {
       CstContainerNode::Root(n) => n.children(),
@@ -572,6 +625,7 @@ impl CstContainerNode {
     }
   }
 
+  /// Children of the current node excluding comments, whitespace, newlines, and tokens.
   pub fn children_exclude_trivia_and_tokens(&self) -> Vec<CstNode> {
     match self {
       CstContainerNode::Root(n) => n.children_exclude_trivia_and_tokens(),
@@ -581,21 +635,13 @@ impl CstContainerNode {
     }
   }
 
+  /// Child at the specified index.
   pub fn child_at_index(&self, index: usize) -> Option<CstNode> {
     match self {
       CstContainerNode::Root(node) => node.child_at_index(index),
       CstContainerNode::Object(node) => node.child_at_index(index),
       CstContainerNode::ObjectProp(node) => node.child_at_index(index),
       CstContainerNode::Array(node) => node.child_at_index(index),
-    }
-  }
-
-  pub fn clear_children(&self) {
-    match self {
-      CstContainerNode::Root(n) => n.clear_children(),
-      CstContainerNode::Object(n) => n.clear_children(),
-      CstContainerNode::ObjectProp(n) => n.clear_children(),
-      CstContainerNode::Array(n) => n.clear_children(),
     }
   }
 
@@ -608,9 +654,10 @@ impl CstContainerNode {
     }
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     match self {
-      CstContainerNode::Root(n) => n.remove(),
+      CstContainerNode::Root(n) => n.clear_children(),
       CstContainerNode::Object(n) => n.remove(),
       CstContainerNode::ObjectProp(n) => n.remove(),
       CstContainerNode::Array(n) => n.remove(),
@@ -832,6 +879,7 @@ impl CstLeafNode {
   add_parent_info_methods!();
   add_root_node_method!();
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     match self {
       CstLeafNode::BooleanLit(n) => n.remove(),
@@ -951,6 +999,7 @@ impl CstRootNode {
     None
   }
 
+  /// Newline kind used within the JSON text.
   pub fn newline_kind(&self) -> CstNewlineKind {
     let mut current_children: VecDeque<CstContainerNode> = VecDeque::from([self.clone().into()]);
     while let Some(child) = current_children.pop_front() {
@@ -975,6 +1024,7 @@ impl CstRootNode {
     None
   }
 
+  /// Sets potentially replacing the root value found in the JSON document.
   pub fn set_root_value(&self, root_value: RawCstValue) {
     let container: CstContainerNode = self.clone().into();
     let style_info = StyleInfo {
@@ -1026,8 +1076,12 @@ impl CstRootNode {
     }
   }
 
-  pub fn remove(self) {
-    self.clear_children();
+  /// Clears all the children from the root node making it empty.
+  pub fn clear_children(&self) {
+    let children = std::mem::take(&mut self.0.borrow_mut().value);
+    for child in children {
+      child.set_parent(None);
+    }
   }
 }
 
@@ -1073,10 +1127,12 @@ impl CstStringLit {
       .map_err(|err| err.kind)
   }
 
+  /// Replaces this node with a new value.
   pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1103,10 +1159,12 @@ impl CstWordLit {
     self.0.borrow_mut().value = value;
   }
 
+  /// Replaces this node with a new value.
   pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1133,10 +1191,12 @@ impl CstNumberLit {
     self.0.borrow_mut().value = value;
   }
 
+  /// Replaces this node with a new value.
   pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1159,14 +1219,22 @@ impl CstBooleanLit {
     Self(CstValueInner::new(value))
   }
 
+  /// Gets the value of the boolean literal.
+  pub fn value(&self) -> bool {
+    self.0.borrow().value
+  }
+
+  /// Sets the value of the boolean literal.
   pub fn set_value(&self, value: bool) {
     self.0.borrow_mut().value = value;
   }
 
+  /// Replaces this node with a new value.
   pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1191,10 +1259,12 @@ impl CstNullKeyword {
     Self(CstValueInner::new(()))
   }
 
+  /// Replaces this node with a new value.
   pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1223,6 +1293,9 @@ impl CstObject {
     Self(CstValueInner::new(Vec::new()))
   }
 
+  /// Array property by name.
+  ///
+  /// Returns `None` if the property doesn't exist or is not an array.
   pub fn get_array(&self, name: &str) -> Option<CstArray> {
     match self.get(name)?.value()? {
       CstNode::Container(CstContainerNode::Array(node)) => Some(node),
@@ -1230,6 +1303,9 @@ impl CstObject {
     }
   }
 
+  /// Object property by name.
+  ///
+  /// Returns `None` if the property doesn't exist or is not an object.
   pub fn get_object(&self, name: &str) -> Option<CstObject> {
     match self.get(name)?.value()? {
       CstNode::Container(CstContainerNode::Object(node)) => Some(node),
@@ -1237,6 +1313,9 @@ impl CstObject {
     }
   }
 
+  /// Property by name.
+  ///
+  /// Returns `None` if the property doesn't exist.
   pub fn get(&self, name: &str) -> Option<CstObjectProp> {
     for child in &self.0.borrow().value {
       if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = child {
@@ -1254,6 +1333,7 @@ impl CstObject {
     None
   }
 
+  /// Properties of the object.
   pub fn properties(&self) -> Vec<CstObjectProp> {
     self
       .0
@@ -1267,10 +1347,12 @@ impl CstObject {
       .collect()
   }
 
+  /// Appends a property to the object.
   pub fn append(&self, prop_name: &str, value: RawCstValue) {
     self.insert_or_append(None, prop_name, value);
   }
 
+  /// Inserts a property at the specified index.
   pub fn insert(&self, index: usize, prop_name: &str, value: RawCstValue) {
     self.insert_or_append(Some(index), prop_name, value);
   }
@@ -1284,10 +1366,12 @@ impl CstObject {
     )
   }
 
+  /// Replaces this node with a new value.
   pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1316,6 +1400,9 @@ impl CstObjectProp {
     Self(CstValueInner::new(Vec::new()))
   }
 
+  /// Name of the object property.
+  ///
+  /// Returns `None` if the name doesn't exist.
   pub fn name(&self) -> Option<ObjectPropName> {
     for child in &self.0.borrow().value {
       match child {
@@ -1329,6 +1416,9 @@ impl CstObjectProp {
     None
   }
 
+  /// Value of the object property.
+  ///
+  /// Returns `None` if the value doesn't exist.
   pub fn value(&self) -> Option<CstNode> {
     let name = self.name()?;
     let parent_info = name.parent_info()?;
@@ -1367,6 +1457,7 @@ impl CstObjectProp {
     None
   }
 
+  /// Sibling object property coming before this one.
   pub fn previous_property(&self) -> Option<CstObjectProp> {
     for sibling in self.previous_siblings() {
       if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = sibling {
@@ -1376,6 +1467,7 @@ impl CstObjectProp {
     None
   }
 
+  /// Sibling object property coming after this one.
   pub fn next_property(&self) -> Option<CstObjectProp> {
     for sibling in self.next_siblings() {
       if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = sibling {
@@ -1385,10 +1477,12 @@ impl CstObjectProp {
     None
   }
 
+  /// Replaces this node with a new value.
   pub fn replace_with(self, key: &str, replacement: RawCstValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Property(key, replacement))
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1414,6 +1508,7 @@ impl ObjectPropName {
   add_root_node_method!();
   add_parent_info_methods!();
 
+  /// Object property name if it's a string literal.
   pub fn as_string_lit(&self) -> Option<&CstStringLit> {
     match self {
       ObjectPropName::String(n) => Some(n),
@@ -1421,6 +1516,7 @@ impl ObjectPropName {
     }
   }
 
+  /// Object property name if it's a word literal (no quotes).
   pub fn as_word_lit(&self) -> Option<&CstWordLit> {
     match self {
       ObjectPropName::String(_) => None,
@@ -1428,6 +1524,7 @@ impl ObjectPropName {
     }
   }
 
+  /// Decoded value of the string.
   pub fn decoded_value(&self) -> Result<String, ParseStringErrorKind> {
     match self {
       ObjectPropName::String(n) => n.decoded_value(),
@@ -1466,6 +1563,7 @@ impl CstArray {
     Self(CstValueInner::new(Vec::new()))
   }
 
+  /// Elements of the array.
   pub fn elements(&self) -> Vec<CstNode> {
     self
       .0
@@ -1489,14 +1587,17 @@ impl CstArray {
       .collect()
   }
 
+  /// Appends an element to the end of the array.
   pub fn append(&self, value: RawCstValue) {
     self.insert_or_append(None, value);
   }
 
+  /// Inserts an element at the specified index.
   pub fn insert(&self, index: usize, value: RawCstValue) {
     self.insert_or_append(Some(index), value);
   }
 
+  /// Ensures the array spans multiple lines.
   pub fn ensure_multiline(&self) {
     let children = self.children();
     if children.iter().any(|c| c.is_newline()) {
@@ -1538,7 +1639,7 @@ impl CstArray {
           } else {
             index += 1 + trailing_whitespace.len();
             trailing_whitespace.clear();
-            if next_child.token_value() == Some(',') {
+            if next_child.token_char() == Some(',') {
               break;
             }
           }
@@ -1566,10 +1667,12 @@ impl CstArray {
     )
   }
 
+  /// Replaces this node with a new value.
   pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1594,10 +1697,17 @@ impl CstToken {
     Self(CstValueInner::new(value))
   }
 
+  /// Sets the char value of the token.
+  pub fn set_value(&self, value: char) {
+    self.0.borrow_mut().value = value;
+  }
+
+  /// Char value of the token.
   pub fn value(&self) -> char {
     self.0.borrow().value
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     Into::<CstNode>::into(self).remove_raw()
   }
@@ -1619,10 +1729,17 @@ impl CstWhitespace {
     Self(CstValueInner::new(value))
   }
 
+  /// Sets the whitespace value.
+  pub fn set_value(&self, value: String) {
+    self.0.borrow_mut().value = value;
+  }
+
+  /// Whitespace value of the node.
   pub fn value(&self) -> String {
     self.0.borrow().value.clone()
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     Into::<CstNode>::into(self).remove_raw()
   }
@@ -1651,10 +1768,17 @@ impl CstNewline {
     Self(CstValueInner::new(kind))
   }
 
+  /// Whether this is a line feed (LF) or carriage return line feed (CRLF).
   pub fn kind(&self) -> CstNewlineKind {
     self.0.borrow().value
   }
 
+  /// Sets the newline kind.
+  pub fn set_kind(&self, kind: CstNewlineKind) {
+    self.0.borrow_mut().value = kind;
+  }
+
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     Into::<CstNode>::into(self).remove_raw()
   }
@@ -1680,18 +1804,25 @@ impl CstComment {
     Self(CstValueInner::new(value))
   }
 
+  /// Whether this is a line comment.
   pub fn is_line_comment(&self) -> bool {
     self.0.borrow().value.starts_with("//")
   }
 
+  /// Sets the raw value of the comment.
+  ///
+  /// This SHOULD include `//` or be surrounded in `/* ... */` or
+  /// else you'll be inserting a syntax error.
   pub fn set_raw_value(&self, value: String) {
     self.0.borrow_mut().value = value;
   }
 
+  /// Raw value of the comment including `//` or `/* ... */`.
   pub fn raw_value(&self) -> String {
     self.0.borrow().value.clone()
   }
 
+  /// Removes the node from the JSON.
   pub fn remove(self) {
     if self.is_line_comment() {
       for node in self.previous_siblings() {
