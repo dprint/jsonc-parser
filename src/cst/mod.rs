@@ -397,105 +397,106 @@ impl CstNode {
   }
 
   /// Node if it's the root node.
-  pub fn as_root_node(&self) -> Option<&CstRootNode> {
+  pub fn as_root_node(&self) -> Option<CstRootNode> {
     match self {
-      CstNode::Container(CstContainerNode::Root(node)) => Some(node),
+      CstNode::Container(CstContainerNode::Root(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's an object.
-  pub fn as_object(&self) -> Option<&CstObject> {
+  pub fn as_object(&self) -> Option<CstObject> {
     match self {
-      CstNode::Container(CstContainerNode::Object(node)) => Some(node),
+      // doesn't return a reference so this is easier to use
+      CstNode::Container(CstContainerNode::Object(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's an array.
-  pub fn as_array(&self) -> Option<&CstArray> {
+  pub fn as_array(&self) -> Option<CstArray> {
     match self {
-      CstNode::Container(CstContainerNode::Array(node)) => Some(node),
+      CstNode::Container(CstContainerNode::Array(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's an object property.
-  pub fn as_object_prop(&self) -> Option<&CstObjectProp> {
+  pub fn as_object_prop(&self) -> Option<CstObjectProp> {
     match self {
-      CstNode::Container(CstContainerNode::ObjectProp(node)) => Some(node),
+      CstNode::Container(CstContainerNode::ObjectProp(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's a boolean literal.
-  pub fn as_boolean_lit(&self) -> Option<&CstBooleanLit> {
+  pub fn as_boolean_lit(&self) -> Option<CstBooleanLit> {
     match self {
-      CstNode::Leaf(CstLeafNode::BooleanLit(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::BooleanLit(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's a null keyword.
-  pub fn as_null_keyword(&self) -> Option<&CstNullKeyword> {
+  pub fn as_null_keyword(&self) -> Option<CstNullKeyword> {
     match self {
-      CstNode::Leaf(CstLeafNode::NullKeyword(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::NullKeyword(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's a number literal.
-  pub fn as_number_lit(&self) -> Option<&CstNumberLit> {
+  pub fn as_number_lit(&self) -> Option<CstNumberLit> {
     match self {
-      CstNode::Leaf(CstLeafNode::NumberLit(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::NumberLit(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's a string literal.
-  pub fn as_string_lit(&self) -> Option<&CstStringLit> {
+  pub fn as_string_lit(&self) -> Option<CstStringLit> {
     match self {
-      CstNode::Leaf(CstLeafNode::StringLit(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::StringLit(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's a word literal.
-  pub fn as_word_lit(&self) -> Option<&CstWordLit> {
+  pub fn as_word_lit(&self) -> Option<CstWordLit> {
     match self {
-      CstNode::Leaf(CstLeafNode::WordLit(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::WordLit(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's a token.
-  pub fn as_token(&self) -> Option<&CstToken> {
+  pub fn as_token(&self) -> Option<CstToken> {
     match self {
-      CstNode::Leaf(CstLeafNode::Token(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::Token(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's a newline.
-  pub fn as_newline(&self) -> Option<&CstNewline> {
+  pub fn as_newline(&self) -> Option<CstNewline> {
     match self {
-      CstNode::Leaf(CstLeafNode::Newline(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::Newline(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's whitespace.
-  pub fn as_whitespace(&self) -> Option<&CstWhitespace> {
+  pub fn as_whitespace(&self) -> Option<CstWhitespace> {
     match self {
-      CstNode::Leaf(CstLeafNode::Whitespace(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::Whitespace(node)) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's a comment.
-  pub fn as_comment(&self) -> Option<&CstComment> {
+  pub fn as_comment(&self) -> Option<CstComment> {
     match self {
-      CstNode::Leaf(CstLeafNode::Comment(node)) => Some(node),
+      CstNode::Leaf(CstLeafNode::Comment(node)) => Some(node.clone()),
       _ => None,
     }
   }
@@ -584,33 +585,33 @@ impl CstContainerNode {
   }
 
   /// Node if it's the root node.
-  pub fn as_root(&self) -> Option<&CstRootNode> {
+  pub fn as_root(&self) -> Option<CstRootNode> {
     match self {
-      CstContainerNode::Root(node) => Some(node),
+      CstContainerNode::Root(node) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's an array.
-  pub fn as_array(&self) -> Option<&CstArray> {
+  pub fn as_array(&self) -> Option<CstArray> {
     match self {
-      CstContainerNode::Array(node) => Some(node),
+      CstContainerNode::Array(node) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's an object.
-  pub fn as_object(&self) -> Option<&CstObject> {
+  pub fn as_object(&self) -> Option<CstObject> {
     match self {
-      CstContainerNode::Object(node) => Some(node),
+      CstContainerNode::Object(node) => Some(node.clone()),
       _ => None,
     }
   }
 
   /// Node if it's an object property.
-  pub fn as_object_prop(&self) -> Option<&CstObjectProp> {
+  pub fn as_object_prop(&self) -> Option<CstObjectProp> {
     match self {
-      CstContainerNode::ObjectProp(node) => Some(node),
+      CstContainerNode::ObjectProp(node) => Some(node.clone()),
       _ => None,
     }
   }
@@ -970,8 +971,7 @@ impl CstRootNode {
   /// }"#;
   ///
   /// let node = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
-  /// let root_value = node.root_value().unwrap();
-  /// let root_obj = root_value.as_object().unwrap();
+  /// let root_obj = node.root_value().unwrap().as_object().unwrap();
   ///
   /// root_obj.append("new_key", value!([456, 789, false]));
   ///
@@ -1092,7 +1092,7 @@ impl CstRootNode {
       None => {
         self.set_root_value(CstInputValue::Object(Vec::new()));
         // should always work, but might as well do this
-        self.root_value().and_then(|o| o.as_object().cloned())
+        self.root_value().and_then(|o| o.as_object())
       }
     }
   }
@@ -1530,18 +1530,18 @@ impl ObjectPropName {
   add_parent_info_methods!();
 
   /// Object property name if it's a string literal.
-  pub fn as_string_lit(&self) -> Option<&CstStringLit> {
+  pub fn as_string_lit(&self) -> Option<CstStringLit> {
     match self {
-      ObjectPropName::String(n) => Some(n),
+      ObjectPropName::String(n) => Some(n.clone()),
       ObjectPropName::Word(_) => None,
     }
   }
 
   /// Object property name if it's a word literal (no quotes).
-  pub fn as_word_lit(&self) -> Option<&CstWordLit> {
+  pub fn as_word_lit(&self) -> Option<CstWordLit> {
     match self {
       ObjectPropName::String(_) => None,
-      ObjectPropName::Word(n) => Some(n),
+      ObjectPropName::Word(n) => Some(n.clone()),
     }
   }
 
@@ -3030,7 +3030,7 @@ value3: true
       root_obj
         .children()
         .into_iter()
-        .filter_map(|c| c.as_comment().cloned())
+        .filter_map(|c| c.as_comment())
         .next()
         .unwrap()
         .remove();
