@@ -2010,16 +2010,19 @@ fn remove_comma_separated(node: CstNode) {
 }
 
 fn indent_text(node: &CstNode) -> Option<String> {
-  let mut last_whitespace: Option<CstWhitespace> = None;
+  let mut last_whitespace: Option<String> = None;
   for previous_sibling in node.previous_siblings() {
     match previous_sibling {
       CstNode::Container(_) => return None,
       CstNode::Leaf(leaf) => match leaf {
         CstLeafNode::Newline(_) => {
-          return last_whitespace.map(|whitespace| whitespace.value());
+          return last_whitespace;
         }
         CstLeafNode::Whitespace(whitespace) => {
-          last_whitespace = Some(whitespace);
+          last_whitespace = match last_whitespace {
+            Some(last_whitespace) => Some(format!("{}{}", whitespace.value(), last_whitespace)),
+            None => Some(whitespace.value()),
+          };
         }
         CstLeafNode::Comment(_) => {
           last_whitespace = None;
@@ -2028,7 +2031,7 @@ fn indent_text(node: &CstNode) -> Option<String> {
       },
     }
   }
-  None
+  last_whitespace
 }
 
 fn uses_trailing_commas(node: CstNode) -> bool {
@@ -2036,28 +2039,30 @@ fn uses_trailing_commas(node: CstNode) -> bool {
     CstNode::Container(node) => node,
     CstNode::Leaf(_) => return false,
   };
-  let mut current_children: VecDeque<CstContainerNode> = VecDeque::from([node.clone().into()]);
-  while let Some(child) = current_children.pop_front() {
-    let children = child.children();
-    if let Some(object) = child.as_object() {
-      if children.iter().any(|c| c.is_whitespace()) {
-        let properties = object.properties();
-        if let Some(last_property) = properties.last() {
-          return last_property.trailing_comma().is_some();
+  let mut pending_nodes: VecDeque<CstContainerNode> = VecDeque::from([node.clone().into()]);
+  while let Some(node) = pending_nodes.pop_front() {
+    let children = node.children();
+    if !node.is_root() {
+      if let Some(object) = node.as_object() {
+        if children.iter().any(|c| c.is_whitespace()) {
+          let properties = object.properties();
+          if let Some(last_property) = properties.last() {
+            return last_property.trailing_comma().is_some();
+          }
         }
-      }
-    } else if let Some(object) = child.as_array() {
-      if children.iter().any(|c| c.is_whitespace()) {
-        let elements = object.elements();
-        if let Some(last_property) = elements.last() {
-          return last_property.trailing_comma().is_some();
+      } else if let Some(object) = node.as_array() {
+        if children.iter().any(|c| c.is_whitespace()) {
+          let elements = object.elements();
+          if let Some(last_property) = elements.last() {
+            return last_property.trailing_comma().is_some();
+          }
         }
       }
     }
 
     for child in children {
       if let CstNode::Container(child) = child {
-        current_children.push_back(child);
+        pending_nodes.push_back(child);
       }
     }
   }
@@ -2271,22 +2276,29 @@ impl Indents {
 fn compute_indents(node: &CstNode) -> Indents {
   let mut indent_level = 0;
   let mut stored_last_indent = node.indent_text();
+  let mut ancestors = node.ancestors().peekable();
 
-  for ancestor in node.ancestors() {
+  while ancestors.peek().and_then(|p| p.as_object_prop()).is_some() {
+    ancestors.next();
+  }
+
+  while let Some(ancestor) = ancestors.next() {
     if ancestor.is_root() {
       break;
     }
 
-    if !ancestor.is_object_prop() {
-      indent_level += 1;
+    if ancestors.peek().and_then(|p| p.as_object_prop()).is_some() {
+      continue;
     }
+
+    indent_level += 1;
 
     if let Some(indent_text) = ancestor.indent_text() {
       match stored_last_indent {
         Some(last_indent) => {
           if let Some(single_indent_text) = last_indent.strip_prefix(&indent_text) {
             return Indents {
-              current_indent: format!("{}{}", last_indent, single_indent_text.repeat(indent_level)),
+              current_indent: format!("{}{}", last_indent, single_indent_text.repeat(indent_level - 1)),
               single_indent: single_indent_text.to_string(),
             };
           }
@@ -2831,6 +2843,34 @@ value3: true
     "value": 1
   }
 ]"#,
+    );
+  }
+
+  #[test]
+  fn insert_array_element_trailing_commas() {
+    let cst = build_cst(
+      r#"{
+    "prop": [
+      1,
+      2,
+    ]
+}"#,
+    );
+    cst
+      .ensure_object_value()
+      .unwrap()
+      .get_array("prop")
+      .unwrap()
+      .append(cst_value!(3));
+    assert_eq!(
+      cst.to_string(),
+      r#"{
+    "prop": [
+      1,
+      2,
+      3,
+    ]
+}"#
     );
   }
 
