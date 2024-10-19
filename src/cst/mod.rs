@@ -968,6 +968,7 @@ impl CstRootNode {
   /// let json_text = r#"{
   ///   "data": 123
   /// }"#;
+  ///
   /// let node = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
   /// let root_value = node.root_value().unwrap();
   /// let root_obj = root_value.as_object().unwrap();

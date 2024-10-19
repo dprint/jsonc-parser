@@ -31,7 +31,24 @@ let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &CollectOptions {
 Or a CST (when enabling the `cst` feature):
 
 ```rs
-use jsonc_parser::cst::RootNode;
+use jsonc_parser::cst::CstRootNode;
+use jsonc_parser::ParseOptions;
+use jsonc_parser::value;
+
+let json_text = r#"{
+  "data": 123
+}"#;
+
+let node = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
+let root_value = node.root_value().unwrap();
+let root_obj = root_value.as_object().unwrap();
+
+root_obj.append("new_key", value!([456, 789, false]));
+
+assert_eq!(node.to_string(), r#"{
+  "data": 123,
+  "new_key": [456, 789, false]
+}"#);
 ```
 
 ## Serde
