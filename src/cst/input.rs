@@ -1,3 +1,4 @@
+/// API user provided value for inserts and replaces.
 #[derive(Debug, Clone)]
 pub enum CstInputValue {
   Null,
@@ -26,26 +27,85 @@ impl CstInputValue {
   }
 }
 
+impl From<bool> for CstInputValue {
+  fn from(b: bool) -> Self {
+    CstInputValue::Bool(b)
+  }
+}
+
+impl From<&str> for CstInputValue {
+  fn from(s: &str) -> Self {
+    CstInputValue::String(s.to_string())
+  }
+}
+
+impl From<String> for CstInputValue {
+  fn from(s: String) -> Self {
+    CstInputValue::String(s)
+  }
+}
+
+impl From<f64> for CstInputValue {
+  fn from(n: f64) -> Self {
+    CstInputValue::Number(n.to_string())
+  }
+}
+
+impl From<usize> for CstInputValue {
+  fn from(n: usize) -> Self {
+    CstInputValue::Number(n.to_string())
+  }
+}
+
+impl From<isize> for CstInputValue {
+  fn from(n: isize) -> Self {
+    CstInputValue::Number(n.to_string())
+  }
+}
+
+impl From<u64> for CstInputValue {
+  fn from(n: u64) -> Self {
+    CstInputValue::Number(n.to_string())
+  }
+}
+
+impl From<i64> for CstInputValue {
+  fn from(n: i64) -> Self {
+    CstInputValue::Number(n.to_string())
+  }
+}
+
+impl From<u32> for CstInputValue {
+  fn from(n: u32) -> Self {
+    CstInputValue::Number(n.to_string())
+  }
+}
+
+impl From<i32> for CstInputValue {
+  fn from(n: i32) -> Self {
+    CstInputValue::Number(n.to_string())
+  }
+}
+
+impl<T> From<Vec<T>> for CstInputValue
+where
+  T: Into<CstInputValue>,
+{
+  fn from(vec: Vec<T>) -> Self {
+    CstInputValue::Array(vec.into_iter().map(Into::into).collect())
+  }
+}
+
+impl From<Vec<(String, CstInputValue)>> for CstInputValue {
+  fn from(obj: Vec<(String, CstInputValue)>) -> Self {
+    CstInputValue::Object(obj)
+  }
+}
+
 #[macro_export]
 macro_rules! json {
   (null) => {
     $crate::cst::CstInputValue::Null
-  };
-
-  (true) => {
-    $crate::cst::CstInputValue::Bool(true)
-  };
-
-  (false) => {
-    $crate::cst::CstInputValue::Bool(false)
-  };
-
-  ($num:literal) => {
-    $crate::cst::CstInputValue::Number($num.to_string())
-  };
-
-  ($str:literal) => {
-    $crate::cst::CstInputValue::String($str.to_string())
   };
 
   ([ $($elems:tt),* $(,)? ]) => {
@@ -56,7 +116,22 @@ macro_rules! json {
 
   ({ $($key:tt : $value:tt),* $(,)? }) => {
     $crate::cst::CstInputValue::Object(vec![
-      $(($key.to_string(), json!($value))),*
+      $(
+         ($crate::json!(private_quote_property $key).to_string(), json!($value))
+      ),*
     ])
+  };
+
+  ($other:expr) => {
+    $crate::cst::CstInputValue::from($other)
+  };
+
+  // hack to not have another public macro for quoting object key properties
+  (private_quote_property $key:ident) => {
+    stringify!($key)
+  };
+
+  (private_quote_property $key:expr) => {
+    $key
   };
 }

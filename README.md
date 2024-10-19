@@ -43,7 +43,7 @@ let json_text = r#"{
 }"#;
 
 let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
-let root_obj = root.root_value().unwrap().as_object().unwrap();
+let root_obj = root.object_value_or_create().unwrap();
 
 root_obj.get("data").unwrap().set_value(json!({
   "nested": true

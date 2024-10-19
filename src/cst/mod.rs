@@ -1,3 +1,35 @@
+//! CST for manipulating JSONC.
+//!
+//! # Example
+//!
+//! ```
+//! use jsonc_parser::cst::CstRootNode;
+//! use jsonc_parser::ParseOptions;
+//! use jsonc_parser::json;
+//!
+//! let json_text = r#"{
+//!   // comment
+//!   "data": 123
+//! }"#;
+//!
+//! let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
+//! let root_obj = root.object_value_or_create().unwrap();
+//!
+//! root_obj.get("data").unwrap().set_value(json!({
+//!   "nested": true
+//! }));
+//! root_obj.append("new_key", json!([456, 789, false]));
+//!
+//! assert_eq!(root.to_string(), r#"{
+//!   // comment
+//!   "data": {
+//!     "nested": true
+//!   },
+//!   "new_key": [456, 789, false]
+//! }"#);
+//! ```
+//!
+
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt::Display;
@@ -552,6 +584,7 @@ struct StyleInfo {
   pub newline_kind: CstNewlineKind,
 }
 
+/// Enumeration of a node that has children.
 #[derive(Debug, Clone)]
 pub enum CstContainerNode {
   Root(CstRootNode),
@@ -863,6 +896,7 @@ impl Display for CstContainerNode {
   }
 }
 
+/// Enumeration of a node that has no children.
 #[derive(Debug, Clone)]
 pub enum CstLeafNode {
   BooleanLit(CstBooleanLit),
@@ -946,16 +980,21 @@ impl From<CstLeafNode> for CstNode {
   }
 }
 
+/// Mode to use for trailing commas.
 #[derive(Default, Debug, Clone, Copy)]
 pub enum TrailingCommaMode {
   /// Never use trailing commas.
   #[default]
   Never,
   /// Use trailing commas when the object is on multiple lines.
-  Multiline,
+  IfMultiline,
 }
 
 type CstRootNodeInner = RefCell<CstChildrenInner>;
+
+/// Root node in the file.
+///
+/// The root node contains one value, whitespace, and comments.
 #[derive(Debug, Clone)]
 pub struct CstRootNode(Rc<CstRootNodeInner>);
 
@@ -976,12 +1015,12 @@ impl CstRootNode {
   /// use jsonc_parser::json;
   ///
   /// let json_text = r#"{
-  ///    // comment
+  ///   // comment
   ///   "data": 123
   /// }"#;
   ///
   /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
-  /// let root_obj = root.root_value().unwrap().as_object().unwrap();
+  /// let root_obj = root.object_value_or_create().unwrap();
   ///
   /// root_obj.get("data").unwrap().set_value(json!({
   ///   "nested": true
@@ -989,7 +1028,7 @@ impl CstRootNode {
   /// root_obj.append("new_key", json!([456, 789, false]));
   ///
   /// assert_eq!(root.to_string(), r#"{
-  ///    // comment
+  ///   // comment
   ///   "data": {
   ///     "nested": true
   ///   },
@@ -1017,7 +1056,7 @@ impl CstRootNode {
 
   /// Computes the single indentation text of the file.
   pub fn single_indent_text(&self) -> Option<String> {
-    let root_value = self.root_value()?;
+    let root_value = self.value()?;
     let first_non_trivia_child = root_value.children_exclude_trivia_and_tokens().first()?.clone();
     let mut last_whitespace = None;
     for previous_trivia in first_non_trivia_child.previous_siblings() {
@@ -1052,7 +1091,7 @@ impl CstRootNode {
   }
 
   /// Gets the root value found in the file.
-  pub fn root_value(&self) -> Option<CstNode> {
+  pub fn value(&self) -> Option<CstNode> {
     for child in &self.0.borrow().value {
       if !child.is_trivia() {
         return Some(child.clone());
@@ -1062,14 +1101,14 @@ impl CstRootNode {
   }
 
   /// Sets potentially replacing the root value found in the JSON document.
-  pub fn set_root_value(&self, root_value: CstInputValue) {
+  pub fn set_value(&self, root_value: CstInputValue) {
     let container: CstContainerNode = self.clone().into();
     let style_info = StyleInfo {
       newline_kind: self.newline_kind(),
       uses_trailing_commas: uses_trailing_commas(self.clone().into()),
     };
     let indents = compute_indents(&self.clone().into());
-    let mut insert_index = if let Some(root_value) = self.root_value() {
+    let mut insert_index = if let Some(root_value) = self.value() {
       let index = root_value.child_index();
       root_value.remove();
       index
@@ -1099,16 +1138,38 @@ impl CstRootNode {
     );
   }
 
-  /// Gets or creates the root value as an object, return Some if successful
-  /// or None if the root value already exists and is not an object.
-  pub fn ensure_object_value(&self) -> Option<CstObject> {
-    match self.root_value() {
+  /// Gets the value if its an object.
+  pub fn object_value(&self) -> Option<CstObject> {
+    self.value()?.as_object()
+  }
+
+  /// Gets or creates the root value as an object, returns `Some` if successful
+  /// or `None` if the root value already exists and is not an object.
+  pub fn object_value_or_create(&self) -> Option<CstObject> {
+    match self.value() {
       Some(CstNode::Container(CstContainerNode::Object(node))) => Some(node),
       Some(_) => None,
       None => {
-        self.set_root_value(CstInputValue::Object(Vec::new()));
-        // should always work, but might as well do this
-        self.root_value().and_then(|o| o.as_object())
+        self.set_value(CstInputValue::Object(Vec::new()));
+        self.object_value()
+      }
+    }
+  }
+
+  /// Gets the value if its an array.
+  pub fn array_value(&self) -> Option<CstArray> {
+    self.value()?.as_array()
+  }
+
+  /// Gets or creates the root value as an object, returns `Some` if successful
+  /// or `None` if the root value already exists and is not an object.
+  pub fn array_value_or_create(&self) -> Option<CstArray> {
+    match self.value() {
+      Some(CstNode::Container(CstContainerNode::Array(node))) => Some(node),
+      Some(_) => None,
+      None => {
+        self.set_value(CstInputValue::Array(Vec::new()));
+        self.array_value()
       }
     }
   }
@@ -1119,7 +1180,7 @@ impl CstRootNode {
   /// That will always be determined based on whether the file uses
   /// trailing commas or not, so it's probably best to do this last.
   pub fn set_trailing_commas(&self, mode: TrailingCommaMode) {
-    let Some(value) = self.root_value() else {
+    let Some(value) = self.value() else {
       return;
     };
 
@@ -1151,7 +1212,7 @@ impl Display for CstRootNode {
   }
 }
 
-/// Node surrounded in double quotes (ex. `"my string"`).
+/// Text surrounded in double quotes (ex. `"my string"`).
 #[derive(Debug, Clone)]
 pub struct CstStringLit(Rc<RefCell<CstValueInner<String>>>);
 
@@ -1201,6 +1262,7 @@ impl Display for CstStringLit {
   }
 }
 
+/// Property key that is missing quotes (ex. `prop: 4`).
 #[derive(Debug, Clone)]
 pub struct CstWordLit(Rc<RefCell<CstValueInner<String>>>);
 
@@ -1265,7 +1327,7 @@ impl Display for CstNumberLit {
   }
 }
 
-/// Represents a boolean (ex. `true` or `false`).
+/// Boolean (`true` or `false`).
 #[derive(Debug, Clone)]
 pub struct CstBooleanLit(Rc<RefCell<CstValueInner<bool>>>);
 
@@ -1307,7 +1369,7 @@ impl Display for CstBooleanLit {
   }
 }
 
-/// Represents the null keyword (ex. `null`).
+/// Null keyword (`null`).
 #[derive(Debug, Clone)]
 pub struct CstNullKeyword(Rc<RefCell<CstValueInner<()>>>);
 
@@ -1337,7 +1399,7 @@ impl Display for CstNullKeyword {
 
 type CstObjectInner = RefCell<CstChildrenInner>;
 
-/// Represents an object that may contain properties (ex. `{}`, `{ "prop": 4 }`).
+/// Object literal that may contain properties (ex. `{}`, `{ "prop": 4 }`).
 #[derive(Debug, Clone)]
 pub struct CstObject(Rc<CstObjectInner>);
 
@@ -1353,20 +1415,52 @@ impl CstObject {
   /// Array property by name.
   ///
   /// Returns `None` if the property doesn't exist or is not an array.
-  pub fn get_array(&self, name: &str) -> Option<CstArray> {
+  pub fn array_value(&self, name: &str) -> Option<CstArray> {
     match self.get(name)?.value()? {
       CstNode::Container(CstContainerNode::Array(node)) => Some(node),
       _ => None,
     }
   }
 
+  /// Ensures a property exists with an array value returning the array.
+  ///
+  /// Returns `None` if the property value exists, but is not an array.
+  pub fn array_value_or_create(&self, name: &str) -> Option<CstArray> {
+    match self.get(name) {
+      Some(prop) => match prop.value()? {
+        CstNode::Container(CstContainerNode::Array(node)) => Some(node),
+        _ => None,
+      },
+      None => {
+        self.append(name, CstInputValue::Array(Vec::new()));
+        self.array_value(name)
+      }
+    }
+  }
+
   /// Object property by name.
   ///
   /// Returns `None` if the property doesn't exist or is not an object.
-  pub fn get_object(&self, name: &str) -> Option<CstObject> {
+  pub fn object_value(&self, name: &str) -> Option<CstObject> {
     match self.get(name)?.value()? {
       CstNode::Container(CstContainerNode::Object(node)) => Some(node),
       _ => None,
+    }
+  }
+
+  /// Ensures a property exists with an object value returning the object.
+  ///
+  /// Returns `None` if the property value exists, but is not an object.
+  pub fn object_value_or_create(&self, name: &str) -> Option<CstObject> {
+    match self.get(name) {
+      Some(prop) => match prop.value()? {
+        CstNode::Container(CstContainerNode::Object(node)) => Some(node),
+        _ => None,
+      },
+      None => {
+        self.append(name, CstInputValue::Object(Vec::new()));
+        self.object_value(name)
+      }
     }
   }
 
@@ -1454,6 +1548,7 @@ impl Display for CstObject {
 
 type CstObjectPropInner = RefCell<CstChildrenInner>;
 
+/// Property in an object (ex. `"prop": 5`).
 #[derive(Debug, Clone)]
 pub struct CstObjectProp(Rc<CstObjectPropInner>);
 
@@ -1584,7 +1679,7 @@ impl Display for CstObjectProp {
   }
 }
 
-/// Represents an object property name that may or may not be in quotes.
+/// An object property name that may or may not be in quotes (ex. `"prop"` in `"prop": 5`).
 #[derive(Debug, Clone)]
 pub enum ObjectPropName {
   String(CstStringLit),
@@ -1638,6 +1733,7 @@ impl From<ObjectPropName> for CstNode {
 
 type CstArrayInner = RefCell<CstChildrenInner>;
 
+/// Represents an array that may contain elements (ex. `[]`, `[1, 2, 3]`).
 #[derive(Debug, Clone)]
 pub struct CstArray(Rc<CstArrayInner>);
 
@@ -1779,6 +1875,7 @@ impl Display for CstArray {
   }
 }
 
+/// Insigificant token found in the file (ex. colon, comma, brace, etc.).
 #[derive(Debug, Clone)]
 pub struct CstToken(Rc<RefCell<CstValueInner<char>>>);
 
@@ -1811,6 +1908,7 @@ impl Display for CstToken {
   }
 }
 
+/// Blank space excluding newlines.
 #[derive(Debug, Clone)]
 pub struct CstWhitespace(Rc<RefCell<CstValueInner<String>>>);
 
@@ -1843,6 +1941,7 @@ impl Display for CstWhitespace {
   }
 }
 
+/// Kind of newline.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CstNewlineKind {
   #[default]
@@ -1850,6 +1949,7 @@ pub enum CstNewlineKind {
   CarriageReturnLineFeed,
 }
 
+/// Newline character (Lf or crlf).
 #[derive(Debug, Clone)]
 pub struct CstNewline(Rc<RefCell<CstValueInner<CstNewlineKind>>>);
 
@@ -2447,7 +2547,7 @@ fn set_trailing_commas(
   let mut elems_or_props = elems_or_props.peekable();
   let use_trailing_commas = match mode {
     TrailingCommaMode::Never => false,
-    TrailingCommaMode::Multiline => true,
+    TrailingCommaMode::IfMultiline => true,
   };
   while let Some(element) = elems_or_props.next() {
     // handle last element
@@ -2583,7 +2683,7 @@ fn compute_indents(node: &CstNode) -> Indents {
   }
 
   // try to discover the single indent level by looking at the root node's children
-  if let Some(root_value) = node.root_node().and_then(|r| r.root_value()) {
+  if let Some(root_value) = node.root_node().and_then(|r| r.value()) {
     for child in root_value.children() {
       if let Some(single_indent) = child.indent_text() {
         return Indents {
@@ -2739,7 +2839,7 @@ mod test {
 }"#,
     );
 
-    let root_value = cst.root_value().unwrap();
+    let root_value = cst.value().unwrap();
     let root_obj = root_value.as_object().unwrap();
     {
       let prop = root_obj.get("value").unwrap();
@@ -2819,7 +2919,7 @@ mod test {
   fn remove_properties() {
     fn run_test(prop_name: &str, json: &str, expected: &str) {
       let cst = build_cst(json);
-      let root_value = cst.root_value().unwrap();
+      let root_value = cst.value().unwrap();
       let root_obj = root_value.as_object().unwrap();
       let prop = root_obj.get(prop_name).unwrap();
       prop.remove();
@@ -2866,7 +2966,7 @@ value3: true
   fn insert_properties() {
     fn run_test(index: usize, prop_name: &str, value: CstInputValue, json: &str, expected: &str) {
       let cst = build_cst(json);
-      let root_value = cst.root_value().unwrap();
+      let root_value = cst.value().unwrap();
       let root_obj = root_value.as_object().unwrap();
       root_obj.insert(index, prop_name, value);
       assert_eq!(cst.to_string(), expected, "Initial text: {}", json);
@@ -2949,7 +3049,7 @@ value3: true
   fn remove_array_elements() {
     fn run_test(index: usize, json: &str, expected: &str) {
       let cst = build_cst(json);
-      let root_value = cst.root_value().unwrap();
+      let root_value = cst.value().unwrap();
       let root_array = root_value.as_array().unwrap();
       let element = root_array.elements().get(index).unwrap().clone();
       element.remove();
@@ -3021,7 +3121,7 @@ value3: true
     #[track_caller]
     fn run_test(index: usize, value: CstInputValue, json: &str, expected: &str) {
       let cst = build_cst(json);
-      let root_value = cst.root_value().unwrap();
+      let root_value = cst.value().unwrap();
       let root_array = root_value.as_array().unwrap();
       root_array.insert(index, value);
       assert_eq!(cst.to_string(), expected, "Initial text: {}", json);
@@ -3113,9 +3213,9 @@ value3: true
 }"#,
     );
     cst
-      .ensure_object_value()
+      .object_value_or_create()
       .unwrap()
-      .get_array("prop")
+      .array_value("prop")
       .unwrap()
       .append(json!(3));
     assert_eq!(
@@ -3134,7 +3234,7 @@ value3: true
   fn remove_comment() {
     fn run_test(json: &str, expected: &str) {
       let cst = build_cst(json);
-      let root_value = cst.root_value().unwrap();
+      let root_value = cst.value().unwrap();
       let root_obj = root_value.as_object().unwrap();
       root_obj
         .children()
@@ -3175,29 +3275,29 @@ value3: true
   }
 
   #[test]
-  fn ensure_object_value() {
+  fn object_value_or_create() {
     // existing
     {
       let cst = build_cst(r#"{ "value": 1 }"#);
-      let obj = cst.ensure_object_value().unwrap();
+      let obj = cst.object_value_or_create().unwrap();
       assert!(obj.get("value").is_some());
     }
     // empty file
     {
       let cst = build_cst(r#""#);
-      cst.ensure_object_value().unwrap();
+      cst.object_value_or_create().unwrap();
       assert_eq!(cst.to_string(), "{}\n");
     }
     // comment
     {
       let cst = build_cst("// Copyright something");
-      cst.ensure_object_value().unwrap();
+      cst.object_value_or_create().unwrap();
       assert_eq!(cst.to_string(), "// Copyright something\n{}\n");
     }
     // comment and newline
     {
       let cst = build_cst("// Copyright something\n");
-      cst.ensure_object_value().unwrap();
+      cst.object_value_or_create().unwrap();
       assert_eq!(cst.to_string(), "// Copyright something\n{}\n");
     }
   }
@@ -3207,25 +3307,25 @@ value3: true
     // empty
     {
       let cst = build_cst(r#"[]"#);
-      cst.root_value().unwrap().as_array().unwrap().ensure_multiline();
+      cst.value().unwrap().as_array().unwrap().ensure_multiline();
       assert_eq!(cst.to_string(), "[\n]");
     }
     // whitespace only
     {
       let cst = build_cst(r#"[   ]"#);
-      cst.root_value().unwrap().as_array().unwrap().ensure_multiline();
+      cst.value().unwrap().as_array().unwrap().ensure_multiline();
       assert_eq!(cst.to_string(), "[\n]");
     }
     // comments only
     {
       let cst = build_cst(r#"[  /* test */  ]"#);
-      cst.root_value().unwrap().as_array().unwrap().ensure_multiline();
+      cst.value().unwrap().as_array().unwrap().ensure_multiline();
       assert_eq!(cst.to_string(), "[\n  /* test */\n]");
     }
     // elements
     {
       let cst = build_cst(r#"[  1,   2, /* test */ 3  ]"#);
-      cst.root_value().unwrap().as_array().unwrap().ensure_multiline();
+      cst.value().unwrap().as_array().unwrap().ensure_multiline();
       assert_eq!(
         cst.to_string(),
         r#"[
@@ -3245,7 +3345,7 @@ value3: true
 }"#,
       );
       cst
-        .root_value()
+        .value()
         .unwrap()
         .as_object()
         .unwrap()
@@ -3281,7 +3381,7 @@ value3: true
   fn sets_trailing_commas() {
     fn run_test(input: &str, mode: crate::cst::TrailingCommaMode, expected: &str) {
       let cst = build_cst(input);
-      let root_value = cst.root_value().unwrap();
+      let root_value = cst.value().unwrap();
       let root_obj = root_value.as_object().unwrap();
       root_obj.set_trailing_commas(mode);
       assert_eq!(cst.to_string(), expected);
@@ -3299,7 +3399,7 @@ value3: true
       r#"{
     // test
 }"#,
-      TrailingCommaMode::Multiline,
+      TrailingCommaMode::IfMultiline,
       r#"{
     // test
 }"#,
@@ -3307,7 +3407,7 @@ value3: true
 
     // single-line object
     run_test(r#"{"a": 1}"#, TrailingCommaMode::Never, r#"{"a": 1}"#);
-    run_test(r#"{"a": 1}"#, TrailingCommaMode::Multiline, r#"{"a": 1}"#);
+    run_test(r#"{"a": 1}"#, TrailingCommaMode::IfMultiline, r#"{"a": 1}"#);
     // multiline object
     run_test(
       r#"{
@@ -3318,7 +3418,7 @@ value3: true
       1
   ]
 }"#,
-      TrailingCommaMode::Multiline,
+      TrailingCommaMode::IfMultiline,
       r#"{
   "a": 1,
   "b": 2,
@@ -3339,6 +3439,71 @@ value3: true
 "b": 2
 }"#,
     );
+  }
+
+  #[test]
+  fn or_create_methods() {
+    let cst = build_cst("");
+    let obj = cst.object_value_or_create().unwrap();
+    assert_eq!(cst.to_string(), "{}\n");
+    assert!(cst.array_value_or_create().is_none());
+    assert_eq!(obj.object_value_or_create("prop").unwrap().to_string(), "{}");
+    assert!(obj.array_value_or_create("prop").is_none());
+    assert_eq!(obj.array_value_or_create("prop2").unwrap().to_string(), "[]");
+    assert_eq!(
+      cst.to_string(),
+      r#"{
+  "prop": {},
+  "prop2": []
+}
+"#
+    );
+  }
+
+  #[test]
+  fn expression_properties_and_values() {
+    #[track_caller]
+    fn run_test(value: CstInputValue, expected: &str) {
+      let cst = build_cst("");
+      cst.set_value(value);
+      assert_eq!(cst.to_string(), format!("{}\n", expected));
+    }
+
+    run_test(json!(1), "1");
+    run_test(json!("test"), "\"test\"");
+    {
+      let text = "test";
+      run_test(json!(text), "\"test\"");
+    }
+    {
+      let num = 1;
+      run_test(json!(num), "1");
+    }
+    {
+      let vec = vec![1, 2, 3];
+      run_test(json!(vec), "[1, 2, 3]");
+    }
+    {
+      let vec = vec![1, 2, 3];
+      run_test(
+        json!({
+          "value": vec,
+        }),
+        r#"{
+  "value": [1, 2, 3]
+}"#,
+      );
+    }
+    run_test(
+      json!({
+        notQuoted: 1,
+        "quoted": 2,
+      }),
+      r#"{
+  "notQuoted": 1,
+  "quoted": 2
+}"#,
+    )
   }
 
   fn build_cst(text: &str) -> CstRootNode {
