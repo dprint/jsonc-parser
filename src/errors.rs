@@ -94,43 +94,63 @@ impl std::fmt::Display for ParseErrorKind {
   }
 }
 
-/// Error that could occur while parsing or tokenizing.
-#[derive(Debug, PartialEq)]
-pub struct ParseError {
-  /// Start and end position of the error.
-  pub range: Range,
-  /// 1-indexed line number the error occurred on.
-  pub line_display: usize,
-  /// 1-indexed column number the error occurred on.
-  ///
-  /// Note: Use the `error_unicode_width` feature to get the correct column
-  /// number for Unicode characters on the line, otherwise this is just the
-  /// number of characters by default.
-  pub column_display: usize,
-  /// Error message.
-  pub kind: ParseErrorKind,
+#[derive(Debug, Clone, PartialEq)]
+struct ParseErrorInner {
+  range: Range,
+  line_display: usize,
+  column_display: usize,
+  kind: ParseErrorKind,
 }
+
+/// Error that could occur while parsing or tokenizing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseError(Box<ParseErrorInner>);
 
 impl std::error::Error for ParseError {}
 
 impl ParseError {
   pub(crate) fn new(range: Range, kind: ParseErrorKind, file_text: &str) -> ParseError {
     let (line_display, column_display) = get_line_and_column_display(range, file_text);
-    ParseError {
+    ParseError(Box::new(ParseErrorInner {
       range,
       line_display,
       column_display,
       kind,
-    }
+    }))
+  }
+
+  /// Start and end position of the error.
+  pub fn range(&self) -> Range {
+    self.0.range
+  }
+
+  /// 1-indexed line number the error occurred on.
+  pub fn line_display(&self) -> usize {
+    self.0.line_display
+  }
+
+  /// 1-indexed column number the error occurred on.
+  ///
+  /// Note: Use the `error_unicode_width` feature to get the correct column
+  /// number for Unicode characters on the line, otherwise this is just the
+  /// number of characters by default.
+  pub fn column_display(&self) -> usize {
+    self.0.column_display
+  }
+
+  /// Error message.
+  pub fn kind(&self) -> &ParseErrorKind {
+    &self.0.kind
   }
 }
 
 impl fmt::Display for ParseError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let inner = &*self.0;
     write!(
       f,
       "{} on line {} column {}",
-      self.kind, self.line_display, self.column_display
+      inner.kind, inner.line_display, inner.column_display
     )
   }
 }
