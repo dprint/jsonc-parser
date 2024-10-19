@@ -735,22 +735,22 @@ impl CstContainerNode {
       InsertValue::Value(value) => {
         let is_multiline = value.force_multiline();
         match value {
-          RawCstValue::Null => {
+          CstInputValue::Null => {
             self.raw_insert_child(insert_index, CstLeafNode::NullKeyword(CstNullKeyword::new()).into());
           }
-          RawCstValue::Bool(value) => {
+          CstInputValue::Bool(value) => {
             self.raw_insert_child(insert_index, CstLeafNode::BooleanLit(CstBooleanLit::new(value)).into());
           }
-          RawCstValue::Number(value) => {
+          CstInputValue::Number(value) => {
             self.raw_insert_child(insert_index, CstLeafNode::NumberLit(CstNumberLit::new(value)).into());
           }
-          RawCstValue::String(value) => {
+          CstInputValue::String(value) => {
             self.raw_insert_child(
               insert_index,
               CstLeafNode::StringLit(CstStringLit::new_escaped(&value)).into(),
             );
           }
-          RawCstValue::Array(elements) => {
+          CstInputValue::Array(elements) => {
             let array_node: CstContainerNode = CstArray::new().into();
             self.raw_insert_child(insert_index, array_node.clone().into());
 
@@ -793,7 +793,7 @@ impl CstContainerNode {
 
             array_node.raw_append_child(CstToken::new(']').into());
           }
-          RawCstValue::Object(properties) => {
+          CstInputValue::Object(properties) => {
             let object_node: CstContainerNode = CstObject::new().into();
             self.raw_insert_child(insert_index, object_node.clone().into());
 
@@ -959,6 +959,26 @@ impl CstRootNode {
   /// references for ancestors and if the root node is dropped then the weak reference
   /// will be lost and the CST will panic to prevent bugs when a descendant node
   /// attempts to access an ancestor that was dropped.
+  ///
+  /// ```
+  /// use jsonc_parser::cst::CstRootNode;
+  /// use jsonc_parser::ParseOptions;
+  /// use jsonc_parser::value;
+  ///
+  /// let json_text = r#"{
+  ///   "data": 123
+  /// }"#;
+  /// let node = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
+  /// let root_value = node.root_value().unwrap();
+  /// let root_obj = root_value.as_object().unwrap();
+  ///
+  /// root_obj.append("new_key", value!([456, 789, false]));
+  ///
+  /// assert_eq!(node.to_string(), r#"{
+  ///   "data": 123,
+  ///   "new_key": [456, 789, false]
+  /// }"#);
+  /// ```
   pub fn parse(text: &str, parse_options: &ParseOptions) -> Result<Self, ParseError> {
     let parse_result = parse_to_ast(
       text,
@@ -1025,7 +1045,7 @@ impl CstRootNode {
   }
 
   /// Sets potentially replacing the root value found in the JSON document.
-  pub fn set_root_value(&self, root_value: RawCstValue) {
+  pub fn set_root_value(&self, root_value: CstInputValue) {
     let container: CstContainerNode = self.clone().into();
     let style_info = StyleInfo {
       newline_kind: self.newline_kind(),
@@ -1069,7 +1089,7 @@ impl CstRootNode {
       Some(CstNode::Container(CstContainerNode::Object(node))) => Some(node),
       Some(_) => None,
       None => {
-        self.set_root_value(RawCstValue::Object(Vec::new()));
+        self.set_root_value(CstInputValue::Object(Vec::new()));
         // should always work, but might as well do this
         self.root_value().and_then(|o| o.as_object().cloned())
       }
@@ -1128,7 +1148,7 @@ impl CstStringLit {
   }
 
   /// Replaces this node with a new value.
-  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+  pub fn replace_with(self, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
@@ -1160,7 +1180,7 @@ impl CstWordLit {
   }
 
   /// Replaces this node with a new value.
-  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+  pub fn replace_with(self, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
@@ -1192,7 +1212,7 @@ impl CstNumberLit {
   }
 
   /// Replaces this node with a new value.
-  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+  pub fn replace_with(self, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
@@ -1230,7 +1250,7 @@ impl CstBooleanLit {
   }
 
   /// Replaces this node with a new value.
-  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+  pub fn replace_with(self, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
@@ -1260,7 +1280,7 @@ impl CstNullKeyword {
   }
 
   /// Replaces this node with a new value.
-  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+  pub fn replace_with(self, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
@@ -1348,16 +1368,16 @@ impl CstObject {
   }
 
   /// Appends a property to the object.
-  pub fn append(&self, prop_name: &str, value: RawCstValue) {
+  pub fn append(&self, prop_name: &str, value: CstInputValue) {
     self.insert_or_append(None, prop_name, value);
   }
 
   /// Inserts a property at the specified index.
-  pub fn insert(&self, index: usize, prop_name: &str, value: RawCstValue) {
+  pub fn insert(&self, index: usize, prop_name: &str, value: CstInputValue) {
     self.insert_or_append(Some(index), prop_name, value);
   }
 
-  fn insert_or_append(&self, index: Option<usize>, prop_name: &str, value: RawCstValue) {
+  fn insert_or_append(&self, index: Option<usize>, prop_name: &str, value: CstInputValue) {
     insert_or_append_to_container(
       &CstContainerNode::Object(self.clone()),
       self.properties().into_iter().map(|c| c.into()).collect(),
@@ -1367,7 +1387,7 @@ impl CstObject {
   }
 
   /// Replaces this node with a new value.
-  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+  pub fn replace_with(self, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
@@ -1478,7 +1498,7 @@ impl CstObjectProp {
   }
 
   /// Replaces this node with a new value.
-  pub fn replace_with(self, key: &str, replacement: RawCstValue) -> Option<CstNode> {
+  pub fn replace_with(self, key: &str, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Property(key, replacement))
   }
 
@@ -1588,12 +1608,12 @@ impl CstArray {
   }
 
   /// Appends an element to the end of the array.
-  pub fn append(&self, value: RawCstValue) {
+  pub fn append(&self, value: CstInputValue) {
     self.insert_or_append(None, value);
   }
 
   /// Inserts an element at the specified index.
-  pub fn insert(&self, index: usize, value: RawCstValue) {
+  pub fn insert(&self, index: usize, value: CstInputValue) {
     self.insert_or_append(Some(index), value);
   }
 
@@ -1658,7 +1678,7 @@ impl CstArray {
     }
   }
 
-  fn insert_or_append(&self, index: Option<usize>, value: RawCstValue) {
+  fn insert_or_append(&self, index: Option<usize>, value: CstInputValue) {
     insert_or_append_to_container(
       &CstContainerNode::Array(self.clone()),
       self.elements(),
@@ -1668,7 +1688,7 @@ impl CstArray {
   }
 
   /// Replaces this node with a new value.
-  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+  pub fn replace_with(self, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
   }
 
@@ -2170,7 +2190,7 @@ fn uses_trailing_commas(node: CstNode) -> bool {
     CstNode::Container(node) => node,
     CstNode::Leaf(_) => return false,
   };
-  let mut pending_nodes: VecDeque<CstContainerNode> = VecDeque::from([node.clone().into()]);
+  let mut pending_nodes: VecDeque<CstContainerNode> = VecDeque::from([node.clone()]);
   while let Some(node) = pending_nodes.pop_front() {
     let children = node.children();
     if !node.is_root() {
@@ -2215,8 +2235,8 @@ fn replace_with(node: CstNode, replacement: InsertValue) -> Option<CstNode> {
 }
 
 enum InsertValue<'a> {
-  Value(RawCstValue),
-  Property(&'a str, RawCstValue),
+  Value(CstInputValue),
+  Property(&'a str, CstInputValue),
 }
 
 fn insert_or_append_to_container(
@@ -2549,8 +2569,8 @@ impl Iterator for PreviousSiblingIterator {
 mod test {
   use pretty_assertions::assert_eq;
 
-  use crate::cst::RawCstValue;
-  use crate::cst_value;
+  use crate::cst::CstInputValue;
+  use crate::value;
 
   use super::CstRootNode;
 
@@ -2734,7 +2754,7 @@ value3: true
 
   #[test]
   fn insert_properties() {
-    fn run_test(index: usize, prop_name: &str, value: RawCstValue, json: &str, expected: &str) {
+    fn run_test(index: usize, prop_name: &str, value: CstInputValue, json: &str, expected: &str) {
       let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
       let root_obj = root_value.as_object().unwrap();
@@ -2745,7 +2765,7 @@ value3: true
     run_test(
       0,
       "propName",
-      cst_value!([1]),
+      value!([1]),
       r#"{}"#,
       r#"{
   "propName": [1]
@@ -2756,7 +2776,7 @@ value3: true
     run_test(
       0,
       "value0",
-      cst_value!([1]),
+      value!([1]),
       r#"{
     "value1": 5
 }"#,
@@ -2770,7 +2790,7 @@ value3: true
     run_test(
       0,
       "value0",
-      cst_value!([1]),
+      value!([1]),
       r#"{
     // some comment
     "value1": 5
@@ -2786,7 +2806,7 @@ value3: true
     run_test(
       1,
       "value1",
-      cst_value!({
+      value!({
         "value": 1
       }),
       r#"{
@@ -2804,7 +2824,7 @@ value3: true
     run_test(
       1,
       "propName",
-      cst_value!(true),
+      value!(true),
       r#"{
   "value": 4,
 }"#,
@@ -2889,7 +2909,7 @@ value3: true
   #[test]
   fn insert_array_element() {
     #[track_caller]
-    fn run_test(index: usize, value: RawCstValue, json: &str, expected: &str) {
+    fn run_test(index: usize, value: CstInputValue, json: &str, expected: &str) {
       let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
       let root_array = root_value.as_array().unwrap();
@@ -2897,19 +2917,14 @@ value3: true
       assert_eq!(cst.to_string(), expected, "Initial text: {}", json);
     }
 
-    run_test(0, cst_value!([1]), r#"[]"#, r#"[[1]]"#);
+    run_test(0, value!([1]), r#"[]"#, r#"[[1]]"#);
+    run_test(0, value!([1, true, false, {}]), r#"[]"#, r#"[[1, true, false, {}]]"#);
+    run_test(0, value!(10), r#"[]"#, r#"[10]"#);
+    run_test(0, value!(10), r#"[1]"#, r#"[10, 1]"#);
+    run_test(1, value!(10), r#"[1]"#, r#"[1, 10]"#);
     run_test(
       0,
-      cst_value!([1, true, false, {}]),
-      r#"[]"#,
-      r#"[[1, true, false, {}]]"#,
-    );
-    run_test(0, cst_value!(10), r#"[]"#, r#"[10]"#);
-    run_test(0, cst_value!(10), r#"[1]"#, r#"[10, 1]"#);
-    run_test(1, cst_value!(10), r#"[1]"#, r#"[1, 10]"#);
-    run_test(
-      0,
-      cst_value!(10),
+      value!(10),
       r#"[
     1
 ]"#,
@@ -2920,7 +2935,7 @@ value3: true
     );
     run_test(
       0,
-      cst_value!(10),
+      value!(10),
       r#"[
     /* test */ 1
 ]"#,
@@ -2932,7 +2947,7 @@ value3: true
 
     run_test(
       0,
-      cst_value!({
+      value!({
         "value": 1,
       }),
       r#"[]"#,
@@ -2946,7 +2961,7 @@ value3: true
     // only comment
     run_test(
       0,
-      cst_value!({
+      value!({
         "value": 1,
       }),
       r#"[
@@ -2963,7 +2978,7 @@ value3: true
     // blank line
     run_test(
       0,
-      cst_value!({
+      value!({
         "value": 1,
       }),
       r#"[
@@ -2992,7 +3007,7 @@ value3: true
       .unwrap()
       .get_array("prop")
       .unwrap()
-      .append(cst_value!(3));
+      .append(value!(3));
     assert_eq!(
       cst.to_string(),
       r#"{

@@ -53,6 +53,7 @@ pub trait CharProvider<'a> {
   fn text(&self) -> &'a str;
 }
 
+#[cfg(feature = "cst")]
 pub fn parse_string(text: &str) -> Result<Cow<str>, ParseStringError> {
   struct StringCharProvider<'a> {
     text: &'a str,

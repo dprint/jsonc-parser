@@ -28,6 +28,12 @@ let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &CollectOptions {
 // ...inspect parse_result for value, tokens, and comments here...
 ```
 
+Or a CST (when enabling the `cst` feature):
+
+```rs
+use jsonc_parser::cst::RootNode;
+```
+
 ## Serde
 
 If you enable the `"serde"` feature as follows:
