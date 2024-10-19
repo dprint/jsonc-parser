@@ -57,6 +57,8 @@ fn handle_object(obj: ast::Object) -> JsonObject {
 
 #[cfg(test)]
 mod tests {
+  use crate::errors::ParseErrorKind;
+
   use super::*;
   use std::borrow::Cow;
 
@@ -149,6 +151,6 @@ mod tests {
       .unwrap();
     assert_eq!(err.range.start, 8);
     assert_eq!(err.range.end, 11);
-    assert_eq!(err.message, "Unexpected token");
+    assert_eq!(err.kind, ParseErrorKind::UnexpectedToken);
   }
 }

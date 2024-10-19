@@ -132,17 +132,17 @@ impl<'a> Context<'a> {
     }
   }
 
-  pub fn create_error(&self, message: &str) -> ParseError {
-    self.scanner.create_error_for_current_token(message)
+  pub fn create_error(&self, kind: ParseErrorKind) -> ParseError {
+    self.scanner.create_error_for_current_token(kind)
   }
 
-  pub fn create_error_for_current_range(&mut self, message: &str) -> ParseError {
+  pub fn create_error_for_current_range(&mut self, kind: ParseErrorKind) -> ParseError {
     let range = self.end_range();
-    self.create_error_for_range(range, message)
+    self.create_error_for_range(range, kind)
   }
 
-  pub fn create_error_for_range(&self, range: Range, message: &str) -> ParseError {
-    self.scanner.create_error_for_range(range, message)
+  pub fn create_error_for_range(&self, range: Range, kind: ParseErrorKind) -> ParseError {
+    self.scanner.create_error_for_range(range, kind)
   }
 
   fn scan_handling_comments(&mut self) -> Result<Option<Token<'a>>, ParseError> {
@@ -181,7 +181,7 @@ impl<'a> Context<'a> {
 
   fn handle_comment(&mut self, comment: Comment<'a>) -> Result<(), ParseError> {
     if !self.allow_comments {
-      return Err(self.create_error("Comments are not allowed"));
+      return Err(self.create_error(ParseErrorKind::CommentsNotAllowed));
     }
 
     if self.comments.is_some() {
@@ -236,7 +236,7 @@ pub fn parse_to_ast<'a>(
   let value = parse_value(&mut context)?;
 
   if context.scan()?.is_some() {
-    return Err(context.create_error("Text cannot contain more than one JSON value"));
+    return Err(context.create_error(ParseErrorKind::MultipleRootJsonValues));
   }
 
   debug_assert!(context.range_stack.is_empty());
@@ -258,11 +258,11 @@ fn parse_value<'a>(context: &mut Context<'a>) -> Result<Option<Value<'a>>, Parse
       Token::Boolean(value) => Ok(Some(Value::BooleanLit(create_boolean_lit(context, value)))),
       Token::Number(value) => Ok(Some(Value::NumberLit(create_number_lit(context, value)))),
       Token::Null => return Ok(Some(Value::NullKeyword(create_null_keyword(context)))),
-      Token::CloseBracket => Err(context.create_error("Unexpected close bracket")),
-      Token::CloseBrace => Err(context.create_error("Unexpected close brace")),
-      Token::Comma => Err(context.create_error("Unexpected comma")),
-      Token::Colon => Err(context.create_error("Unexpected colon")),
-      Token::Word(_) => Err(context.create_error("Unexpected word")),
+      Token::CloseBracket => Err(context.create_error(ParseErrorKind::UnexpectedCloseBracket)),
+      Token::CloseBrace => Err(context.create_error(ParseErrorKind::UnexpectedCloseBrace)),
+      Token::Comma => Err(context.create_error(ParseErrorKind::UnexpectedComma)),
+      Token::Colon => Err(context.create_error(ParseErrorKind::UnexpectedColon)),
+      Token::Word(_) => Err(context.create_error(ParseErrorKind::UnexpectedWord)),
       Token::CommentLine(_) => unreachable!(),
       Token::CommentBlock(_) => unreachable!(),
     },
@@ -285,8 +285,8 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
       Some(Token::Word(prop_name)) | Some(Token::Number(prop_name)) => {
         properties.push(parse_object_property(context, PropName::Word(prop_name))?);
       }
-      None => return Err(context.create_error_for_current_range("Unterminated object")),
-      _ => return Err(context.create_error("Unexpected token in object")),
+      None => return Err(context.create_error_for_current_range(ParseErrorKind::UnterminatedObject)),
+      _ => return Err(context.create_error(ParseErrorKind::UnexpectedTokenInObject)),
     }
 
     // skip the comma
@@ -294,7 +294,7 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
       let comma_range = context.create_range_from_last_token();
       if let Some(Token::CloseBrace) = context.scan()? {
         if !context.allow_trailing_commas {
-          return Err(context.create_error_for_range(comma_range, "Trailing commas are not allowed"));
+          return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
         }
       }
     }
@@ -320,14 +320,14 @@ fn parse_object_property<'a>(context: &mut Context<'a>, prop_name: PropName<'a>)
       if context.allow_loose_object_property_names {
         ObjectPropName::Word(create_word(context, prop_name))
       } else {
-        return Err(context.create_error("Expected string for object property"));
+        return Err(context.create_error(ParseErrorKind::ExpectedStringObjectProperty));
       }
     }
   };
 
   match context.scan()? {
     Some(Token::Colon) => {}
-    _ => return Err(context.create_error("Expected a colon after the string or word in an object property")),
+    _ => return Err(context.create_error(ParseErrorKind::ExpectedColonAfterObjectKey)),
   }
 
   context.scan()?;
@@ -339,7 +339,7 @@ fn parse_object_property<'a>(context: &mut Context<'a>, prop_name: PropName<'a>)
       name,
       value,
     }),
-    None => Err(context.create_error("Expected value after colon in object property")),
+    None => Err(context.create_error(ParseErrorKind::ExpectedObjectValue)),
   }
 }
 
@@ -353,10 +353,10 @@ fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
   loop {
     match context.token() {
       Some(Token::CloseBracket) => break,
-      None => return Err(context.create_error_for_current_range("Unterminated array")),
+      None => return Err(context.create_error_for_current_range(ParseErrorKind::UnterminatedArray)),
       _ => match parse_value(context)? {
         Some(value) => elements.push(value),
-        None => return Err(context.create_error_for_current_range("Unterminated array")),
+        None => return Err(context.create_error_for_current_range(ParseErrorKind::UnterminatedArray)),
       },
     }
 
@@ -365,7 +365,7 @@ fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
       let comma_range = context.create_range_from_last_token();
       if let Some(Token::CloseBracket) = context.scan()? {
         if !context.allow_trailing_commas {
-          return Err(context.create_error_for_range(comma_range, "Trailing commas are not allowed"));
+          return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
         }
       }
     }
@@ -416,51 +416,52 @@ fn create_null_keyword(context: &Context) -> NullKeyword {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn it_should_error_when_has_multiple_values() {
     assert_has_error(
       "[][]",
-      "Text cannot contain more than one JSON value on line 1 column 3.",
+      "Text cannot contain more than one JSON value on line 1 column 3",
     );
   }
 
   #[test]
   fn it_should_error_when_object_is_not_terminated() {
-    assert_has_error("{", "Unterminated object on line 1 column 1.");
+    assert_has_error("{", "Unterminated object on line 1 column 1");
   }
 
   #[test]
   fn it_should_error_when_object_has_unexpected_token() {
-    assert_has_error("{ [] }", "Unexpected token in object on line 1 column 3.");
+    assert_has_error("{ [] }", "Unexpected token in object on line 1 column 3");
   }
 
   #[test]
   fn it_should_error_when_object_has_two_non_string_tokens() {
     assert_has_error(
       "{ asdf asdf: 5 }",
-      "Expected a colon after the string or word in an object property on line 1 column 8.",
+      "Expected colon after the string or word in object property on line 1 column 8",
     );
   }
 
   #[test]
   fn it_should_error_when_array_is_not_terminated() {
-    assert_has_error("[", "Unterminated array on line 1 column 1.");
+    assert_has_error("[", "Unterminated array on line 1 column 1");
   }
 
   #[test]
   fn it_should_error_when_array_has_unexpected_token() {
-    assert_has_error("[:]", "Unexpected colon on line 1 column 2.");
+    assert_has_error("[:]", "Unexpected colon on line 1 column 2");
   }
 
   #[test]
   fn it_should_error_when_comment_block_not_closed() {
-    assert_has_error("/* test", "Unterminated comment block on line 1 column 1.");
+    assert_has_error("/* test", "Unterminated comment block on line 1 column 1");
   }
 
   #[test]
   fn it_should_error_when_string_lit_not_closed() {
-    assert_has_error("\" test", "Unterminated string literal on line 1 column 1.");
+    assert_has_error("\" test", "Unterminated string literal on line 1 column 1");
   }
 
   fn assert_has_error(text: &str, message: &str) {
@@ -475,33 +476,34 @@ mod tests {
   fn strict_should_error_object_trailing_comma() {
     assert_has_strict_error(
       r#"{ "test": 5, }"#,
-      "Trailing commas are not allowed on line 1 column 12.",
+      "Trailing commas are not allowed on line 1 column 12",
     );
   }
 
   #[test]
   fn strict_should_error_array_trailing_comma() {
-    assert_has_strict_error(r#"[ "test", ]"#, "Trailing commas are not allowed on line 1 column 9.");
+    assert_has_strict_error(r#"[ "test", ]"#, "Trailing commas are not allowed on line 1 column 9");
   }
 
   #[test]
   fn strict_should_error_comment_line() {
-    assert_has_strict_error(r#"[ "test" ] // 1"#, "Comments are not allowed on line 1 column 12.");
+    assert_has_strict_error(r#"[ "test" ] // 1"#, "Comments are not allowed on line 1 column 12");
   }
 
   #[test]
   fn strict_should_error_comment_block() {
-    assert_has_strict_error(r#"[ "test" /* 1 */]"#, "Comments are not allowed on line 1 column 10.");
+    assert_has_strict_error(r#"[ "test" /* 1 */]"#, "Comments are not allowed on line 1 column 10");
   }
 
   #[test]
   fn strict_should_error_word_property() {
     assert_has_strict_error(
       r#"{ word: 5 }"#,
-      "Expected string for object property on line 1 column 3.",
+      "Expected string for object property on line 1 column 3",
     );
   }
 
+  #[track_caller]
   fn assert_has_strict_error(text: &str, message: &str) {
     let result = parse_to_ast(
       text,
@@ -558,5 +560,17 @@ mod tests {
     .unwrap();
     let comments = result.comments.unwrap();
     assert_eq!(comments.len(), 2); // for both positions, but it's the same comment
+  }
+
+  #[cfg(not(feature = "error_unicode_width"))]
+  #[test]
+  fn error_correct_line_column_unicode_width() {
+    assert_has_strict_error(r#"["🧑‍🦰", ["#, "Unterminated array on line 1 column 9");
+  }
+
+  #[cfg(feature = "error_unicode_width")]
+  #[test]
+  fn error_correct_line_column_unicode_width() {
+    assert_has_strict_error(r#"["🧑‍🦰", ["#, "Unterminated array on line 1 column 10");
   }
 }

@@ -33,6 +33,7 @@ pub fn parse_to_serde_value(text: &str, parse_options: &ParseOptions) -> Result<
 
 #[cfg(test)]
 mod tests {
+  use pretty_assertions::assert_eq;
   use serde_json::Value as SerdeValue;
   use std::str::FromStr;
 
@@ -42,7 +43,7 @@ mod tests {
   fn it_should_error_when_has_error() {
     assert_has_error(
       "[][]",
-      "Text cannot contain more than one JSON value on line 1 column 3.",
+      "Text cannot contain more than one JSON value on line 1 column 3",
     );
   }
 
