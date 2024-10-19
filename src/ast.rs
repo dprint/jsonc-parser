@@ -411,7 +411,7 @@ impl<'a> Comment<'a> {
 }
 
 impl<'a> Ranged for Comment<'a> {
-  fn range(&self) -> &Range {
+  fn range(&self) -> Range {
     match self {
       Comment::Line(line) => line.range(),
       Comment::Block(line) => line.range(),
@@ -445,7 +445,7 @@ impl<'a, 'b> From<&'b ObjectPropName<'a>> for Node<'a, 'b> {
 }
 
 impl<'a> Ranged for ObjectPropName<'a> {
-  fn range(&self) -> &Range {
+  fn range(&self) -> Range {
     match self {
       ObjectPropName::String(lit) => lit.range(),
       ObjectPropName::Word(lit) => lit.range(),
@@ -456,29 +456,29 @@ impl<'a> Ranged for ObjectPropName<'a> {
 // Implement Traits
 
 macro_rules! impl_ranged {
-    ($($node_name:ident),*) => {
-        $(
-            impl Ranged for $node_name {
-                fn range(&self) -> &Range {
-                    &self.range
-                }
-            }
-        )*
-    };
+  ($($node_name:ident),*) => {
+    $(
+      impl Ranged for $node_name {
+        fn range(&self) -> Range {
+            self.range
+        }
+      }
+    )*
+  };
 }
 
 impl_ranged![BooleanLit, NullKeyword];
 
 macro_rules! impl_ranged_lifetime {
-    ($($node_name:ident),*) => {
-        $(
-            impl<'a> Ranged for $node_name<'a> {
-                fn range(&self) -> &Range {
-                    &self.range
-                }
-            }
-        )*
-    };
+  ($($node_name:ident),*) => {
+    $(
+      impl<'a> Ranged for $node_name<'a> {
+        fn range(&self) -> Range {
+            self.range
+        }
+      }
+    )*
+  };
 }
 
 impl_ranged_lifetime![
@@ -493,7 +493,7 @@ impl_ranged_lifetime![
 ];
 
 impl<'a> Ranged for Value<'a> {
-  fn range(&self) -> &Range {
+  fn range(&self) -> Range {
     match self {
       Value::Array(node) => node.range(),
       Value::BooleanLit(node) => node.range(),
@@ -506,7 +506,7 @@ impl<'a> Ranged for Value<'a> {
 }
 
 impl<'a, 'b> Ranged for Node<'a, 'b> {
-  fn range(&self) -> &Range {
+  fn range(&self) -> Range {
     match self {
       Node::StringLit(node) => node.range(),
       Node::NumberLit(node) => node.range(),
@@ -586,11 +586,11 @@ mod test {
     assert_eq!(obj.properties.len(), 2);
     assert_eq!(obj.take_number("prop"), None);
     assert_eq!(obj.properties.len(), 2);
-    assert_eq!(obj.take_string("prop").is_some(), true);
+    assert!(obj.take_string("prop").is_some());
     assert_eq!(obj.properties.len(), 1);
     assert_eq!(obj.take("something"), None);
     assert_eq!(obj.properties.len(), 1);
-    assert_eq!(obj.take("other").is_some(), true);
+    assert!(obj.take("other").is_some());
     assert_eq!(obj.properties.len(), 0);
   }
 
@@ -604,7 +604,7 @@ mod test {
 
     assert_eq!(obj.properties.len(), 1);
     assert_eq!(obj.get_string("asdf"), None);
-    assert_eq!(obj.get_string("prop").is_some(), true);
+    assert!(obj.get_string("prop").is_some());
     assert_eq!(obj.get("asdf"), None);
     assert_eq!(obj.properties.len(), 1);
   }

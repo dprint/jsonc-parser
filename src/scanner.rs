@@ -1,7 +1,8 @@
+use crate::string::CharProvider;
+
 use super::common::Range;
 use super::errors::*;
 use super::tokens::Token;
-use std::borrow::Cow;
 use std::str::Chars;
 
 /// Converts text into a stream of tokens.
@@ -9,6 +10,7 @@ pub struct Scanner<'a> {
   byte_index: usize,
   token_start: usize,
   char_iter: Chars<'a>,
+  // todo(dsherret): why isn't this a VecDeque?
   char_buffer: Vec<char>,
   current_token: Option<Token<'a>>,
   file_text: &'a str,
@@ -143,100 +145,10 @@ impl<'a> Scanner<'a> {
   }
 
   fn parse_string(&mut self) -> Result<Token<'a>, ParseError> {
-    debug_assert!(
-      self.current_char() == Some('\'') || self.current_char() == Some('"'),
-      "Expected \", was {:?}",
-      self.current_char()
-    );
-    let is_double_quote = self.current_char() == Some('"');
-    let mut last_start_byte_index = self.byte_index + 1;
-    let mut text: Option<String> = None;
-    let mut last_was_backslash = false;
-    let mut found_end_string = false;
-
-    while let Some(current_char) = self.move_next_char() {
-      if last_was_backslash {
-        let escape_start = self.byte_index - 1; // -1 for backslash
-        match current_char {
-          '"' | '\'' | '\\' | '/' | 'b' | 'f' | 'u' | 'r' | 'n' | 't' => {
-            if current_char == '"' {
-              if !is_double_quote {
-                return Err(self.create_error_for_start(escape_start, "Invalid escape in single quote string"));
-              }
-            } else if current_char == '\'' && is_double_quote {
-              return Err(self.create_error_for_start(escape_start, "Invalid escape in double quote string"));
-            }
-
-            let previous_text = &self.file_text[last_start_byte_index..escape_start];
-            if text.is_none() {
-              text = Some(String::new());
-            }
-            let text = text.as_mut().unwrap();
-            text.push_str(previous_text);
-            if current_char == 'u' {
-              let mut hex_text = String::new();
-              // expect four hex values
-              for _ in 0..4 {
-                let current_char = self.move_next_char();
-                if !self.is_hex() {
-                  return Err(self.create_error_for_start(escape_start, "Expected four hex digits"));
-                }
-                if let Some(current_char) = current_char {
-                  hex_text.push(current_char);
-                }
-              }
-
-              let hex_u32 = u32::from_str_radix(&hex_text, 16);
-              let hex_char = match hex_u32.ok().and_then(std::char::from_u32) {
-                Some(hex_char) => hex_char,
-                None => {
-                  return Err(self.create_error_for_start(
-                    escape_start,
-                    &format!(
-                      "Invalid unicode escape sequence. '{}' is not a valid UTF8 character",
-                      hex_text
-                    ),
-                  ));
-                }
-              };
-              text.push(hex_char);
-              last_start_byte_index = self.byte_index + self.current_char().map(|c| c.len_utf8()).unwrap_or(0);
-            } else {
-              text.push(match current_char {
-                'b' => '\u{08}',
-                'f' => '\u{0C}',
-                't' => '\t',
-                'r' => '\r',
-                'n' => '\n',
-                _ => current_char,
-              });
-              last_start_byte_index = self.byte_index + current_char.len_utf8();
-            }
-          }
-          _ => return Err(self.create_error_for_start(escape_start, "Invalid escape")),
-        }
-        last_was_backslash = false;
-      } else if is_double_quote && current_char == '"' || !is_double_quote && current_char == '\'' {
-        found_end_string = true;
-        break;
-      } else {
-        last_was_backslash = current_char == '\\';
-      }
-    }
-
-    if found_end_string {
-      self.move_next_char();
-      let final_segment = &self.file_text[last_start_byte_index..self.byte_index - 1];
-      Ok(Token::String(match text {
-        Some(mut text) => {
-          text.push_str(final_segment);
-          Cow::Owned(text)
-        }
-        None => Cow::Borrowed(final_segment),
-      }))
-    } else {
-      Err(self.create_error_for_current_token("Unterminated string literal"))
-    }
+    crate::string::parse_string_with_char_provider(self)
+      .map(Token::String)
+      // todo(dsherret): don't convert the error kind to a string here
+      .map_err(|err| self.create_error_for_start(err.byte_index, &err.kind.to_string()))
   }
 
   fn parse_number(&mut self) -> Result<Token<'a>, ParseError> {
@@ -466,14 +378,6 @@ impl<'a> Scanner<'a> {
     }
   }
 
-  fn is_hex(&self) -> bool {
-    self.is_digit()
-      || match self.current_char() {
-        Some(current_char) => ('a'..='f').contains(&current_char) || ('A'..='F').contains(&current_char),
-        _ => false,
-      }
-  }
-
   fn is_digit(&self) -> bool {
     self.is_one_nine() || self.is_zero()
   }
@@ -498,8 +402,28 @@ impl<'a> Scanner<'a> {
   }
 }
 
+impl<'a> CharProvider<'a> for Scanner<'a> {
+  fn current_char(&mut self) -> Option<char> {
+    Scanner::current_char(self)
+  }
+
+  fn move_next_char(&mut self) -> Option<char> {
+    Scanner::move_next_char(self)
+  }
+
+  fn byte_index(&self) -> usize {
+    self.byte_index
+  }
+
+  fn text(&self) -> &'a str {
+    self.file_text
+  }
+}
+
 #[cfg(test)]
 mod tests {
+  use std::borrow::Cow;
+
   use super::super::tokens::Token;
   use super::*;
 

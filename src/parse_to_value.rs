@@ -19,7 +19,7 @@ pub fn parse_to_value<'a>(text: &'a str, options: &ParseOptions) -> Result<Optio
   let value = parse_to_ast(
     text,
     &CollectOptions {
-      comments: false,
+      comments: crate::CommentCollectionStrategy::Off,
       tokens: false,
     },
     options,
@@ -139,7 +139,7 @@ mod tests {
   #[test]
   fn it_should_parse_empty() {
     let value = parse_to_value("", &Default::default()).unwrap();
-    assert_eq!(value.is_none(), true);
+    assert!(value.is_none());
   }
 
   #[test]
