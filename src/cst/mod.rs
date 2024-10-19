@@ -964,7 +964,7 @@ impl CstRootNode {
   /// ```
   /// use jsonc_parser::cst::CstRootNode;
   /// use jsonc_parser::ParseOptions;
-  /// use jsonc_parser::value;
+  /// use jsonc_parser::json;
   ///
   /// let json_text = r#"{
   ///    // comment
@@ -974,10 +974,10 @@ impl CstRootNode {
   /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
   /// let root_obj = root.root_value().unwrap().as_object().unwrap();
   ///
-  /// root_obj.get("data").unwrap().set_value(value!({
+  /// root_obj.get("data").unwrap().set_value(json!({
   ///   "nested": true
   /// }));
-  /// root_obj.append("new_key", value!([456, 789, false]));
+  /// root_obj.append("new_key", json!([456, 789, false]));
   ///
   /// assert_eq!(root.to_string(), r#"{
   ///    // comment
@@ -2599,7 +2599,7 @@ mod test {
   use pretty_assertions::assert_eq;
 
   use crate::cst::CstInputValue;
-  use crate::value;
+  use crate::json;
 
   use super::CstRootNode;
 
@@ -2794,7 +2794,7 @@ value3: true
     run_test(
       0,
       "propName",
-      value!([1]),
+      json!([1]),
       r#"{}"#,
       r#"{
   "propName": [1]
@@ -2805,7 +2805,7 @@ value3: true
     run_test(
       0,
       "value0",
-      value!([1]),
+      json!([1]),
       r#"{
     "value1": 5
 }"#,
@@ -2819,7 +2819,7 @@ value3: true
     run_test(
       0,
       "value0",
-      value!([1]),
+      json!([1]),
       r#"{
     // some comment
     "value1": 5
@@ -2835,7 +2835,7 @@ value3: true
     run_test(
       1,
       "value1",
-      value!({
+      json!({
         "value": 1
       }),
       r#"{
@@ -2853,7 +2853,7 @@ value3: true
     run_test(
       1,
       "propName",
-      value!(true),
+      json!(true),
       r#"{
   "value": 4,
 }"#,
@@ -2946,14 +2946,14 @@ value3: true
       assert_eq!(cst.to_string(), expected, "Initial text: {}", json);
     }
 
-    run_test(0, value!([1]), r#"[]"#, r#"[[1]]"#);
-    run_test(0, value!([1, true, false, {}]), r#"[]"#, r#"[[1, true, false, {}]]"#);
-    run_test(0, value!(10), r#"[]"#, r#"[10]"#);
-    run_test(0, value!(10), r#"[1]"#, r#"[10, 1]"#);
-    run_test(1, value!(10), r#"[1]"#, r#"[1, 10]"#);
+    run_test(0, json!([1]), r#"[]"#, r#"[[1]]"#);
+    run_test(0, json!([1, true, false, {}]), r#"[]"#, r#"[[1, true, false, {}]]"#);
+    run_test(0, json!(10), r#"[]"#, r#"[10]"#);
+    run_test(0, json!(10), r#"[1]"#, r#"[10, 1]"#);
+    run_test(1, json!(10), r#"[1]"#, r#"[1, 10]"#);
     run_test(
       0,
-      value!(10),
+      json!(10),
       r#"[
     1
 ]"#,
@@ -2964,7 +2964,7 @@ value3: true
     );
     run_test(
       0,
-      value!(10),
+      json!(10),
       r#"[
     /* test */ 1
 ]"#,
@@ -2976,7 +2976,7 @@ value3: true
 
     run_test(
       0,
-      value!({
+      json!({
         "value": 1,
       }),
       r#"[]"#,
@@ -2990,7 +2990,7 @@ value3: true
     // only comment
     run_test(
       0,
-      value!({
+      json!({
         "value": 1,
       }),
       r#"[
@@ -3007,7 +3007,7 @@ value3: true
     // blank line
     run_test(
       0,
-      value!({
+      json!({
         "value": 1,
       }),
       r#"[
@@ -3036,7 +3036,7 @@ value3: true
       .unwrap()
       .get_array("prop")
       .unwrap()
-      .append(value!(3));
+      .append(json!(3));
     assert_eq!(
       cst.to_string(),
       r#"{

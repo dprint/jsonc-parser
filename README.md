@@ -33,7 +33,7 @@ Or a CST (when enabling the `cst` feature), which provides a first class manipul
 ```rs
 use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::ParseOptions;
-use jsonc_parser::value;
+use jsonc_parser::json;
 
 let json_text = r#"{
   // comment
@@ -43,10 +43,10 @@ let json_text = r#"{
 let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
 let root_obj = root.root_value().unwrap().as_object().unwrap();
 
-root_obj.get("data").unwrap().set_value(value!({
+root_obj.get("data").unwrap().set_value(json!({
   "nested": true
 }));
-root_obj.append("new_key", value!([456, 789, false]));
+root_obj.append("new_key", json!([456, 789, false]));
 
 assert_eq!(root.to_string(), r#"{
   // comment
