@@ -36,6 +36,7 @@ use jsonc_parser::ParseOptions;
 use jsonc_parser::value;
 
 let json_text = r#"{
+  // comment
   "data": 123
 }"#;
 
@@ -48,9 +49,10 @@ root_obj.get("data").unwrap().set_value(value!({
 root_obj.append("new_key", value!([456, 789, false]));
 
 assert_eq!(root.to_string(), r#"{
+  // comment
   "data": {
-     "nested": true,
-   },
+    "nested": true,
+  },
   "new_key": [456, 789, false]
 }"#);
 ```

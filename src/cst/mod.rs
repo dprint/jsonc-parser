@@ -967,17 +967,23 @@ impl CstRootNode {
   /// use jsonc_parser::value;
   ///
   /// let json_text = r#"{
+  ///    // comment
   ///   "data": 123
   /// }"#;
   ///
   /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
   /// let root_obj = root.root_value().unwrap().as_object().unwrap();
   ///
-  /// root_obj.get("data").unwrap().set_value(value!({}));
+  /// root_obj.get("data").unwrap().set_value(value!({
+  ///   "nested": true
+  /// }));
   /// root_obj.append("new_key", value!([456, 789, false]));
   ///
   /// assert_eq!(root.to_string(), r#"{
-  ///   "data": {},
+  ///    // comment
+  ///   "data": {
+  ///     "nested": true
+  ///   },
   ///   "new_key": [456, 789, false]
   /// }"#);
   /// ```
