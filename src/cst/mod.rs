@@ -2457,10 +2457,8 @@ fn set_trailing_commas(
           let mut insert_index = element.child_index() + 1;
           parent.raw_insert_child(Some(&mut insert_index), CstToken::new(',').into());
         }
-      } else {
-        if let Some(trailing_comma) = element.trailing_comma() {
-          trailing_comma.remove();
-        }
+      } else if let Some(trailing_comma) = element.trailing_comma() {
+        trailing_comma.remove();
       }
     }
 
