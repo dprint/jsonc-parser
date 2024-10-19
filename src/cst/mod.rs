@@ -79,6 +79,10 @@ macro_rules! add_parent_info_methods {
     pub fn trailing_comma(&self) -> Option<CstToken> {
       find_trailing_comma(&self.clone().into())
     }
+
+    pub fn uses_trailing_commas(&self) -> bool {
+      uses_trailing_commas(self.clone().into())
+    }
   };
 }
 
@@ -497,6 +501,12 @@ impl Display for CstNode {
   }
 }
 
+#[derive(Default, Debug, Clone)]
+struct StyleInfo {
+  pub uses_trailing_commas: bool,
+  pub newline_kind: CstNewlineKind,
+}
+
 #[derive(Debug, Clone)]
 pub enum CstContainerNode {
   Root(CstRootNode),
@@ -671,7 +681,7 @@ impl CstContainerNode {
     &self,
     insert_index: Option<&mut usize>,
     value: InsertValue,
-    newline_kind: CstNewlineKind,
+    style_info: &StyleInfo,
     indents: &Indents,
   ) {
     match value {
@@ -706,18 +716,15 @@ impl CstContainerNode {
                   array_node.raw_insert_children(
                     None,
                     vec![
-                      CstNewline::new(newline_kind).into(),
+                      CstNewline::new(style_info.newline_kind).into(),
                       CstWhitespace::new(indents.current_indent.clone()).into(),
                     ],
                   );
                 }
-                array_node.raw_insert_value_with_internal_indent(
-                  None,
-                  InsertValue::Value(value),
-                  newline_kind,
-                  &indents,
-                );
-                if elements.peek().is_some() {
+
+                array_node.raw_insert_value_with_internal_indent(None, InsertValue::Value(value), style_info, &indents);
+
+                if style_info.uses_trailing_commas && is_multiline || elements.peek().is_some() {
                   if is_multiline {
                     array_node.raw_append_child(CstToken::new(',').into());
                   } else {
@@ -729,12 +736,14 @@ impl CstContainerNode {
                 }
               }
             }
+
             if is_multiline {
               array_node.raw_append_children(vec![
-                CstNewline::new(newline_kind).into(),
+                CstNewline::new(style_info.newline_kind).into(),
                 CstWhitespace::new(indents.current_indent.clone()).into(),
               ]);
             }
+
             array_node.raw_append_child(CstToken::new(']').into());
           }
           RawCstValue::Object(properties) => {
@@ -748,23 +757,22 @@ impl CstContainerNode {
                 let indents = indents.indent();
                 let mut properties = properties.into_iter().peekable();
                 while let Some((prop_name, value)) = properties.next() {
-                  object_node.raw_append_child(CstNewline::new(newline_kind).into());
+                  object_node.raw_append_child(CstNewline::new(style_info.newline_kind).into());
                   object_node.raw_append_child(CstWhitespace::new(indents.current_indent.clone()).into());
                   object_node.raw_insert_value_with_internal_indent(
                     None,
                     InsertValue::Property(&prop_name, value),
-                    newline_kind,
+                    style_info,
                     &indents,
                   );
-                  // todo(dsherret): detect if the file uses trailing commas
-                  if properties.peek().is_some() {
+                  if style_info.uses_trailing_commas || properties.peek().is_some() {
                     object_node.raw_append_child(CstToken::new(',').into());
                   }
                 }
               }
 
               object_node.raw_append_children(vec![
-                CstNewline::new(newline_kind).into(),
+                CstNewline::new(style_info.newline_kind).into(),
                 CstWhitespace::new(indents.current_indent.clone()).into(),
               ]);
             }
@@ -784,7 +792,7 @@ impl CstContainerNode {
             CstWhitespace::new(" ".to_string()).into(),
           ],
         );
-        prop.raw_insert_value_with_internal_indent(None, InsertValue::Value(value), newline_kind, indents);
+        prop.raw_insert_value_with_internal_indent(None, InsertValue::Value(value), style_info, indents);
       }
     }
   }
@@ -944,13 +952,14 @@ impl CstRootNode {
   }
 
   pub fn newline_kind(&self) -> CstNewlineKind {
-    let mut current_children: VecDeque<CstNode> = VecDeque::from([self.clone().into()]);
+    let mut current_children: VecDeque<CstContainerNode> = VecDeque::from([self.clone().into()]);
     while let Some(child) = current_children.pop_front() {
       for child in child.children() {
-        if let CstNode::Leaf(CstLeafNode::Newline(node)) = child {
+        if let CstNode::Container(child) = child {
+          current_children.push_back(child);
+        } else if let CstNode::Leaf(CstLeafNode::Newline(node)) = child {
           return node.kind();
         }
-        current_children.push_back(child);
       }
     }
     CstNewlineKind::LineFeed
@@ -968,7 +977,10 @@ impl CstRootNode {
 
   pub fn set_root_value(&self, root_value: RawCstValue) {
     let container: CstContainerNode = self.clone().into();
-    let newline_kind = self.newline_kind();
+    let style_info = StyleInfo {
+      newline_kind: self.newline_kind(),
+      uses_trailing_commas: uses_trailing_commas(self.clone().into()),
+    };
     let indents = compute_indents(&self.clone().into());
     let mut insert_index = if let Some(root_value) = self.root_value() {
       let index = root_value.child_index();
@@ -983,11 +995,11 @@ impl CstRootNode {
       let previous_node = if index == 0 { None } else { children.get(index - 1) };
       if let Some(CstNode::Leaf(CstLeafNode::Comment(_))) = previous_node {
         // insert a newline if the last node before is a comment
-        container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
+        container.raw_insert_child(Some(&mut index), CstNewline::new(style_info.newline_kind).into());
       }
       if self.child_at_index(index).is_none() {
         // insert a trailing newline
-        container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
+        container.raw_insert_child(Some(&mut index), CstNewline::new(style_info.newline_kind).into());
         index -= 1;
       }
       index
@@ -995,7 +1007,7 @@ impl CstRootNode {
     container.raw_insert_value_with_internal_indent(
       Some(&mut insert_index),
       InsertValue::Value(root_value),
-      newline_kind,
+      &style_info,
       &indents,
     );
   }
@@ -1061,6 +1073,10 @@ impl CstStringLit {
       .map_err(|err| err.kind)
   }
 
+  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+    replace_with(self.into(), InsertValue::Value(replacement))
+  }
+
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1085,6 +1101,10 @@ impl CstWordLit {
   /// Sets the raw value of the word literal.
   pub fn set_raw_value(&self, value: String) {
     self.0.borrow_mut().value = value;
+  }
+
+  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+    replace_with(self.into(), InsertValue::Value(replacement))
   }
 
   pub fn remove(self) {
@@ -1113,6 +1133,10 @@ impl CstNumberLit {
     self.0.borrow_mut().value = value;
   }
 
+  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+    replace_with(self.into(), InsertValue::Value(replacement))
+  }
+
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1139,6 +1163,10 @@ impl CstBooleanLit {
     self.0.borrow_mut().value = value;
   }
 
+  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+    replace_with(self.into(), InsertValue::Value(replacement))
+  }
+
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1161,6 +1189,10 @@ pub struct CstNullKeyword(Rc<RefCell<CstValueInner<()>>>);
 impl CstNullKeyword {
   fn new() -> Self {
     Self(CstValueInner::new(()))
+  }
+
+  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+    replace_with(self.into(), InsertValue::Value(replacement))
   }
 
   pub fn remove(self) {
@@ -1191,7 +1223,21 @@ impl CstObject {
     Self(CstValueInner::new(Vec::new()))
   }
 
-  pub fn property_by_name(&self, name: &str) -> Option<CstObjectProp> {
+  pub fn get_array(&self, name: &str) -> Option<CstArray> {
+    match self.get(name)?.value()? {
+      CstNode::Container(CstContainerNode::Array(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn get_object(&self, name: &str) -> Option<CstObject> {
+    match self.get(name)?.value()? {
+      CstNode::Container(CstContainerNode::Object(node)) => Some(node),
+      _ => None,
+    }
+  }
+
+  pub fn get(&self, name: &str) -> Option<CstObjectProp> {
     for child in &self.0.borrow().value {
       if let CstNode::Container(CstContainerNode::ObjectProp(prop)) = child {
         let Some(prop_name) = prop.name() else {
@@ -1238,6 +1284,10 @@ impl CstObject {
     )
   }
 
+  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+    replace_with(self.into(), InsertValue::Value(replacement))
+  }
+
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1281,7 +1331,7 @@ impl CstObjectProp {
 
   pub fn value(&self) -> Option<CstNode> {
     let name = self.name()?;
-    let parent_info = name.parent_info().unwrap(); // todo(THIS PR): do not unwrap
+    let parent_info = name.parent_info()?;
     let children = &self.0.borrow().value;
     let mut children = children[parent_info.child_index + 1..].iter();
 
@@ -1333,6 +1383,10 @@ impl CstObjectProp {
       }
     }
     None
+  }
+
+  pub fn replace_with(self, key: &str, replacement: RawCstValue) -> Option<CstNode> {
+    replace_with(self.into(), InsertValue::Property(key, replacement))
   }
 
   pub fn remove(self) {
@@ -1512,6 +1566,10 @@ impl CstArray {
     )
   }
 
+  pub fn replace_with(self, replacement: RawCstValue) -> Option<CstNode> {
+    replace_with(self.into(), InsertValue::Value(replacement))
+  }
+
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
@@ -1576,8 +1634,9 @@ impl Display for CstWhitespace {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CstNewlineKind {
+  #[default]
   LineFeed,
   CarriageReturnLineFeed,
 }
@@ -1972,6 +2031,53 @@ fn indent_text(node: &CstNode) -> Option<String> {
   None
 }
 
+fn uses_trailing_commas(node: CstNode) -> bool {
+  let node = match node {
+    CstNode::Container(node) => node,
+    CstNode::Leaf(_) => return false,
+  };
+  let mut current_children: VecDeque<CstContainerNode> = VecDeque::from([node.clone().into()]);
+  while let Some(child) = current_children.pop_front() {
+    let children = child.children();
+    if let Some(object) = child.as_object() {
+      if children.iter().any(|c| c.is_whitespace()) {
+        let properties = object.properties();
+        if let Some(last_property) = properties.last() {
+          return last_property.trailing_comma().is_some();
+        }
+      }
+    } else if let Some(object) = child.as_array() {
+      if children.iter().any(|c| c.is_whitespace()) {
+        let elements = object.elements();
+        if let Some(last_property) = elements.last() {
+          return last_property.trailing_comma().is_some();
+        }
+      }
+    }
+
+    for child in children {
+      if let CstNode::Container(child) = child {
+        current_children.push_back(child);
+      }
+    }
+  }
+
+  false // default to false
+}
+
+fn replace_with(node: CstNode, replacement: InsertValue) -> Option<CstNode> {
+  let mut child_index = node.child_index();
+  let parent = node.parent()?;
+  let indents = compute_indents(&parent.clone().into());
+  let style_info = StyleInfo {
+    newline_kind: parent.root_node().map(|r| r.newline_kind()).unwrap_or_default(),
+    uses_trailing_commas: uses_trailing_commas(parent.clone().into()),
+  };
+  parent.remove_child_set_no_parent(child_index);
+  parent.raw_insert_value_with_internal_indent(Some(&mut child_index), replacement, &style_info, &indents);
+  parent.child_at_index(child_index - 1)
+}
+
 enum InsertValue<'a> {
   Value(RawCstValue),
   Property(&'a str, RawCstValue),
@@ -2003,10 +2109,10 @@ fn insert_or_append_to_container(
   let index = std::cmp::min(index, elements.len());
   let next_node = elements.get(index);
   let previous_node = if index == 0 { None } else { elements.get(index - 1) };
-  let newline_kind = container
-    .root_node()
-    .map(|r| r.newline_kind())
-    .unwrap_or(CstNewlineKind::LineFeed);
+  let style_info = StyleInfo {
+    newline_kind: container.root_node().map(|r| r.newline_kind()).unwrap_or_default(),
+    uses_trailing_commas: uses_trailing_commas(container.clone().into()),
+  };
   let indents = compute_indents(&container.clone().into());
   let child_indents = elements
     .first()
@@ -2036,14 +2142,14 @@ fn insert_or_append_to_container(
       container.raw_insert_children(
         Some(&mut insert_index),
         vec![
-          CstNewline::new(newline_kind).into(),
+          CstNewline::new(style_info.newline_kind).into(),
           CstStringLit::new(child_indents.current_indent.clone()).into(),
         ],
       );
-      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
+      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
     } else {
       container.raw_insert_child(Some(&mut insert_index), CstWhitespace::new(" ".to_string()).into());
-      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
+      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
     }
   } else {
     insert_index = if elements.is_empty() {
@@ -2062,24 +2168,24 @@ fn insert_or_append_to_container(
       container.raw_insert_children(
         Some(&mut insert_index),
         vec![
-          CstNewline::new(newline_kind).into(),
+          CstNewline::new(style_info.newline_kind).into(),
           CstStringLit::new(child_indents.current_indent.clone()).into(),
         ],
       );
-      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
+      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
       if next_node.is_none()
         && !has_separating_newline(container.child_at_index(insert_index - 1).unwrap().next_siblings())
       {
         container.raw_insert_children(
           Some(&mut insert_index),
           vec![
-            CstNewline::new(newline_kind).into(),
+            CstNewline::new(style_info.newline_kind).into(),
             CstStringLit::new(indents.current_indent.clone()).into(),
           ],
         );
       }
     } else {
-      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, newline_kind, &child_indents);
+      container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
     }
   }
 
@@ -2092,7 +2198,7 @@ fn insert_or_append_to_container(
         container.raw_insert_children(
           Some(&mut insert_index),
           vec![
-            CstNewline::new(newline_kind).into(),
+            CstNewline::new(style_info.newline_kind).into(),
             CstStringLit::new(indents.current_indent.clone()).into(),
           ],
         );
@@ -2100,6 +2206,8 @@ fn insert_or_append_to_container(
     } else {
       container.raw_insert_child(Some(&mut insert_index), CstWhitespace::new(" ".to_string()).into());
     }
+  } else if style_info.uses_trailing_commas && force_multiline {
+    container.raw_insert_children(Some(&mut insert_index), vec![CstToken::new(',').into()]);
   }
 }
 
@@ -2361,7 +2469,7 @@ mod test {
     let root_value = cst.root_value().unwrap();
     let root_obj = root_value.as_object().unwrap();
     {
-      let prop = root_obj.property_by_name("value").unwrap();
+      let prop = root_obj.get("value").unwrap();
       prop
         .value()
         .unwrap()
@@ -2377,7 +2485,7 @@ mod test {
       assert_eq!(prop.indent_text().unwrap(), "    ");
     }
     {
-      let prop = root_obj.property_by_name("value2").unwrap();
+      let prop = root_obj.get("value2").unwrap();
       prop
         .value()
         .unwrap()
@@ -2401,7 +2509,7 @@ mod test {
       );
     }
     {
-      let prop = root_obj.property_by_name("value3").unwrap();
+      let prop = root_obj.get("value3").unwrap();
       prop.value().unwrap().as_boolean_lit().unwrap().set_value(false);
       prop
         .name()
@@ -2440,7 +2548,7 @@ mod test {
       let cst = build_cst(json);
       let root_value = cst.root_value().unwrap();
       let root_obj = root_value.as_object().unwrap();
-      let prop = root_obj.property_by_name(prop_name).unwrap();
+      let prop = root_obj.get(prop_name).unwrap();
       prop.remove();
       assert_eq!(cst.to_string(), expected);
     }
@@ -2546,6 +2654,20 @@ value3: true
     "value1": {
         "value": 1
     }
+}"#,
+    );
+
+    // maintain trailing comma
+    run_test(
+      1,
+      "propName",
+      cst_value!(true),
+      r#"{
+  "value": 4,
+}"#,
+      r#"{
+  "value": 4,
+  "propName": true,
 }"#,
     );
   }
@@ -2762,7 +2884,7 @@ value3: true
     {
       let cst = build_cst(r#"{ "value": 1 }"#);
       let obj = cst.ensure_object_value().unwrap();
-      assert!(obj.property_by_name("value").is_some());
+      assert!(obj.get("value").is_some());
     }
     // empty file
     {
@@ -2831,13 +2953,13 @@ value3: true
         .unwrap()
         .as_object()
         .unwrap()
-        .property_by_name("prop")
+        .get("prop")
         .unwrap()
         .value()
         .unwrap()
         .as_object()
         .unwrap()
-        .property_by_name("value")
+        .get("value")
         .unwrap()
         .value()
         .unwrap()
