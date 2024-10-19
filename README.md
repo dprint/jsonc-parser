@@ -2,9 +2,9 @@
 
 [![](https://img.shields.io/crates/v/jsonc-parser.svg)](https://crates.io/crates/jsonc-parser)
 
-JSONC parser implemented in Rust.
+JSONC parsing and manipulation for Rust.
 
-## Example
+## Parsing
 
 To a simple `JsonValue`:
 
@@ -28,7 +28,9 @@ let parse_result = parse_to_ast(r#"{ "test": 5 } // test"#, &CollectOptions {
 // ...inspect parse_result for value, tokens, and comments here...
 ```
 
-Or a CST (when enabling the `cst` feature), which provides a first class manipulation API:
+## Manipulation (CST)
+
+When enabling the `cst` cargo feature, parsing to a CST provides a first class manipulation API:
 
 ```rs
 use jsonc_parser::cst::CstRootNode;
