@@ -946,6 +946,15 @@ impl From<CstLeafNode> for CstNode {
   }
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub enum TrailingCommaMode {
+  /// Never use trailing commas.
+  #[default]
+  Never,
+  /// Use trailing commas when the object is on multiple lines.
+  Multiline,
+}
+
 type CstRootNodeInner = RefCell<CstChildrenInner>;
 #[derive(Debug, Clone)]
 pub struct CstRootNode(Rc<CstRootNodeInner>);
@@ -1101,6 +1110,26 @@ impl CstRootNode {
         // should always work, but might as well do this
         self.root_value().and_then(|o| o.as_object())
       }
+    }
+  }
+
+  /// Ensures this object's values use trailing commas.
+  ///
+  /// Note: This does not cause future values to use trailing commas.
+  /// That will always be determined based on whether the file uses
+  /// trailing commas or not, so it's probably best to do this last.
+  pub fn set_trailing_commas(&self, mode: TrailingCommaMode) {
+    let Some(value) = self.root_value() else {
+      return;
+    };
+
+    match value {
+      CstNode::Container(container) => match container {
+        CstContainerNode::Array(n) => n.set_trailing_commas(mode),
+        CstContainerNode::Object(n) => n.set_trailing_commas(mode),
+        _ => {}
+      },
+      CstNode::Leaf(_) => {}
     }
   }
 
@@ -1397,6 +1426,15 @@ impl CstObject {
   /// Replaces this node with a new value.
   pub fn replace_with(self, replacement: CstInputValue) -> Option<CstNode> {
     replace_with(self.into(), InsertValue::Value(replacement))
+  }
+
+  /// Ensures this object and all its descendants use trailing commas.
+  pub fn set_trailing_commas(&self, mode: TrailingCommaMode) {
+    set_trailing_commas(
+      mode,
+      &self.clone().into(),
+      self.properties().into_iter().map(|c| c.into()),
+    );
   }
 
   /// Removes the node from the JSON.
@@ -1705,6 +1743,11 @@ impl CstArray {
     if !indents.current_indent.is_empty() {
       container.raw_insert_child(Some(&mut index), CstWhitespace::new(indents.current_indent).into());
     }
+  }
+
+  /// Ensures this array and all its descendants use trailing commas.
+  pub fn set_trailing_commas(&self, mode: TrailingCommaMode) {
+    set_trailing_commas(mode, &self.clone().into(), self.elements().into_iter());
   }
 
   fn insert_or_append(&self, index: Option<usize>, value: CstInputValue) {
@@ -2396,6 +2439,45 @@ fn insert_or_append_to_container(
   }
 }
 
+fn set_trailing_commas(
+  mode: TrailingCommaMode,
+  parent: &CstContainerNode,
+  elems_or_props: impl Iterator<Item = CstNode>,
+) {
+  let mut elems_or_props = elems_or_props.peekable();
+  let use_trailing_commas = match mode {
+    TrailingCommaMode::Never => false,
+    TrailingCommaMode::Multiline => true,
+  };
+  while let Some(element) = elems_or_props.next() {
+    // handle last element
+    if elems_or_props.peek().is_none() {
+      if use_trailing_commas {
+        if element.trailing_comma().is_none() && parent.children().iter().any(|c| c.is_newline()) {
+          let mut insert_index = element.child_index() + 1;
+          parent.raw_insert_child(Some(&mut insert_index), CstToken::new(',').into());
+        }
+      } else {
+        if let Some(trailing_comma) = element.trailing_comma() {
+          trailing_comma.remove();
+        }
+      }
+    }
+
+    // handle children
+    let maybe_prop_value = element.as_object_prop().and_then(|p| p.value());
+    match maybe_prop_value.unwrap_or(element) {
+      CstNode::Container(CstContainerNode::Array(array)) => {
+        array.set_trailing_commas(mode);
+      }
+      CstNode::Container(CstContainerNode::Object(object)) => {
+        object.set_trailing_commas(mode);
+      }
+      _ => {}
+    }
+  }
+}
+
 fn trim_inner_start_and_end_blanklines(node: &CstContainerNode) {
   fn remove_blank_lines_after_first(children: &mut Peekable<impl Iterator<Item = CstNode>>) {
     // try to find the first newline
@@ -2599,6 +2681,7 @@ mod test {
   use pretty_assertions::assert_eq;
 
   use crate::cst::CstInputValue;
+  use crate::cst::TrailingCommaMode;
   use crate::json;
 
   use super::CstRootNode;
@@ -3194,6 +3277,70 @@ value3: true
 }"#
       );
     }
+  }
+
+  #[test]
+  fn sets_trailing_commas() {
+    fn run_test(input: &str, mode: crate::cst::TrailingCommaMode, expected: &str) {
+      let cst = build_cst(input);
+      let root_value = cst.root_value().unwrap();
+      let root_obj = root_value.as_object().unwrap();
+      root_obj.set_trailing_commas(mode);
+      assert_eq!(cst.to_string(), expected);
+    }
+
+    // empty object
+    run_test(
+      r#"{
+}"#,
+      TrailingCommaMode::Never,
+      r#"{
+}"#,
+    );
+    run_test(
+      r#"{
+    // test
+}"#,
+      TrailingCommaMode::Multiline,
+      r#"{
+    // test
+}"#,
+    );
+
+    // single-line object
+    run_test(r#"{"a": 1}"#, TrailingCommaMode::Never, r#"{"a": 1}"#);
+    run_test(r#"{"a": 1}"#, TrailingCommaMode::Multiline, r#"{"a": 1}"#);
+    // multiline object
+    run_test(
+      r#"{
+  "a": 1,
+  "b": 2,
+  "c": [1, 2, 3],
+  "d": [
+      1
+  ]
+}"#,
+      TrailingCommaMode::Multiline,
+      r#"{
+  "a": 1,
+  "b": 2,
+  "c": [1, 2, 3],
+  "d": [
+      1,
+  ],
+}"#,
+    );
+    run_test(
+      r#"{
+"a": 1,
+"b": 2,
+}"#,
+      TrailingCommaMode::Never,
+      r#"{
+"a": 1,
+"b": 2
+}"#,
+    );
   }
 
   fn build_cst(text: &str) -> CstRootNode {
