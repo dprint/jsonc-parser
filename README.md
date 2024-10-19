@@ -39,15 +39,15 @@ let json_text = r#"{
   "data": 123
 }"#;
 
-let node = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
-let root_obj = node.root_value().unwrap().as_object().unwrap();
+let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
+let root_obj = root.root_value().unwrap().as_object().unwrap();
 
 root_obj.get("data").unwrap().set_value(value!({
   "nested": true
 }));
 root_obj.append("new_key", value!([456, 789, false]));
 
-assert_eq!(node.to_string(), r#"{
+assert_eq!(root.to_string(), r#"{
   "data": {
      "nested": true,
    },
