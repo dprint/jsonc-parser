@@ -973,10 +973,11 @@ impl CstRootNode {
   /// let node = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
   /// let root_obj = node.root_value().unwrap().as_object().unwrap();
   ///
+  /// root_obj.get("data").unwrap().set_value(value!({}));
   /// root_obj.append("new_key", value!([456, 789, false]));
   ///
   /// assert_eq!(node.to_string(), r#"{
-  ///   "data": 123,
+  ///   "data": {},
   ///   "new_key": [456, 789, false]
   /// }"#);
   /// ```
@@ -1435,6 +1436,27 @@ impl CstObjectProp {
       }
     }
     None
+  }
+
+  pub fn set_value(&self, replacement: CstInputValue) {
+    let maybe_value = self.value();
+    let mut value_index = maybe_value
+      .as_ref()
+      .map(|v| v.child_index())
+      .unwrap_or_else(|| self.children().len());
+    let container: CstContainerNode = self.clone().into();
+    let indents = compute_indents(&container.clone().into());
+    let style_info = &StyleInfo {
+      newline_kind: container.root_node().map(|v| v.newline_kind()).unwrap_or_default(),
+      uses_trailing_commas: uses_trailing_commas(maybe_value.unwrap_or_else(|| container.clone().into())),
+    };
+    self.remove_child_set_no_parent(value_index);
+    container.raw_insert_value_with_internal_indent(
+      Some(&mut value_index),
+      InsertValue::Value(replacement),
+      style_info,
+      &indents,
+    );
   }
 
   /// Value of the object property.
