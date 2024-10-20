@@ -13,7 +13,7 @@
 //! }"#;
 //!
 //! let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
-//! let root_obj = root.object_value_or_create().unwrap();
+//! let root_obj = root.object_value_or_set();
 //!
 //! root_obj.get("data").unwrap().set_value(json!({
 //!   "nested": true
@@ -785,7 +785,7 @@ impl CstContainerNode {
             );
           }
           CstInputValue::Array(elements) => {
-            let array_node: CstContainerNode = CstArray::new().into();
+            let array_node: CstContainerNode = CstArray::new_no_tokens().into();
             self.raw_insert_child(insert_index, array_node.clone().into());
 
             array_node.raw_append_child(CstToken::new('[').into());
@@ -828,7 +828,7 @@ impl CstContainerNode {
             array_node.raw_append_child(CstToken::new(']').into());
           }
           CstInputValue::Object(properties) => {
-            let object_node: CstContainerNode = CstObject::new().into();
+            let object_node: CstContainerNode = CstObject::new_no_tokens().into();
             self.raw_insert_child(insert_index, object_node.clone().into());
 
             object_node.raw_append_child(CstToken::new('{').into());
@@ -1020,7 +1020,7 @@ impl CstRootNode {
   /// }"#;
   ///
   /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
-  /// let root_obj = root.object_value_or_create().unwrap();
+  /// let root_obj = root.object_value_or_set();
   ///
   /// root_obj.get("data").unwrap().set_value(json!({
   ///   "nested": true
@@ -1110,7 +1110,7 @@ impl CstRootNode {
     let indents = compute_indents(&self.clone().into());
     let mut insert_index = if let Some(root_value) = self.value() {
       let index = root_value.child_index();
-      root_value.remove();
+      root_value.remove_raw();
       index
     } else {
       let children = self.children();
@@ -1145,6 +1145,9 @@ impl CstRootNode {
 
   /// Gets or creates the root value as an object, returns `Some` if successful
   /// or `None` if the root value already exists and is not an object.
+  ///
+  /// Note: Use `.object_value_or_set()` to overwrite the root value when
+  /// it's not an object.
   pub fn object_value_or_create(&self) -> Option<CstObject> {
     match self.value() {
       Some(CstNode::Container(CstContainerNode::Object(node))) => Some(node),
@@ -1156,6 +1159,20 @@ impl CstRootNode {
     }
   }
 
+  /// Gets the value if it's an object or sets the root value as an object.
+  ///
+  /// Note: Use `.object_value_or_create()` to not overwrite the root value
+  /// when it's not an object.
+  pub fn object_value_or_set(&self) -> CstObject {
+    match self.value() {
+      Some(CstNode::Container(CstContainerNode::Object(node))) => node,
+      _ => {
+        self.set_value(CstInputValue::Object(Vec::new()));
+        self.object_value().unwrap()
+      }
+    }
+  }
+
   /// Gets the value if its an array.
   pub fn array_value(&self) -> Option<CstArray> {
     self.value()?.as_array()
@@ -1163,6 +1180,9 @@ impl CstRootNode {
 
   /// Gets or creates the root value as an object, returns `Some` if successful
   /// or `None` if the root value already exists and is not an object.
+  ///
+  /// Note: Use `.array_value_or_set()` to overwrite the root value when
+  /// it's not an array.
   pub fn array_value_or_create(&self) -> Option<CstArray> {
     match self.value() {
       Some(CstNode::Container(CstContainerNode::Array(node))) => Some(node),
@@ -1170,6 +1190,20 @@ impl CstRootNode {
       None => {
         self.set_value(CstInputValue::Array(Vec::new()));
         self.array_value()
+      }
+    }
+  }
+
+  /// Gets the value if it's an object or sets the root value as an object.
+  ///
+  /// Note: Use `.array_value_or_create()` to not overwrite the root value
+  /// when it's not an object.
+  pub fn array_value_or_set(&self) -> CstArray {
+    match self.value() {
+      Some(CstNode::Container(CstContainerNode::Array(node))) => node,
+      _ => {
+        self.set_value(CstInputValue::Array(Vec::new()));
+        self.array_value().unwrap()
       }
     }
   }
@@ -1408,8 +1442,15 @@ impl_container_methods!(CstObject, Object);
 impl CstObject {
   add_root_node_method!();
 
-  fn new() -> Self {
+  fn new_no_tokens() -> Self {
     Self(CstValueInner::new(Vec::new()))
+  }
+
+  fn new_with_tokens() -> Self {
+    let object = CstObject::new_no_tokens();
+    let container: CstContainerNode = object.clone().into();
+    container.raw_append_children(vec![CstToken::new('{').into(), CstToken::new('}').into()]);
+    object
   }
 
   /// Array property by name.
@@ -1425,6 +1466,9 @@ impl CstObject {
   /// Ensures a property exists with an array value returning the array.
   ///
   /// Returns `None` if the property value exists, but is not an array.
+  ///
+  /// Note: Use `.array_value_or_set(..)` to overwrite an existing
+  /// non-array property value.
   pub fn array_value_or_create(&self, name: &str) -> Option<CstArray> {
     match self.get(name) {
       Some(prop) => match prop.value()? {
@@ -1434,6 +1478,37 @@ impl CstObject {
       None => {
         self.append(name, CstInputValue::Array(Vec::new()));
         self.array_value(name)
+      }
+    }
+  }
+
+  /// Ensures a property exists with an array value returning the array.
+  ///
+  /// Note: Use `.array_value_or_create(..)` to not overwrite an existing
+  /// non-array property value.
+  pub fn array_value_or_set(&self, name: &str) -> CstArray {
+    match self.get(name) {
+      Some(prop) => match prop.value() {
+        Some(CstNode::Container(CstContainerNode::Array(node))) => node,
+        Some(node) => {
+          let mut index = node.child_index();
+          node.remove_raw();
+          let container: CstContainerNode = prop.clone().into();
+          let array = CstArray::new_with_tokens();
+          container.raw_insert_child(Some(&mut index), array.clone().into());
+          array
+        }
+        _ => {
+          let mut index = prop.children().len();
+          let container: CstContainerNode = prop.clone().into();
+          let array = CstArray::new_with_tokens();
+          container.raw_insert_child(Some(&mut index), array.clone().into());
+          array
+        }
+      },
+      None => {
+        self.append(name, CstInputValue::Array(Vec::new()));
+        self.array_value(name).unwrap()
       }
     }
   }
@@ -1451,6 +1526,9 @@ impl CstObject {
   /// Ensures a property exists with an object value returning the object.
   ///
   /// Returns `None` if the property value exists, but is not an object.
+  ///
+  /// Note: Use `.object_value_or_set(..)` to overwrite an existing
+  /// non-array property value.
   pub fn object_value_or_create(&self, name: &str) -> Option<CstObject> {
     match self.get(name) {
       Some(prop) => match prop.value()? {
@@ -1460,6 +1538,37 @@ impl CstObject {
       None => {
         self.append(name, CstInputValue::Object(Vec::new()));
         self.object_value(name)
+      }
+    }
+  }
+
+  /// Ensures a property exists with an object value returning the object.
+  ///
+  /// Note: Use `.object_value_or_create(..)` to not overwrite an existing
+  /// non-object property value.
+  pub fn object_value_or_set(&self, name: &str) -> CstObject {
+    match self.get(name) {
+      Some(prop) => match prop.value() {
+        Some(CstNode::Container(CstContainerNode::Object(node))) => node,
+        Some(node) => {
+          let mut index = node.child_index();
+          node.remove_raw();
+          let container: CstContainerNode = prop.clone().into();
+          let object = CstObject::new_with_tokens();
+          container.raw_insert_child(Some(&mut index), object.clone().into());
+          object
+        }
+        _ => {
+          let mut index = prop.children().len();
+          let container: CstContainerNode = prop.clone().into();
+          let object = CstObject::new_with_tokens();
+          container.raw_insert_child(Some(&mut index), object.clone().into());
+          object
+        }
+      },
+      None => {
+        self.append(name, CstInputValue::Object(Vec::new()));
+        self.object_value(name).unwrap()
       }
     }
   }
@@ -1742,8 +1851,15 @@ impl_container_methods!(CstArray, Array);
 impl CstArray {
   add_root_node_method!();
 
-  fn new() -> Self {
+  fn new_no_tokens() -> Self {
     Self(CstValueInner::new(Vec::new()))
+  }
+
+  fn new_with_tokens() -> Self {
+    let array = CstArray::new_no_tokens();
+    let container: CstContainerNode = array.clone().into();
+    container.raw_append_children(vec![CstToken::new('[').into(), CstToken::new(']').into()]);
+    array
   }
 
   /// Elements of the array.
@@ -2133,7 +2249,7 @@ impl<'a> CstBuilder<'a> {
   }
 
   fn build_object(&mut self, object: ast::Object<'_>) -> CstContainerNode {
-    let container = CstContainerNode::Object(CstObject::new());
+    let container = CstContainerNode::Object(CstObject::new_no_tokens());
     let mut last_range_end = object.range.start;
     for prop in object.properties {
       self.scan_from_to(&container, last_range_end, prop.range.start);
@@ -2203,7 +2319,7 @@ impl<'a> CstBuilder<'a> {
   }
 
   fn build_array(&mut self, array: ast::Array<'_>) -> CstContainerNode {
-    let container = CstContainerNode::Array(CstArray::new());
+    let container = CstContainerNode::Array(CstArray::new_no_tokens());
     let mut last_range_end = array.range.start;
     for element in array.elements {
       let element_range = element.range();
@@ -3458,6 +3574,31 @@ value3: true
 }
 "#
     );
+  }
+
+  #[test]
+  fn or_set_methods() {
+    let cst = build_cst("");
+    let array = cst.array_value_or_set();
+    assert_eq!(array.to_string(), "[]");
+    assert_eq!(cst.to_string(), "[]\n");
+    let object = cst.object_value_or_set();
+    assert_eq!(object.to_string(), "{}");
+    assert_eq!(cst.to_string(), "{}\n");
+    let value = object.array_value_or_set("test");
+    assert_eq!(value.to_string(), "[]");
+    assert_eq!(cst.to_string(), "{\n  \"test\": []\n}\n");
+    let value = object.object_value_or_set("test");
+    assert_eq!(value.to_string(), "{}");
+    assert_eq!(cst.to_string(), "{\n  \"test\": {}\n}\n");
+    let value = object.array_value_or_set("test");
+    assert_eq!(value.to_string(), "[]");
+    assert_eq!(cst.to_string(), "{\n  \"test\": []\n}\n");
+    value.append(json!(1));
+    assert_eq!(cst.to_string(), "{\n  \"test\": [1]\n}\n");
+    let value = object.object_value_or_set("test");
+    assert_eq!(value.to_string(), "{}");
+    assert_eq!(cst.to_string(), "{\n  \"test\": {}\n}\n");
   }
 
   #[test]
