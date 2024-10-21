@@ -1631,6 +1631,7 @@ impl CstObject {
   }
 
   fn insert_or_append(&self, index: Option<usize>, prop_name: &str, value: CstInputValue) -> CstObjectProp {
+    self.ensure_multiline();
     insert_or_append_to_container(
       &CstContainerNode::Object(self.clone()),
       self.properties().into_iter().map(|c| c.into()).collect(),
@@ -3232,6 +3233,30 @@ value3: true
       r#"{
   "value": 4,
 }"#,
+      r#"{
+  "value": 4,
+  "propName": true,
+}"#,
+    );
+
+    // insert when is on a single line
+    run_test(
+      1,
+      "propName",
+      json!(true),
+      r#"{ "value": 4 }"#,
+      r#"{
+  "value": 4,
+  "propName": true
+}"#,
+    );
+
+    // insert when is on a single line with trailing comma
+    run_test(
+      1,
+      "propName",
+      json!(true),
+      r#"{ "value": 4, }"#,
       r#"{
   "value": 4,
   "propName": true,
