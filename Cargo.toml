@@ -1,6 +1,6 @@
 [package]
 name = "jsonc-parser"
-version = "0.25.2"
+version = "0.26.0"
 authors = ["David Sherret <dsherret@gmail.com>"]
 edition = "2021"
 license = "MIT"
