@@ -428,6 +428,15 @@ impl CstNode {
     }
   }
 
+  /// Gets the array element index of this node if its parent is an array.
+  ///
+  /// Returns `None` when the parent is not an array.
+  pub fn element_index(&self) -> Option<usize> {
+    let child_index = self.child_index();
+    let array = self.parent()?.as_array()?;
+    array.elements().iter().position(|p| p.child_index() == child_index)
+  }
+
   /// Node if it's the root node.
   pub fn as_root_node(&self) -> Option<CstRootNode> {
     match self {
@@ -1138,7 +1147,7 @@ impl CstRootNode {
     );
   }
 
-  /// Gets the value if its an object.
+  /// Gets the root value if its an object.
   pub fn object_value(&self) -> Option<CstObject> {
     self.value()?.as_object()
   }
@@ -1159,7 +1168,7 @@ impl CstRootNode {
     }
   }
 
-  /// Gets the value if it's an object or sets the root value as an object.
+  /// Gets the root value if it's an object or sets the root value as an object.
   ///
   /// Note: Use `.object_value_or_create()` to not overwrite the root value
   /// when it's not an object.
@@ -1194,7 +1203,7 @@ impl CstRootNode {
     }
   }
 
-  /// Gets the value if it's an object or sets the root value as an object.
+  /// Gets the root value if it's an object or sets the root value as an object.
   ///
   /// Note: Use `.array_value_or_create()` to not overwrite the root value
   /// when it's not an object.
@@ -1608,22 +1617,28 @@ impl CstObject {
   }
 
   /// Appends a property to the object.
-  pub fn append(&self, prop_name: &str, value: CstInputValue) {
-    self.insert_or_append(None, prop_name, value);
+  ///
+  /// Returns the inserted object property.
+  pub fn append(&self, prop_name: &str, value: CstInputValue) -> CstObjectProp {
+    self.insert_or_append(None, prop_name, value)
   }
 
   /// Inserts a property at the specified index.
-  pub fn insert(&self, index: usize, prop_name: &str, value: CstInputValue) {
-    self.insert_or_append(Some(index), prop_name, value);
+  ///
+  /// Returns the inserted object property.
+  pub fn insert(&self, index: usize, prop_name: &str, value: CstInputValue) -> CstObjectProp {
+    self.insert_or_append(Some(index), prop_name, value)
   }
 
-  fn insert_or_append(&self, index: Option<usize>, prop_name: &str, value: CstInputValue) {
+  fn insert_or_append(&self, index: Option<usize>, prop_name: &str, value: CstInputValue) -> CstObjectProp {
     insert_or_append_to_container(
       &CstContainerNode::Object(self.clone()),
       self.properties().into_iter().map(|c| c.into()).collect(),
       index,
       InsertValue::Property(prop_name, value),
     )
+    .as_object_prop()
+    .unwrap()
   }
 
   /// Replaces this node with a new value.
@@ -1691,6 +1706,18 @@ impl CstObjectProp {
     None
   }
 
+  pub fn property_index(&self) -> usize {
+    let child_index = self.child_index();
+    let Some(parent) = self.parent().and_then(|p| p.as_object()) else {
+      return 0;
+    };
+    parent
+      .properties()
+      .iter()
+      .position(|p| p.child_index() == child_index)
+      .unwrap_or(0)
+  }
+
   pub fn set_value(&self, replacement: CstInputValue) {
     let maybe_value = self.value();
     let mut value_index = maybe_value
@@ -1751,6 +1778,38 @@ impl CstObjectProp {
     }
 
     None
+  }
+
+  /// Gets the value if its an object.
+  pub fn object_value(&self) -> Option<CstObject> {
+    self.value()?.as_object()
+  }
+
+  /// Gets the value if it's an object or sets the value as an object.
+  pub fn object_value_or_set(&self) -> CstObject {
+    match self.value() {
+      Some(CstNode::Container(CstContainerNode::Object(node))) => node,
+      _ => {
+        self.set_value(CstInputValue::Object(Vec::new()));
+        self.object_value().unwrap()
+      }
+    }
+  }
+
+  /// Gets the value if its an array.
+  pub fn array_value(&self) -> Option<CstArray> {
+    self.value()?.as_array()
+  }
+
+  /// Gets the value if it's an object or sets the value as an object.
+  pub fn array_value_or_set(&self) -> CstArray {
+    match self.value() {
+      Some(CstNode::Container(CstContainerNode::Array(node))) => node,
+      _ => {
+        self.set_value(CstInputValue::Array(Vec::new()));
+        self.array_value().unwrap()
+      }
+    }
   }
 
   /// Sibling object property coming before this one.
@@ -1892,13 +1951,17 @@ impl CstArray {
   }
 
   /// Appends an element to the end of the array.
-  pub fn append(&self, value: CstInputValue) {
-    self.insert_or_append(None, value);
+  ///
+  /// Returns the appended node.
+  pub fn append(&self, value: CstInputValue) -> CstNode {
+    self.insert_or_append(None, value)
   }
 
   /// Inserts an element at the specified index.
-  pub fn insert(&self, index: usize, value: CstInputValue) {
-    self.insert_or_append(Some(index), value);
+  ///
+  /// Returns the inserted node.
+  pub fn insert(&self, index: usize, value: CstInputValue) -> CstNode {
+    self.insert_or_append(Some(index), value)
   }
 
   /// Ensures the array spans multiple lines.
@@ -1911,7 +1974,7 @@ impl CstArray {
     set_trailing_commas(mode, &self.clone().into(), self.elements().into_iter());
   }
 
-  fn insert_or_append(&self, index: Option<usize>, value: CstInputValue) {
+  fn insert_or_append(&self, index: Option<usize>, value: CstInputValue) -> CstNode {
     insert_or_append_to_container(
       &CstContainerNode::Array(self.clone()),
       self.elements(),
@@ -2481,7 +2544,7 @@ fn insert_or_append_to_container(
   elements: Vec<CstNode>,
   index: Option<usize>,
   value: InsertValue,
-) {
+) -> CstNode {
   fn has_separating_newline(siblings: impl Iterator<Item = CstNode>) -> bool {
     for sibling in siblings {
       if sibling.is_newline() {
@@ -2518,6 +2581,7 @@ fn insert_or_append_to_container(
       InsertValue::Property(..) => true,
     };
   let mut insert_index: usize;
+  let inserted_node: CstNode;
   if let Some(previous_node) = previous_node {
     if previous_node.trailing_comma().is_none() {
       let mut index = previous_node.child_index() + 1;
@@ -2540,9 +2604,11 @@ fn insert_or_append_to_container(
         ],
       );
       container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
+      inserted_node = container.child_at_index(insert_index - 1).unwrap();
     } else {
       container.raw_insert_child(Some(&mut insert_index), CstWhitespace::new(" ".to_string()).into());
       container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
+      inserted_node = container.child_at_index(insert_index - 1).unwrap();
     }
   } else {
     insert_index = if elements.is_empty() {
@@ -2566,6 +2632,7 @@ fn insert_or_append_to_container(
         ],
       );
       container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
+      inserted_node = container.child_at_index(insert_index - 1).unwrap();
       if next_node.is_none()
         && !has_separating_newline(container.child_at_index(insert_index - 1).unwrap().next_siblings())
       {
@@ -2579,6 +2646,7 @@ fn insert_or_append_to_container(
       }
     } else {
       container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
+      inserted_node = container.child_at_index(insert_index - 1).unwrap();
     }
   }
 
@@ -2602,6 +2670,8 @@ fn insert_or_append_to_container(
   } else if style_info.uses_trailing_commas && force_multiline {
     container.raw_insert_children(Some(&mut insert_index), vec![CstToken::new(',').into()]);
   }
+
+  inserted_node
 }
 
 fn set_trailing_commas(
@@ -3682,6 +3752,15 @@ value3: true
     let value = object.object_value_or_set("test");
     assert_eq!(value.to_string(), "{}");
     assert_eq!(cst.to_string(), "{\n  \"test\": {}\n}\n");
+    let test_prop = object.get("test").unwrap();
+    assert!(test_prop.object_value().is_some());
+    assert!(test_prop.array_value().is_none());
+    test_prop.array_value_or_set();
+    assert_eq!(cst.to_string(), "{\n  \"test\": []\n}\n");
+    assert!(test_prop.object_value().is_none());
+    assert!(test_prop.array_value().is_some());
+    test_prop.object_value_or_set();
+    assert_eq!(cst.to_string(), "{\n  \"test\": {}\n}\n");
   }
 
   #[test]
@@ -3728,6 +3807,24 @@ value3: true
   "quoted": 2
 }"#,
     )
+  }
+
+  #[test]
+  fn property_index() {
+    let cst = build_cst("{ \"prop\": 1, \"prop2\": 2, \"prop3\": 3 }");
+    let object = cst.object_value().unwrap();
+    for (i, prop) in object.properties().into_iter().enumerate() {
+      assert_eq!(prop.property_index(), i);
+    }
+  }
+
+  #[test]
+  fn element_index() {
+    let cst = build_cst("[1, 2, true ,false]");
+    let array = cst.array_value().unwrap();
+    for (i, prop) in array.elements().into_iter().enumerate() {
+      assert_eq!(prop.element_index().unwrap(), i);
+    }
   }
 
   fn build_cst(text: &str) -> CstRootNode {
