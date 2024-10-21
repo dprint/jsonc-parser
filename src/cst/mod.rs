@@ -1640,6 +1640,11 @@ impl CstObject {
     );
   }
 
+  /// Ensures the object spans multiple lines.
+  pub fn ensure_multiline(&self) {
+    ensure_multiline(&self.clone().into());
+  }
+
   /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
@@ -1898,63 +1903,7 @@ impl CstArray {
 
   /// Ensures the array spans multiple lines.
   pub fn ensure_multiline(&self) {
-    let children = self.children();
-    if children.iter().any(|c| c.is_newline()) {
-      return;
-    }
-
-    let indents = compute_indents(&self.clone().into());
-    let child_indents = indents.indent();
-    let container: CstContainerNode = self.clone().into();
-    let newline_kind = self
-      .root_node()
-      .map(|r| r.newline_kind())
-      .unwrap_or(CstNewlineKind::LineFeed);
-
-    // insert a newline at the start of every part
-    let children_len = children.len();
-    let mut children = children.into_iter().skip(1).peekable().take(children_len - 2);
-    let mut index = 1;
-    while let Some(child) = children.next() {
-      if child.is_whitespace() {
-        child.remove();
-        continue;
-      } else {
-        // insert a newline
-        container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
-        container.raw_insert_child(
-          Some(&mut index),
-          CstWhitespace::new(child_indents.current_indent.clone()).into(),
-        );
-
-        // current node
-        index += 1;
-
-        // consume the next tokens until the next comma
-        let mut trailing_whitespace = Vec::new();
-        for next_child in children.by_ref() {
-          if next_child.is_whitespace() {
-            trailing_whitespace.push(next_child);
-          } else {
-            index += 1 + trailing_whitespace.len();
-            trailing_whitespace.clear();
-            if next_child.token_char() == Some(',') {
-              break;
-            }
-          }
-        }
-
-        for trailing_whitespace in trailing_whitespace {
-          trailing_whitespace.remove();
-        }
-      }
-    }
-
-    // insert the last newline
-    container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
-    if !indents.current_indent.is_empty() {
-      container.raw_insert_child(Some(&mut index), CstWhitespace::new(indents.current_indent).into());
-    }
+    ensure_multiline(&self.clone().into());
   }
 
   /// Ensures this array and all its descendants use trailing commas.
@@ -2734,6 +2683,65 @@ fn trim_inner_start_and_end_blanklines(node: &CstContainerNode) {
   remove_blank_lines_after_first(&mut children);
 }
 
+fn ensure_multiline(container: &CstContainerNode) {
+  let children = container.children();
+  if children.iter().any(|c| c.is_newline()) {
+    return;
+  }
+
+  let indents = compute_indents(&container.clone().into());
+  let child_indents = indents.indent();
+  let newline_kind = container
+    .root_node()
+    .map(|r| r.newline_kind())
+    .unwrap_or(CstNewlineKind::LineFeed);
+
+  // insert a newline at the start of every part
+  let children_len = children.len();
+  let mut children = children.into_iter().skip(1).peekable().take(children_len - 2);
+  let mut index = 1;
+  while let Some(child) = children.next() {
+    if child.is_whitespace() {
+      child.remove();
+      continue;
+    } else {
+      // insert a newline
+      container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
+      container.raw_insert_child(
+        Some(&mut index),
+        CstWhitespace::new(child_indents.current_indent.clone()).into(),
+      );
+
+      // current node
+      index += 1;
+
+      // consume the next tokens until the next comma
+      let mut trailing_whitespace = Vec::new();
+      for next_child in children.by_ref() {
+        if next_child.is_whitespace() {
+          trailing_whitespace.push(next_child);
+        } else {
+          index += 1 + trailing_whitespace.len();
+          trailing_whitespace.clear();
+          if next_child.token_char() == Some(',') {
+            break;
+          }
+        }
+      }
+
+      for trailing_whitespace in trailing_whitespace {
+        trailing_whitespace.remove();
+      }
+    }
+  }
+
+  // insert the last newline
+  container.raw_insert_child(Some(&mut index), CstNewline::new(newline_kind).into());
+  if !indents.current_indent.is_empty() {
+    container.raw_insert_child(Some(&mut index), CstWhitespace::new(indents.current_indent).into());
+  }
+}
+
 #[derive(Debug)]
 struct Indents {
   current_indent: String,
@@ -3487,6 +3495,81 @@ value3: true
       2,
       /* test */ 3
     ]
+  }
+}"#
+      );
+    }
+  }
+
+  #[test]
+  fn object_ensure_multiline() {
+    // empty
+    {
+      let cst = build_cst(r#"{}"#);
+      cst.value().unwrap().as_object().unwrap().ensure_multiline();
+      assert_eq!(cst.to_string(), "{\n}");
+    }
+    // whitespace only
+    {
+      let cst = build_cst(r#"{   }"#);
+      cst.value().unwrap().as_object().unwrap().ensure_multiline();
+      assert_eq!(cst.to_string(), "{\n}");
+    }
+    // comments only
+    {
+      let cst = build_cst(r#"{  /* test */  }"#);
+      cst.value().unwrap().as_object().unwrap().ensure_multiline();
+      assert_eq!(cst.to_string(), "{\n  /* test */\n}");
+    }
+    // elements
+    {
+      let cst = build_cst(r#"{  prop: 1,   prop2: 2, /* test */ prop3: 3  }"#);
+      cst.value().unwrap().as_object().unwrap().ensure_multiline();
+      assert_eq!(
+        cst.to_string(),
+        r#"{
+  prop: 1,
+  prop2: 2,
+  /* test */ prop3: 3
+}"#
+      );
+    }
+    // elements deep
+    {
+      let cst = build_cst(
+        r#"{
+  "prop": {
+    "value": {  prop: 1,   prop2: 2, /* test */ prop3: 3  }
+  }
+}"#,
+      );
+      cst
+        .value()
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .get("prop")
+        .unwrap()
+        .value()
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .get("value")
+        .unwrap()
+        .value()
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .ensure_multiline();
+      assert_eq!(
+        cst.to_string(),
+        r#"{
+  "prop": {
+    "value": {
+      prop: 1,
+      prop2: 2,
+      /* test */ prop3: 3
+    }
   }
 }"#
       );
