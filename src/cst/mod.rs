@@ -2317,6 +2317,7 @@ impl<'a> CstBuilder<'a> {
         maybe_add_previous_text(last_found_index, i);
         container.raw_append_child(CstNewline::new(CstNewlineKind::CarriageReturnLineFeed).into());
         last_found_index = i + 2;
+        chars.next(); // move past the \n
       } else if c == '\n' {
         maybe_add_previous_text(last_found_index, i);
         container.raw_append_child(CstNewline::new(CstNewlineKind::LineFeed).into());
@@ -3594,6 +3595,12 @@ value3: true
 }"#
       );
     }
+    // \r\n newlines
+    {
+      let cst = build_cst("[  1,   2, /* test */ 3  ]\r\n");
+      cst.value().unwrap().as_array().unwrap().ensure_multiline();
+      assert_eq!(cst.to_string(), "[\r\n  1,\r\n  2,\r\n  /* test */ 3\r\n]\r\n");
+    }
   }
 
   #[test]
@@ -3852,6 +3859,7 @@ value3: true
     }
   }
 
+  #[track_caller]
   fn build_cst(text: &str) -> CstRootNode {
     CstRootNode::parse(text, &crate::ParseOptions::default()).unwrap()
   }
