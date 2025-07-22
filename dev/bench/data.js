@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1729874410910,
+  "lastUpdate": 1753194765460,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -3365,6 +3365,72 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 22931.67,
             "range": "± 177.29",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "dsherret@users.noreply.github.com",
+            "name": "David Sherret",
+            "username": "dsherret"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5572e9e0ee2cbb96356a9bcd6830f84f566895b5",
+          "message": "fix: do not panic on conversion from ast to serde value with invalid number value (#51)",
+          "timestamp": "2025-07-22T10:31:25-04:00",
+          "tree_id": "94261ee1be4ee620827cf133e9725147ea56c750",
+          "url": "https://github.com/dprint/jsonc-parser/commit/5572e9e0ee2cbb96356a9bcd6830f84f566895b5"
+        },
+        "date": 1753194764474,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 45005070.2,
+            "range": "± 982860.32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 27948955,
+            "range": "± 2562541.21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 67520603.6,
+            "range": "± 1696606.46",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 59851,
+            "range": "± 324.04",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 79892.15,
+            "range": "± 751.88",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 22088.21,
+            "range": "± 116.98",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 22636.03,
+            "range": "± 143.78",
             "unit": "ns/iter"
           }
         ]
