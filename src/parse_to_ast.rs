@@ -257,7 +257,7 @@ fn parse_value<'a>(context: &mut Context<'a>) -> Result<Option<Value<'a>>, Parse
       Token::String(value) => Ok(Some(Value::StringLit(create_string_lit(context, value)))),
       Token::Boolean(value) => Ok(Some(Value::BooleanLit(create_boolean_lit(context, value)))),
       Token::Number(value) => Ok(Some(Value::NumberLit(create_number_lit(context, value)))),
-      Token::Null => return Ok(Some(Value::NullKeyword(create_null_keyword(context)))),
+      Token::Null => Ok(Some(Value::NullKeyword(create_null_keyword(context)))),
       Token::CloseBracket => Err(context.create_error(ParseErrorKind::UnexpectedCloseBracket)),
       Token::CloseBrace => Err(context.create_error(ParseErrorKind::UnexpectedCloseBrace)),
       Token::Comma => Err(context.create_error(ParseErrorKind::UnexpectedComma)),

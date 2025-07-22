@@ -68,10 +68,10 @@ impl<'a> From<Value<'a>> for serde_json::Value {
       }
       Value::BooleanLit(b) => serde_json::Value::Bool(b.value),
       Value::NullKeyword(_) => serde_json::Value::Null,
-      Value::NumberLit(num) => {
-        let number = serde_json::Number::from_str(num.value).expect("could not parse number");
-        serde_json::Value::Number(number)
-      }
+      Value::NumberLit(num) => match serde_json::Number::from_str(num.value) {
+        Ok(number) => serde_json::Value::Number(number),
+        Err(_) => serde_json::Value::String(num.value.to_string()),
+      },
       Value::Object(obj) => {
         let mut map = serde_json::map::Map::new();
         for prop in obj.properties {
@@ -630,6 +630,29 @@ mod test {
           null,
           "str"
         ]
+      })
+    );
+  }
+
+  #[cfg(feature = "serde")]
+  #[test]
+  fn handle_weird_data() {
+    let ast = parse_to_ast(
+      r#"{eyyyyyyy:6yy:6000e000615yyyk:6}"#,
+      &Default::default(),
+      &ParseOptions::default(),
+    )
+    .unwrap();
+    let value = ast.value.unwrap();
+    let serde_value: serde_json::Value = value.into();
+
+    assert_eq!(
+      serde_value,
+      // this output is fine because the input is bad
+      serde_json::json!({
+        "eyyyyyyy": 6,
+        "yy": "6000e000615",
+        "yyyk": 6
       })
     );
   }
