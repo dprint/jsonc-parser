@@ -1,5 +1,6 @@
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
+#![allow(clippy::uninlined_format_args)]
 
 pub mod ast;
 pub mod common;
