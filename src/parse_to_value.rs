@@ -1,9 +1,9 @@
+use super::CollectOptions;
+use super::ParseOptions;
 use super::ast;
 use super::errors::ParseError;
 use super::parse_to_ast;
 use super::value::*;
-use super::CollectOptions;
-use super::ParseOptions;
 use crate::value::Map;
 
 /// Parses a string containing JSONC to a `JsonValue`.

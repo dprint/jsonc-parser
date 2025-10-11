@@ -38,11 +38,11 @@ use std::rc::Rc;
 use std::rc::Weak;
 
 use super::common::Ranged;
+use crate::ParseOptions;
 use crate::ast;
 use crate::errors::ParseError;
 use crate::parse_to_ast;
 use crate::string::ParseStringErrorKind;
-use crate::ParseOptions;
 
 mod input;
 
@@ -1751,11 +1751,10 @@ impl CstObjectProp {
 
     // first, skip over the colon token
     for child in children.by_ref() {
-      if let CstNode::Leaf(CstLeafNode::Token(token)) = child {
-        if token.value() == ':' {
+      if let CstNode::Leaf(CstLeafNode::Token(token)) = child
+        && token.value() == ':' {
           break;
         }
-      }
     }
 
     // now find the value
@@ -2390,10 +2389,10 @@ fn remove_comma_separated(node: CstNode) {
   }
 
   let mut found_newline = false;
-  let mut next_siblings = node.next_siblings();
 
   // remove up to the trailing comma
   if trailing_comma.is_some() {
+    let mut next_siblings = node.next_siblings();
     for next in next_siblings.by_ref() {
       let is_comma = next.is_comma();
       if next.is_newline() {
@@ -2404,11 +2403,10 @@ fn remove_comma_separated(node: CstNode) {
         break;
       }
     }
-  } else if is_in_array_or_obj {
-    if let Some(previous_comma) = node.previous_siblings().find(|n| n.is_comma()) {
+  } else if is_in_array_or_obj
+    && let Some(previous_comma) = node.previous_siblings().find(|n| n.is_comma()) {
       previous_comma.remove();
     }
-  }
 
   // remove up to the newline
   if remove_up_to_next_line && !found_newline {
@@ -2503,14 +2501,13 @@ fn uses_trailing_commas(node: CstNode) -> bool {
             return last_property.trailing_comma().is_some();
           }
         }
-      } else if let Some(object) = node.as_array() {
-        if children.iter().any(|c| c.is_whitespace()) {
+      } else if let Some(object) = node.as_array()
+        && children.iter().any(|c| c.is_whitespace()) {
           let elements = object.elements();
           if let Some(last_property) = elements.last() {
             return last_property.trailing_comma().is_some();
           }
         }
-      }
     }
 
     for child in children {
@@ -2869,14 +2866,13 @@ fn compute_indents(node: &CstNode) -> Indents {
     }
   }
 
-  if indent_level == 1 {
-    if let Some(indent_text) = node.indent_text() {
+  if indent_level == 1
+    && let Some(indent_text) = node.indent_text() {
       return Indents {
         current_indent: indent_text.clone(),
         single_indent: indent_text,
       };
     }
-  }
 
   // try to discover the single indent level by looking at the root node's children
   if let Some(root_value) = node.root_node().and_then(|r| r.value()) {

@@ -271,11 +271,10 @@ impl<'a> Scanner<'a> {
       }
     }
 
-    if let Some(next_char) = self.peek_char_offset(char_index) {
-      if next_char.is_alphanumeric() {
+    if let Some(next_char) = self.peek_char_offset(char_index)
+      && next_char.is_alphanumeric() {
         return false;
       }
-    }
 
     for _ in 0..char_index {
       self.move_next_char();
@@ -333,11 +332,10 @@ impl<'a> Scanner<'a> {
       }
       self.char_buffer.pop();
 
-      if self.char_buffer.is_empty() {
-        if let Some(new_char) = self.char_iter.next() {
+      if self.char_buffer.is_empty()
+        && let Some(new_char) = self.char_iter.next() {
           self.char_buffer.push(new_char);
         }
-      }
 
       self.byte_index += current_char.len_utf8();
     }
