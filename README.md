@@ -53,7 +53,7 @@ root_obj.append("new_key", json!([456, 789, false]));
 assert_eq!(root.to_string(), r#"{
   // comment
   "data": {
-    "nested": true,
+    "nested": true
   },
   "new_key": [456, 789, false]
 }"#);
