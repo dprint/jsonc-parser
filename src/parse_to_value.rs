@@ -8,6 +8,8 @@ use crate::value::Map;
 
 /// Parses a string containing JSONC to a `JsonValue`.
 ///
+/// Returns `None` when the provided string is empty or whitespace.
+///
 /// # Example
 ///
 /// ```
