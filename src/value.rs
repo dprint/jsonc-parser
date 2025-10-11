@@ -204,7 +204,7 @@ impl<'a> JsonArray<'a> {
   }
 
   /// Iterates over the array elements.
-  pub fn iter(&self) -> Iter<JsonValue<'a>> {
+  pub fn iter(&self) -> Iter<'_, JsonValue<'a>> {
     self.0.iter()
   }
 

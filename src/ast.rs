@@ -565,8 +565,8 @@ impl<'a, 'b> From<&'b Value<'a>> for Node<'a, 'b> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::parse_to_ast;
   use crate::ParseOptions;
+  use crate::parse_to_ast;
 
   #[test]
   fn it_should_take() {

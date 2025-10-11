@@ -2,7 +2,7 @@
 name = "jsonc-parser"
 version = "0.26.3"
 authors = ["David Sherret <dsherret@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 description = "JSONC parser."
 repository = "https://github.com/dprint/jsonc-parser"

@@ -88,19 +88,17 @@ impl<'a> Context<'a> {
     self.last_token_end = self.scanner.token_end();
 
     // store the comment for the previous token end, and current token start
-    if let Some(comments) = self.comments.as_mut() {
-      if let Some(current_comments) = self.current_comments.take() {
+    if let Some(comments) = self.comments.as_mut()
+      && let Some(current_comments) = self.current_comments.take() {
         let current_comments = Rc::new(current_comments);
         comments.insert(previous_end, current_comments.clone());
         comments.insert(self.scanner.token_start(), current_comments);
       }
-    }
 
-    if let Some(token) = &token {
-      if self.tokens.is_some() {
+    if let Some(token) = &token
+      && self.tokens.is_some() {
         self.capture_token(token.clone());
       }
-    }
 
     Ok(token)
   }
@@ -292,11 +290,10 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
     // skip the comma
     if let Some(Token::Comma) = context.scan()? {
       let comma_range = context.create_range_from_last_token();
-      if let Some(Token::CloseBrace) = context.scan()? {
-        if !context.allow_trailing_commas {
+      if let Some(Token::CloseBrace) = context.scan()?
+        && !context.allow_trailing_commas {
           return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
         }
-      }
     }
   }
 
@@ -363,11 +360,10 @@ fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
     // skip the comma
     if let Some(Token::Comma) = context.scan()? {
       let comma_range = context.create_range_from_last_token();
-      if let Some(Token::CloseBracket) = context.scan()? {
-        if !context.allow_trailing_commas {
+      if let Some(Token::CloseBracket) = context.scan()?
+        && !context.allow_trailing_commas {
           return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
         }
-      }
     }
   }
 

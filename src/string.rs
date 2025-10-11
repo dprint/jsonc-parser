@@ -54,7 +54,7 @@ pub trait CharProvider<'a> {
 }
 
 #[cfg(feature = "cst")]
-pub fn parse_string(text: &str) -> Result<Cow<str>, ParseStringError> {
+pub fn parse_string(text: &str) -> Result<Cow<'_, str>, ParseStringError> {
   struct StringCharProvider<'a> {
     text: &'a str,
     byte_index: usize,

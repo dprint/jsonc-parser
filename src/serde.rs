@@ -1,7 +1,7 @@
-use super::errors::ParseError;
-use super::parse_to_ast;
 use super::CollectOptions;
 use super::ParseOptions;
+use super::errors::ParseError;
+use super::parse_to_ast;
 
 /// Parses a string containing JSONC to a `serde_json::Value.
 ///
