@@ -104,4 +104,30 @@ mod tests {
 
     assert_eq!(result, Some(SerdeValue::Object(expected_value)));
   }
+
+  #[test]
+  fn it_should_parse_unary_plus_numbers() {
+    let result = parse_to_serde_value(
+      r#"{
+        "pos1": +42,
+        "pos2": +0.5,
+        "pos3": +1e10
+      }"#,
+      &Default::default(),
+    )
+    .unwrap();
+
+    let mut expected_value = serde_json::map::Map::new();
+    expected_value.insert("pos1".to_string(), SerdeValue::Number(serde_json::Number::from(42)));
+    expected_value.insert(
+      "pos2".to_string(),
+      SerdeValue::Number(serde_json::Number::from_str("0.5").unwrap()),
+    );
+    expected_value.insert(
+      "pos3".to_string(),
+      SerdeValue::Number(serde_json::Number::from_str("1e10").unwrap()),
+    );
+
+    assert_eq!(result, Some(SerdeValue::Object(expected_value)));
+  }
 }

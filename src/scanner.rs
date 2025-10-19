@@ -79,7 +79,7 @@ impl<'a> Scanner<'a> {
           _ => Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken)),
         },
         _ => {
-          if current_char == '-' || self.is_digit() {
+          if current_char == '-' || current_char == '+' || self.is_digit() {
             self.parse_number()
           } else if self.try_move_word("true") {
             Ok(Token::Boolean(true))
@@ -154,7 +154,8 @@ impl<'a> Scanner<'a> {
   fn parse_number(&mut self) -> Result<Token<'a>, ParseError> {
     let start_byte_index = self.byte_index;
 
-    if self.is_negative_sign() {
+    // handle unary plus or minus
+    if self.is_negative_sign() || self.is_positive_sign() {
       self.move_next_char();
     }
 
@@ -423,6 +424,10 @@ impl<'a> Scanner<'a> {
     self.current_char() == Some('-')
   }
 
+  fn is_positive_sign(&self) -> bool {
+    self.current_char() == Some('+')
+  }
+
   fn is_decimal_point(&self) -> bool {
     self.current_char() == Some('.')
   }
@@ -536,6 +541,22 @@ mod tests {
         Token::Number("0xabc"),
         Token::Comma,
         Token::Number("0X1F"),
+      ],
+    );
+  }
+
+  #[test]
+  fn it_tokenizes_unary_plus_numbers() {
+    assert_has_tokens(
+      "+42, +0.5, +1e10, +0xFF",
+      vec![
+        Token::Number("+42"),
+        Token::Comma,
+        Token::Number("+0.5"),
+        Token::Comma,
+        Token::Number("+1e10"),
+        Token::Comma,
+        Token::Number("+0xFF"),
       ],
     );
   }
