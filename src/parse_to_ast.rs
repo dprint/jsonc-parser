@@ -602,4 +602,17 @@ mod tests {
       );
     }
   }
+
+  #[test]
+  fn it_should_parse_unary_plus_numbers() {
+    let result = parse_to_ast(r#"{ "test": +42 }"#, &Default::default(), &Default::default()).unwrap();
+
+    let value = result.value.unwrap();
+    let obj = value.as_object().unwrap();
+    assert_eq!(obj.properties.len(), 1);
+    assert_eq!(obj.properties[0].name.as_str(), "test");
+
+    let number_value = obj.properties[0].value.as_number_lit().unwrap();
+    assert_eq!(number_value.value, "+42");
+  }
 }

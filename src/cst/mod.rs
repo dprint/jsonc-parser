@@ -1444,7 +1444,7 @@ impl CstNumberLit {
     let raw = self.0.borrow().value.clone();
 
     // check if this is a hexadecimal literal (0x or 0X prefix)
-    let num_str = raw.trim_start_matches('-');
+    let num_str = raw.trim_start_matches(['-', '+']);
     if num_str.len() > 2 && (num_str.starts_with("0x") || num_str.starts_with("0X")) {
       // parse hexadecimal and convert to decimal
       let hex_part = &num_str[2..];
@@ -1460,8 +1460,9 @@ impl CstNumberLit {
         Err(_) => Some(serde_json::Value::String(raw)),
       }
     } else {
-      // standard decimal number
-      match serde_json::Number::from_str(&raw) {
+      // standard decimal number - strip leading + if present (serde_json doesn't accept it)
+      let num_for_parsing = raw.trim_start_matches('+');
+      match serde_json::Number::from_str(num_for_parsing) {
         Ok(number) => Some(serde_json::Value::Number(number)),
         // if the number is invalid, return it as a string (same behavior as AST conversion)
         Err(_) => Some(serde_json::Value::String(raw)),

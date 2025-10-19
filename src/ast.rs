@@ -69,8 +69,8 @@ impl<'a> From<Value<'a>> for serde_json::Value {
       Value::BooleanLit(b) => serde_json::Value::Bool(b.value),
       Value::NullKeyword(_) => serde_json::Value::Null,
       Value::NumberLit(num) => {
-        // Check if this is a hexadecimal literal (0x or 0X prefix)
-        let num_str = num.value.trim_start_matches('-');
+        // check if this is a hexadecimal literal (0x or 0X prefix)
+        let num_str = num.value.trim_start_matches('-').trim_start_matches('+');
         if num_str.len() > 2 && (num_str.starts_with("0x") || num_str.starts_with("0X")) {
           // Parse hexadecimal and convert to decimal
           let hex_part = &num_str[2..];
@@ -86,8 +86,9 @@ impl<'a> From<Value<'a>> for serde_json::Value {
             Err(_) => serde_json::Value::String(num.value.to_string()),
           }
         } else {
-          // Standard decimal number
-          match serde_json::Number::from_str(num.value) {
+          // standard decimal number
+          let num_for_parsing = num.value.trim_start_matches('+');
+          match serde_json::Number::from_str(num_for_parsing) {
             Ok(number) => serde_json::Value::Number(number),
             Err(_) => serde_json::Value::String(num.value.to_string()),
           }
