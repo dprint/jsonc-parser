@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1760225698618,
+  "lastUpdate": 1760906659484,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -3695,6 +3695,72 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 20226.84,
             "range": "± 268.6",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "dsherret@users.noreply.github.com",
+            "name": "David Sherret",
+            "username": "dsherret"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "095cd2a49237ddc0f8a04448f9b97b1b18e11557",
+          "message": "feat(cst): add `to_serde_value()` for converting a CST node to a `serde_json::Value` (#56)",
+          "timestamp": "2025-10-19T16:42:59-04:00",
+          "tree_id": "7b2e4e6be8816be17166c867c58e5799b1f6ac39",
+          "url": "https://github.com/dprint/jsonc-parser/commit/095cd2a49237ddc0f8a04448f9b97b1b18e11557"
+        },
+        "date": 1760906659109,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 44107073.6,
+            "range": "± 2379190.04",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 27664179.7,
+            "range": "± 1938869.63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 67419839.2,
+            "range": "± 1832121.98",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 62508.01,
+            "range": "± 584.92",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 80991,
+            "range": "± 709.98",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 21440.41,
+            "range": "± 338.79",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 21932.23,
+            "range": "± 213.5",
             "unit": "ns/iter"
           }
         ]
