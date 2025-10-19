@@ -70,7 +70,7 @@ impl<'a> From<Value<'a>> for serde_json::Value {
       Value::NullKeyword(_) => serde_json::Value::Null,
       Value::NumberLit(num) => {
         // check if this is a hexadecimal literal (0x or 0X prefix)
-        let num_str = num.value.trim_start_matches('-').trim_start_matches('+');
+        let num_str = num.value.trim_start_matches(['-', '+']);
         if num_str.len() > 2 && (num_str.starts_with("0x") || num_str.starts_with("0X")) {
           // Parse hexadecimal and convert to decimal
           let hex_part = &num_str[2..];
