@@ -89,16 +89,18 @@ impl<'a> Context<'a> {
 
     // store the comment for the previous token end, and current token start
     if let Some(comments) = self.comments.as_mut()
-      && let Some(current_comments) = self.current_comments.take() {
-        let current_comments = Rc::new(current_comments);
-        comments.insert(previous_end, current_comments.clone());
-        comments.insert(self.scanner.token_start(), current_comments);
-      }
+      && let Some(current_comments) = self.current_comments.take()
+    {
+      let current_comments = Rc::new(current_comments);
+      comments.insert(previous_end, current_comments.clone());
+      comments.insert(self.scanner.token_start(), current_comments);
+    }
 
     if let Some(token) = &token
-      && self.tokens.is_some() {
-        self.capture_token(token.clone());
-      }
+      && self.tokens.is_some()
+    {
+      self.capture_token(token.clone());
+    }
 
     Ok(token)
   }
@@ -291,9 +293,10 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
     if let Some(Token::Comma) = context.scan()? {
       let comma_range = context.create_range_from_last_token();
       if let Some(Token::CloseBrace) = context.scan()?
-        && !context.allow_trailing_commas {
-          return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
-        }
+        && !context.allow_trailing_commas
+      {
+        return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
+      }
     }
   }
 
@@ -361,9 +364,10 @@ fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
     if let Some(Token::Comma) = context.scan()? {
       let comma_range = context.create_range_from_last_token();
       if let Some(Token::CloseBracket) = context.scan()?
-        && !context.allow_trailing_commas {
-          return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
-        }
+        && !context.allow_trailing_commas
+      {
+        return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
+      }
     }
   }
 
