@@ -576,21 +576,30 @@ mod tests {
 
   #[test]
   fn it_should_parse_unquoted_keys_with_hex_and_trailing_comma() {
-    let parse_result = parse_to_ast(
-      r#"{
+    let text = r#"{
       CP_CanFuncReqId: 0x7DF,  // 2015
-  }"#,
-      &Default::default(),
-      &Default::default(),
-    )
-    .unwrap();
+  }"#;
+    {
+      let parse_result = parse_to_ast(text, &Default::default(), &Default::default()).unwrap();
 
-    let value = parse_result.value.unwrap();
-    let obj = value.as_object().unwrap();
-    assert_eq!(obj.properties.len(), 1);
-    assert_eq!(obj.properties[0].name.as_str(), "CP_CanFuncReqId");
+      let value = parse_result.value.unwrap();
+      let obj = value.as_object().unwrap();
+      assert_eq!(obj.properties.len(), 1);
+      assert_eq!(obj.properties[0].name.as_str(), "CP_CanFuncReqId");
 
-    let number_value = obj.properties[0].value.as_number_lit().unwrap();
-    assert_eq!(number_value.value, "0x7DF");
+      let number_value = obj.properties[0].value.as_number_lit().unwrap();
+      assert_eq!(number_value.value, "0x7DF");
+    }
+    #[cfg(feature = "serde")]
+    {
+      let value = crate::parse_to_serde_value(text, &Default::default()).unwrap().unwrap();
+      // hexadecimal numbers are converted to decimal in serde output
+      assert_eq!(
+        value,
+        serde_json::json!({
+          "CP_CanFuncReqId": 2015
+        })
+      );
+    }
   }
 }
