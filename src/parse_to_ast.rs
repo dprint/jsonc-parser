@@ -573,4 +573,24 @@ mod tests {
   fn error_correct_line_column_unicode_width() {
     assert_has_strict_error(r#"["🧑‍🦰", ["#, "Unterminated array on line 1 column 10");
   }
+
+  #[test]
+  fn it_should_parse_unquoted_keys_with_hex_and_trailing_comma() {
+    let parse_result = parse_to_ast(
+      r#"{
+      CP_CanFuncReqId: 0x7DF,  // 2015
+  }"#,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap();
+
+    let value = parse_result.value.unwrap();
+    let obj = value.as_object().unwrap();
+    assert_eq!(obj.properties.len(), 1);
+    assert_eq!(obj.properties[0].name.as_str(), "CP_CanFuncReqId");
+
+    let number_value = obj.properties[0].value.as_number_lit().unwrap();
+    assert_eq!(number_value.value, "0x7DF");
+  }
 }
