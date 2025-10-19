@@ -576,6 +576,35 @@ impl CstNode {
       .as_container_node()
       .remove_child_set_no_parent(parent_info.child_index);
   }
+
+  /// Converts a CST node to a `serde_json::Value`.
+  ///
+  /// This method extracts the actual value from the CST node, ignoring
+  /// trivia (comments, whitespace, etc.).
+  ///
+  /// Returns `None` if the node is trivia or cannot be converted to a value.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use jsonc_parser::cst::CstRootNode;
+  /// use jsonc_parser::ParseOptions;
+  ///
+  /// let json_text = r#"{ "test": 5 } // comment"#;
+  /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
+  ///
+  /// if let Some(value_node) = root.value() {
+  ///   let json_value = value_node.to_serde_value().unwrap();
+  ///   println!("{}", json_value);
+  /// }
+  /// ```
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    match self {
+      CstNode::Container(container) => container.to_serde_value(),
+      CstNode::Leaf(leaf) => leaf.to_serde_value(),
+    }
+  }
 }
 
 impl Display for CstNode {
@@ -886,6 +915,19 @@ impl CstContainerNode {
       }
     }
   }
+
+  /// Converts a CST container node to a `serde_json::Value`.
+  ///
+  /// Returns `None` if the node cannot be converted to a value.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    match self {
+      CstContainerNode::Root(node) => node.to_serde_value(),
+      CstContainerNode::Array(node) => node.to_serde_value(),
+      CstContainerNode::Object(node) => node.to_serde_value(),
+      CstContainerNode::ObjectProp(node) => node.to_serde_value(),
+    }
+  }
 }
 
 impl From<CstContainerNode> for CstNode {
@@ -963,6 +1005,24 @@ impl CstLeafNode {
       CstLeafNode::Whitespace(node) => node.set_parent(parent),
       CstLeafNode::Newline(node) => node.set_parent(parent),
       CstLeafNode::Comment(node) => node.set_parent(parent),
+    }
+  }
+
+  /// Converts a CST leaf node to a `serde_json::Value`.
+  ///
+  /// Returns `None` if the node is trivia or cannot be converted to a value.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    match self {
+      CstLeafNode::BooleanLit(node) => node.to_serde_value(),
+      CstLeafNode::NullKeyword(node) => node.to_serde_value(),
+      CstLeafNode::NumberLit(node) => node.to_serde_value(),
+      CstLeafNode::StringLit(node) => node.to_serde_value(),
+      CstLeafNode::WordLit(_)
+      | CstLeafNode::Token(_)
+      | CstLeafNode::Whitespace(_)
+      | CstLeafNode::Newline(_)
+      | CstLeafNode::Comment(_) => None,
     }
   }
 }
@@ -1244,6 +1304,14 @@ impl CstRootNode {
       child.set_parent(None);
     }
   }
+
+  /// Converts the root CST node to a `serde_json::Value`.
+  ///
+  /// Returns `None` if the root has no value node.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    self.value()?.to_serde_value()
+  }
 }
 
 impl Display for CstRootNode {
@@ -1296,6 +1364,12 @@ impl CstStringLit {
   /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
+  }
+
+  /// Converts a CST string literal to a `serde_json::Value`.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    self.decoded_value().ok().map(serde_json::Value::String)
   }
 }
 
@@ -1362,6 +1436,18 @@ impl CstNumberLit {
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
+
+  /// Converts a CST number literal to a `serde_json::Value`.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    use std::str::FromStr;
+    let raw = self.0.borrow().value.clone();
+    match serde_json::Number::from_str(&raw) {
+      Ok(number) => Some(serde_json::Value::Number(number)),
+      // If the number is invalid, return it as a string (same behavior as AST conversion)
+      Err(_) => Some(serde_json::Value::String(raw)),
+    }
+  }
 }
 
 impl Display for CstNumberLit {
@@ -1400,6 +1486,12 @@ impl CstBooleanLit {
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
+
+  /// Converts a CST boolean literal to a `serde_json::Value`.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    Some(serde_json::Value::Bool(self.value()))
+  }
 }
 
 impl Display for CstBooleanLit {
@@ -1429,6 +1521,12 @@ impl CstNullKeyword {
   /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
+  }
+
+  /// Converts a CST null keyword to a `serde_json::Value`.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    Some(serde_json::Value::Null)
   }
 }
 
@@ -1665,6 +1763,18 @@ impl CstObject {
   pub fn remove(self) {
     remove_comma_separated(self.into())
   }
+
+  /// Converts a CST object to a `serde_json::Value`.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    let mut map = serde_json::map::Map::new();
+    for prop in self.properties() {
+      if let (Some(name), Some(value)) = (prop.name_decoded(), prop.to_serde_value()) {
+        map.insert(name, value);
+      }
+    }
+    Some(serde_json::Value::Object(map))
+  }
 }
 
 impl Display for CstObject {
@@ -1752,9 +1862,10 @@ impl CstObjectProp {
     // first, skip over the colon token
     for child in children.by_ref() {
       if let CstNode::Leaf(CstLeafNode::Token(token)) = child
-        && token.value() == ':' {
-          break;
-        }
+        && token.value() == ':'
+      {
+        break;
+      }
     }
 
     // now find the value
@@ -1840,6 +1951,22 @@ impl CstObjectProp {
   /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
+  }
+
+  /// Converts a CST object property to a `serde_json::Value`.
+  ///
+  /// Returns the value of the property, or `None` if it has no value.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    self.value()?.to_serde_value()
+  }
+
+  #[cfg(feature = "serde")]
+  fn name_decoded(&self) -> Option<String> {
+    match self.name()? {
+      ObjectPropName::String(s) => s.decoded_value().ok(),
+      ObjectPropName::Word(w) => Some(w.0.borrow().value.clone()),
+    }
   }
 }
 
@@ -1991,6 +2118,17 @@ impl CstArray {
   /// Removes the node from the JSON.
   pub fn remove(self) {
     remove_comma_separated(self.into())
+  }
+
+  /// Converts a CST array to a `serde_json::Value`.
+  #[cfg(feature = "serde")]
+  pub fn to_serde_value(&self) -> Option<serde_json::Value> {
+    let elements: Vec<serde_json::Value> = self
+      .elements()
+      .into_iter()
+      .filter_map(|element| element.to_serde_value())
+      .collect();
+    Some(serde_json::Value::Array(elements))
   }
 }
 
@@ -2403,10 +2541,9 @@ fn remove_comma_separated(node: CstNode) {
         break;
       }
     }
-  } else if is_in_array_or_obj
-    && let Some(previous_comma) = node.previous_siblings().find(|n| n.is_comma()) {
-      previous_comma.remove();
-    }
+  } else if is_in_array_or_obj && let Some(previous_comma) = node.previous_siblings().find(|n| n.is_comma()) {
+    previous_comma.remove();
+  }
 
   // remove up to the newline
   if remove_up_to_next_line && !found_newline {
@@ -2502,12 +2639,13 @@ fn uses_trailing_commas(node: CstNode) -> bool {
           }
         }
       } else if let Some(object) = node.as_array()
-        && children.iter().any(|c| c.is_whitespace()) {
-          let elements = object.elements();
-          if let Some(last_property) = elements.last() {
-            return last_property.trailing_comma().is_some();
-          }
+        && children.iter().any(|c| c.is_whitespace())
+      {
+        let elements = object.elements();
+        if let Some(last_property) = elements.last() {
+          return last_property.trailing_comma().is_some();
         }
+      }
     }
 
     for child in children {
@@ -2867,12 +3005,13 @@ fn compute_indents(node: &CstNode) -> Indents {
   }
 
   if indent_level == 1
-    && let Some(indent_text) = node.indent_text() {
-      return Indents {
-        current_indent: indent_text.clone(),
-        single_indent: indent_text,
-      };
-    }
+    && let Some(indent_text) = node.indent_text()
+  {
+    return Indents {
+      current_indent: indent_text.clone(),
+      single_indent: indent_text,
+    };
+  }
 
   // try to discover the single indent level by looking at the root node's children
   if let Some(root_value) = node.root_node().and_then(|r| r.value()) {
@@ -3858,5 +3997,216 @@ value3: true
   #[track_caller]
   fn build_cst(text: &str) -> CstRootNode {
     CstRootNode::parse(text, &crate::ParseOptions::default()).unwrap()
+  }
+
+  #[cfg(feature = "serde")]
+  mod serde_tests {
+    use super::build_cst;
+    use serde_json::Value as SerdeValue;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_cst_to_serde_value_primitives() {
+      let root = build_cst(r#"42"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, SerdeValue::Number(serde_json::Number::from_str("42").unwrap()));
+
+      let root = build_cst(r#""hello""#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, SerdeValue::String("hello".to_string()));
+
+      let root = build_cst(r#"true"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, SerdeValue::Bool(true));
+
+      let root = build_cst(r#"false"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, SerdeValue::Bool(false));
+
+      let root = build_cst(r#"null"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, SerdeValue::Null);
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_array() {
+      let root = build_cst(r#"[1, 2, 3]"#);
+      let value = root.to_serde_value().unwrap();
+      let expected = SerdeValue::Array(vec![
+        SerdeValue::Number(serde_json::Number::from_str("1").unwrap()),
+        SerdeValue::Number(serde_json::Number::from_str("2").unwrap()),
+        SerdeValue::Number(serde_json::Number::from_str("3").unwrap()),
+      ]);
+      assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_array_with_comments() {
+      let root = build_cst(
+        r#"[
+        // comment 1
+        1,
+        2, // comment 2
+        3
+      ]"#,
+      );
+      let value = root.to_serde_value().unwrap();
+      let expected = SerdeValue::Array(vec![
+        SerdeValue::Number(serde_json::Number::from_str("1").unwrap()),
+        SerdeValue::Number(serde_json::Number::from_str("2").unwrap()),
+        SerdeValue::Number(serde_json::Number::from_str("3").unwrap()),
+      ]);
+      assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_object() {
+      let root = build_cst(
+        r#"{
+        "name": "Alice",
+        "age": 30,
+        "active": true
+      }"#,
+      );
+      let value = root.to_serde_value().unwrap();
+
+      let mut expected_map = serde_json::map::Map::new();
+      expected_map.insert("name".to_string(), SerdeValue::String("Alice".to_string()));
+      expected_map.insert(
+        "age".to_string(),
+        SerdeValue::Number(serde_json::Number::from_str("30").unwrap()),
+      );
+      expected_map.insert("active".to_string(), SerdeValue::Bool(true));
+
+      assert_eq!(value, SerdeValue::Object(expected_map));
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_object_with_comments() {
+      let root = build_cst(
+        r#"{
+        // This is a name
+        "name": "Bob",
+        /* age field */
+        "age": 25
+      }"#,
+      );
+      let value = root.to_serde_value().unwrap();
+
+      let mut expected_map = serde_json::map::Map::new();
+      expected_map.insert("name".to_string(), SerdeValue::String("Bob".to_string()));
+      expected_map.insert(
+        "age".to_string(),
+        SerdeValue::Number(serde_json::Number::from_str("25").unwrap()),
+      );
+
+      assert_eq!(value, SerdeValue::Object(expected_map));
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_nested() {
+      let root = build_cst(
+        r#"{
+        "person": {
+          "name": "Charlie",
+          "hobbies": ["reading", "gaming"]
+        },
+        "count": 42
+      }"#,
+      );
+      let value = root.to_serde_value().unwrap();
+
+      let mut hobbies = Vec::new();
+      hobbies.push(SerdeValue::String("reading".to_string()));
+      hobbies.push(SerdeValue::String("gaming".to_string()));
+
+      let mut person_map = serde_json::map::Map::new();
+      person_map.insert("name".to_string(), SerdeValue::String("Charlie".to_string()));
+      person_map.insert("hobbies".to_string(), SerdeValue::Array(hobbies));
+
+      let mut expected_map = serde_json::map::Map::new();
+      expected_map.insert("person".to_string(), SerdeValue::Object(person_map));
+      expected_map.insert(
+        "count".to_string(),
+        SerdeValue::Number(serde_json::Number::from_str("42").unwrap()),
+      );
+
+      assert_eq!(value, SerdeValue::Object(expected_map));
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_with_trailing_comma() {
+      let root = build_cst(
+        r#"{
+        "a": 1,
+        "b": 2,
+      }"#,
+      );
+      let value = root.to_serde_value().unwrap();
+
+      let mut expected_map = serde_json::map::Map::new();
+      expected_map.insert(
+        "a".to_string(),
+        SerdeValue::Number(serde_json::Number::from_str("1").unwrap()),
+      );
+      expected_map.insert(
+        "b".to_string(),
+        SerdeValue::Number(serde_json::Number::from_str("2").unwrap()),
+      );
+
+      assert_eq!(value, SerdeValue::Object(expected_map));
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_empty_structures() {
+      let root = build_cst(r#"{}"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, SerdeValue::Object(serde_json::map::Map::new()));
+
+      let root = build_cst(r#"[]"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, SerdeValue::Array(Vec::new()));
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_scientific_notation() {
+      let root = build_cst(r#"0.3e+025"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(
+        value,
+        SerdeValue::Number(serde_json::Number::from_str("0.3e+025").unwrap())
+      );
+    }
+
+    #[test]
+    fn test_cst_node_to_serde_value() {
+      let root = build_cst(r#"{ "test": 123 }"#);
+      let value_node = root.value().unwrap();
+      let json_value = value_node.to_serde_value().unwrap();
+
+      let mut expected_map = serde_json::map::Map::new();
+      expected_map.insert(
+        "test".to_string(),
+        SerdeValue::Number(serde_json::Number::from_str("123").unwrap()),
+      );
+
+      assert_eq!(json_value, SerdeValue::Object(expected_map));
+    }
+
+    #[test]
+    fn test_cst_object_prop_to_serde_value() {
+      let root = build_cst(r#"{ "key": [1, 2, 3] }"#);
+      let obj = root.value().unwrap().as_object().unwrap();
+      let prop = obj.get("key").unwrap();
+      let prop_value = prop.to_serde_value().unwrap();
+
+      let expected = SerdeValue::Array(vec![
+        SerdeValue::Number(serde_json::Number::from_str("1").unwrap()),
+        SerdeValue::Number(serde_json::Number::from_str("2").unwrap()),
+        SerdeValue::Number(serde_json::Number::from_str("3").unwrap()),
+      ]);
+
+      assert_eq!(prop_value, expected);
+    }
   }
 }
