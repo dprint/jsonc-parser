@@ -84,4 +84,24 @@ mod tests {
 
     assert_eq!(result, Some(SerdeValue::Object(expected_value)));
   }
+
+  #[test]
+  fn it_should_parse_hexadecimal_numbers_to_decimal() {
+    let result = parse_to_serde_value(
+      r#"{
+        "hex1": 0x7DF,
+        "hex2": 0xFF,
+        "hex3": 0x10
+      }"#,
+      &Default::default(),
+    )
+    .unwrap();
+
+    let mut expected_value = serde_json::map::Map::new();
+    expected_value.insert("hex1".to_string(), SerdeValue::Number(serde_json::Number::from(2015)));
+    expected_value.insert("hex2".to_string(), SerdeValue::Number(serde_json::Number::from(255)));
+    expected_value.insert("hex3".to_string(), SerdeValue::Number(serde_json::Number::from(16)));
+
+    assert_eq!(result, Some(SerdeValue::Object(expected_value)));
+  }
 }

@@ -1442,10 +1442,30 @@ impl CstNumberLit {
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     use std::str::FromStr;
     let raw = self.0.borrow().value.clone();
-    match serde_json::Number::from_str(&raw) {
-      Ok(number) => Some(serde_json::Value::Number(number)),
-      // If the number is invalid, return it as a string (same behavior as AST conversion)
-      Err(_) => Some(serde_json::Value::String(raw)),
+
+    // check if this is a hexadecimal literal (0x or 0X prefix)
+    let num_str = raw.trim_start_matches('-');
+    if num_str.len() > 2 && (num_str.starts_with("0x") || num_str.starts_with("0X")) {
+      // parse hexadecimal and convert to decimal
+      let hex_part = &num_str[2..];
+      match i64::from_str_radix(hex_part, 16) {
+        Ok(decimal_value) => {
+          let final_value = if raw.starts_with('-') {
+            -decimal_value
+          } else {
+            decimal_value
+          };
+          Some(serde_json::Value::Number(serde_json::Number::from(final_value)))
+        }
+        Err(_) => Some(serde_json::Value::String(raw)),
+      }
+    } else {
+      // standard decimal number
+      match serde_json::Number::from_str(&raw) {
+        Ok(number) => Some(serde_json::Value::Number(number)),
+        // if the number is invalid, return it as a string (same behavior as AST conversion)
+        Err(_) => Some(serde_json::Value::String(raw)),
+      }
     }
   }
 }

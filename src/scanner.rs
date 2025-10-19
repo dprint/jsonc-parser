@@ -160,6 +160,23 @@ impl<'a> Scanner<'a> {
 
     if self.is_zero() {
       self.move_next_char();
+
+      // check for hexadecimal literal (0x or 0X)
+      if matches!(self.current_char(), Some('x') | Some('X')) {
+        self.move_next_char();
+
+        // must have at least one hex digit
+        if !self.is_hex_digit() {
+          return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
+        }
+
+        while self.is_hex_digit() {
+          self.move_next_char();
+        }
+
+        let end_byte_index = self.byte_index;
+        return Ok(Token::Number(&self.file_text[start_byte_index..end_byte_index]));
+      }
     } else if self.is_one_nine() {
       self.move_next_char();
       while self.is_digit() {
@@ -288,10 +305,12 @@ impl<'a> Scanner<'a> {
     let start_byte_index = self.byte_index;
 
     while let Some(current_char) = self.current_char() {
-      if current_char.is_whitespace() || current_char == '\r' || current_char == '\n' || current_char == ':' {
+      // check for word terminators
+      if current_char.is_whitespace() || current_char == ':' {
         break;
       }
-      if !current_char.is_alphanumeric() && current_char != '-' {
+      // validate that the character is allowed in a word literal
+      if !current_char.is_alphanumeric() && current_char != '-' && current_char != '_' {
         return Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken));
       }
 
@@ -380,6 +399,13 @@ impl<'a> Scanner<'a> {
 
   fn is_digit(&self) -> bool {
     self.is_one_nine() || self.is_zero()
+  }
+
+  fn is_hex_digit(&self) -> bool {
+    match self.current_char() {
+      Some(current_char) => current_char.is_ascii_hexdigit(),
+      _ => false,
+    }
   }
 
   fn is_zero(&self) -> bool {
@@ -492,6 +518,24 @@ mod tests {
         Token::Comma,
         Token::Number("1e1"),
         Token::Comma,
+      ],
+    );
+  }
+
+  #[test]
+  fn it_tokenizes_hexadecimal_numbers() {
+    assert_has_tokens(
+      "0x7DF, 0xFF, 0x123ABC, 0xabc, 0X1F",
+      vec![
+        Token::Number("0x7DF"),
+        Token::Comma,
+        Token::Number("0xFF"),
+        Token::Comma,
+        Token::Number("0x123ABC"),
+        Token::Comma,
+        Token::Number("0xabc"),
+        Token::Comma,
+        Token::Number("0X1F"),
       ],
     );
   }

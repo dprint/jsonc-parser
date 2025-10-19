@@ -68,10 +68,31 @@ impl<'a> From<Value<'a>> for serde_json::Value {
       }
       Value::BooleanLit(b) => serde_json::Value::Bool(b.value),
       Value::NullKeyword(_) => serde_json::Value::Null,
-      Value::NumberLit(num) => match serde_json::Number::from_str(num.value) {
-        Ok(number) => serde_json::Value::Number(number),
-        Err(_) => serde_json::Value::String(num.value.to_string()),
-      },
+      Value::NumberLit(num) => {
+        // Check if this is a hexadecimal literal (0x or 0X prefix)
+        let num_str = num.value.trim_start_matches('-');
+        if num_str.len() > 2 && (num_str.starts_with("0x") || num_str.starts_with("0X")) {
+          // Parse hexadecimal and convert to decimal
+          let hex_part = &num_str[2..];
+          match i64::from_str_radix(hex_part, 16) {
+            Ok(decimal_value) => {
+              let final_value = if num.value.starts_with('-') {
+                -decimal_value
+              } else {
+                decimal_value
+              };
+              serde_json::Value::Number(serde_json::Number::from(final_value))
+            }
+            Err(_) => serde_json::Value::String(num.value.to_string()),
+          }
+        } else {
+          // Standard decimal number
+          match serde_json::Number::from_str(num.value) {
+            Ok(number) => serde_json::Value::Number(number),
+            Err(_) => serde_json::Value::String(num.value.to_string()),
+          }
+        }
+      }
       Value::Object(obj) => {
         let mut map = serde_json::map::Map::new();
         for prop in obj.properties {
