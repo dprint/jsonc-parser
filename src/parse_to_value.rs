@@ -155,4 +155,68 @@ mod tests {
     assert_eq!(err.range().end, 11);
     assert_eq!(err.kind().clone(), ParseErrorKind::UnexpectedToken);
   }
+
+  #[test]
+  fn it_should_parse_surrogate_pair() {
+    // RFC 8259 § 7: non-BMP character 𝄞 (U+1D11E) should be escaped as surrogate pair \uD834\uDD1E
+    let src = r#""\uD834\uDD1E""#;
+    let v = parse_to_value(src, &Default::default()).unwrap().unwrap();
+    if let JsonValue::String(s) = v {
+      assert_eq!("\u{1D11E}", s.as_ref());
+    } else {
+      panic!("Expected string value, got {:?}", v);
+    }
+  }
+
+  #[test]
+  fn it_should_parse_multiple_surrogate_pairs() {
+    let src = r#""\uD834\uDD1E\uD834\uDD1E""#;
+    let v = parse_to_value(src, &Default::default()).unwrap().unwrap();
+    if let JsonValue::String(s) = v {
+      assert_eq!("\u{1D11E}\u{1D11E}", s.as_ref());
+    } else {
+      panic!("Expected string value, got {:?}", v);
+    }
+  }
+
+  #[test]
+  fn it_should_parse_mixed_escapes_with_surrogate_pairs() {
+    // "A𝄞B" where 𝄞 is encoded as surrogate pair
+    let src = r#""\u0041\uD834\uDD1E\u0042""#;
+    let v = parse_to_value(src, &Default::default()).unwrap().unwrap();
+    if let JsonValue::String(s) = v {
+      assert_eq!("A\u{1D11E}B", s.as_ref());
+    } else {
+      panic!("Expected string value, got {:?}", v);
+    }
+  }
+
+  #[test]
+  fn it_should_error_on_unpaired_high_surrogate_with_text() {
+    let src = r#""\uD834x""#;
+    let err = parse_to_value(src, &Default::default()).err().unwrap();
+    assert!(err.to_string().contains("unpaired high surrogate"));
+  }
+
+  #[test]
+  fn it_should_error_on_unpaired_high_surrogate_at_eof() {
+    let src = r#""\uD834""#;
+    let err = parse_to_value(src, &Default::default()).err().unwrap();
+    assert!(err.to_string().contains("unpaired high surrogate"));
+  }
+
+  #[test]
+  fn it_should_error_on_high_surrogate_followed_by_non_low_surrogate() {
+    let src = r#""\uD834\u0041""#;
+    let err = parse_to_value(src, &Default::default()).err().unwrap();
+    assert!(err.to_string().contains("not followed by low surrogate"));
+  }
+
+  #[test]
+  fn it_should_error_on_unpaired_low_surrogate() {
+    // This test verifies existing behavior is maintained
+    let src = r#""\uDC00""#;
+    let err = parse_to_value(src, &Default::default()).err().unwrap();
+    assert!(err.to_string().contains("unpaired low surrogate"));
+  }
 }

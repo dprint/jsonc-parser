@@ -151,16 +151,115 @@ pub fn parse_string_with_char_provider<'a, T: CharProvider<'a>>(
               }
             }
 
-            let hex_u32 = u32::from_str_radix(&hex_text, 16);
-            let hex_char = match hex_u32.ok().and_then(std::char::from_u32) {
-              Some(hex_char) => hex_char,
-              None => {
+            let hex_value = match u32::from_str_radix(&hex_text, 16) {
+              Ok(v) => v,
+              Err(_) => {
                 return Err(ParseStringError {
                   byte_index: escape_start,
                   kind: ParseStringErrorKind::InvalidUnicodeEscapeSequence(hex_text),
                 });
               }
             };
+
+            // Check if this is a high surrogate (0xD800-0xDBFF)
+            let hex_char = if (0xD800..=0xDBFF).contains(&hex_value) {
+              // High surrogate - must be followed by low surrogate
+              // Peek ahead for \uXXXX pattern
+              let next_char = chars.move_next_char();
+              if next_char != Some('\\') {
+                return Err(ParseStringError {
+                  byte_index: escape_start,
+                  kind: ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
+                    "{} (unpaired high surrogate)",
+                    hex_text
+                  )),
+                });
+              }
+
+              let next_char = chars.move_next_char();
+              if next_char != Some('u') {
+                return Err(ParseStringError {
+                  byte_index: escape_start,
+                  kind: ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
+                    "{} (unpaired high surrogate)",
+                    hex_text
+                  )),
+                });
+              }
+
+              // Parse the second \uXXXX
+              let mut hex_text2 = String::new();
+              for _ in 0..4 {
+                let current_char = chars.move_next_char();
+                if !is_hex(current_char) {
+                  return Err(ParseStringError {
+                    byte_index: escape_start,
+                    kind: ParseStringErrorKind::ExpectedFourHexDigits,
+                  });
+                }
+                if let Some(current_char) = current_char {
+                  hex_text2.push(current_char);
+                }
+              }
+
+              let hex_value2 = match u32::from_str_radix(&hex_text2, 16) {
+                Ok(v) => v,
+                Err(_) => {
+                  return Err(ParseStringError {
+                    byte_index: escape_start,
+                    kind: ParseStringErrorKind::InvalidUnicodeEscapeSequence(hex_text2),
+                  });
+                }
+              };
+
+              // Verify it's a low surrogate (0xDC00-0xDFFF)
+              if !(0xDC00..=0xDFFF).contains(&hex_value2) {
+                return Err(ParseStringError {
+                  byte_index: escape_start,
+                  kind: ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
+                    "{} (high surrogate not followed by low surrogate)",
+                    hex_text
+                  )),
+                });
+              }
+
+              // Combine surrogate pair using RFC 8259 formula
+              let code_point = ((hex_value - 0xD800) * 0x400) + (hex_value2 - 0xDC00) + 0x10000;
+
+              match std::char::from_u32(code_point) {
+                Some(c) => c,
+                None => {
+                  return Err(ParseStringError {
+                    byte_index: escape_start,
+                    kind: ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
+                      "{}\\u{} (invalid surrogate pair)",
+                      hex_text, hex_text2
+                    )),
+                  });
+                }
+              }
+            } else if (0xDC00..=0xDFFF).contains(&hex_value) {
+              // Low surrogate without high surrogate
+              return Err(ParseStringError {
+                byte_index: escape_start,
+                kind: ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
+                  "{} (unpaired low surrogate)",
+                  hex_text
+                )),
+              });
+            } else {
+              // Normal unicode escape
+              match std::char::from_u32(hex_value) {
+                Some(hex_char) => hex_char,
+                None => {
+                  return Err(ParseStringError {
+                    byte_index: escape_start,
+                    kind: ParseStringErrorKind::InvalidUnicodeEscapeSequence(hex_text),
+                  });
+                }
+              }
+            };
+
             text.push(hex_char);
             last_start_byte_index = chars.byte_index() + chars.current_char().map(|c| c.len_utf8()).unwrap_or(0);
           } else {
