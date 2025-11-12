@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1760908601582,
+  "lastUpdate": 1762961338474,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -3959,6 +3959,72 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 22630.14,
             "range": "± 282.47",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "marcoconcettorudilosso@gmail.com",
+            "name": "Marco Concetto Rudilosso",
+            "username": "Maaarcocr"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d9e943083fd244e3a546f7fa0544737fefa64911",
+          "message": "fix: support UTF-16 surrogate pairs in unicode escape sequences (#59)",
+          "timestamp": "2025-11-12T10:27:37-05:00",
+          "tree_id": "b35301ca98f70eeaa254daed388fce6ef77d0d3c",
+          "url": "https://github.com/dprint/jsonc-parser/commit/d9e943083fd244e3a546f7fa0544737fefa64911"
+        },
+        "date": 1762961337632,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 45726170.8,
+            "range": "± 640910.55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 31033960,
+            "range": "± 2891167.43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 69261873.8,
+            "range": "± 1193238.49",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 63711.25,
+            "range": "± 765.42",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 82808.22,
+            "range": "± 1138.08",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 22073.21,
+            "range": "± 243.99",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 22610.01,
+            "range": "± 160.03",
             "unit": "ns/iter"
           }
         ]
