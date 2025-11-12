@@ -620,7 +620,7 @@ mod tests {
   fn it_errors_on_invalid_utf8_char_for_issue_6() {
     assert_has_error(
       "\"\\uDF06\"",
-      "Invalid unicode escape sequence. 'DF06' is not a valid UTF8 character on line 1 column 2",
+      "Invalid unicode escape sequence. 'DF06 (unpaired low surrogate)' is not a valid UTF8 character on line 1 column 2",
     );
   }
 
