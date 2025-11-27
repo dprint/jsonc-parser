@@ -6,6 +6,7 @@ use super::ast::*;
 use super::common::Range;
 use super::errors::*;
 use super::scanner::Scanner;
+use super::scanner::ScannerOptions;
 use super::tokens::Token;
 use super::tokens::TokenAndRange;
 
@@ -14,11 +15,25 @@ use super::tokens::TokenAndRange;
 /// next token start or end of the file.
 pub type CommentMap<'a> = HashMap<usize, Rc<Vec<Comment<'a>>>>;
 
+/// Strategy for handling comments during parsing.
+///
+/// This enum determines how comments in the JSON/JSONC input are collected
+/// and represented in the resulting abstract syntax tree (AST).
 #[derive(Default, Debug, PartialEq, Clone)]
 pub enum CommentCollectionStrategy {
+  /// Comments are not collected and are effectively ignored during parsing.
   #[default]
   Off,
+  /// Comments are collected and stored separately from the main AST structure.
+  ///
+  /// When this strategy is used, comments are placed in a [`CommentMap`] where
+  /// the key is the previous token end or start of file, or the next token start
+  /// or end of file.
   Separate,
+  /// Comments are collected and treated as tokens within the AST.
+  ///
+  /// When this strategy is used, comments appear alongside other tokens in the
+  /// token stream when `tokens: true` is set in [`CollectOptions`].
   AsTokens,
 }
 
@@ -40,6 +55,12 @@ pub struct ParseOptions {
   pub allow_loose_object_property_names: bool,
   /// Allow trailing commas on object literal and array literal values (defaults to `true`).
   pub allow_trailing_commas: bool,
+  /// Allow single-quoted strings (defaults to `true`).
+  pub allow_single_quoted_strings: bool,
+  /// Allow hexadecimal numbers like 0xFF (defaults to `true`).
+  pub allow_hexadecimal_numbers: bool,
+  /// Allow unary plus sign on numbers like +42 (defaults to `true`).
+  pub allow_unary_plus_numbers: bool,
 }
 
 impl Default for ParseOptions {
@@ -48,6 +69,9 @@ impl Default for ParseOptions {
       allow_comments: true,
       allow_loose_object_property_names: true,
       allow_trailing_commas: true,
+      allow_single_quoted_strings: true,
+      allow_hexadecimal_numbers: true,
+      allow_unary_plus_numbers: true,
     }
   }
 }
@@ -218,7 +242,14 @@ pub fn parse_to_ast<'a>(
   parse_options: &ParseOptions,
 ) -> Result<ParseResult<'a>, ParseError> {
   let mut context = Context {
-    scanner: Scanner::new(text),
+    scanner: Scanner::new(
+      text,
+      &ScannerOptions {
+        allow_single_quoted_strings: parse_options.allow_single_quoted_strings,
+        allow_hexadecimal_numbers: parse_options.allow_hexadecimal_numbers,
+        allow_unary_plus_numbers: parse_options.allow_unary_plus_numbers,
+      },
+    ),
     comments: match collect_options.comments {
       CommentCollectionStrategy::Separate => Some(Default::default()),
       CommentCollectionStrategy::Off | CommentCollectionStrategy::AsTokens => None,
@@ -503,6 +534,30 @@ mod tests {
     );
   }
 
+  #[test]
+  fn strict_should_error_single_quoted_string() {
+    assert_has_strict_error(
+      r#"{ "key": 'value' }"#,
+      "Single-quoted strings are not allowed on line 1 column 10",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_hexadecimal_number() {
+    assert_has_strict_error(
+      r#"{ "key": 0xFF }"#,
+      "Hexadecimal numbers are not allowed on line 1 column 10",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_unary_plus_number() {
+    assert_has_strict_error(
+      r#"{ "key": +42 }"#,
+      "Unary plus on numbers is not allowed on line 1 column 10",
+    );
+  }
+
   #[track_caller]
   fn assert_has_strict_error(text: &str, message: &str) {
     let result = parse_to_ast(
@@ -512,6 +567,9 @@ mod tests {
         allow_comments: false,
         allow_loose_object_property_names: false,
         allow_trailing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
       },
     );
     match result {

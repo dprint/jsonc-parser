@@ -90,6 +90,9 @@ let json_value = parse_to_value(text, &ParseOptions {
   allow_comments: false,
   allow_loose_object_property_names: false,
   allow_trailing_commas: false,
+  allow_single_quoted_strings: false,
+  allow_hexadecimal_numbers: false,
+  allow_unary_plus_numbers: false,
 })?;
 ```
 
