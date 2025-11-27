@@ -13,9 +13,12 @@ pub enum ParseErrorKind {
   ExpectedDigitFollowingNegativeSign,
   ExpectedPlusMinusOrDigitInNumberLiteral,
   ExpectedStringObjectProperty,
+  HexadecimalNumbersNotAllowed,
   MultipleRootJsonValues,
+  SingleQuotedStringsNotAllowed,
   String(ParseStringErrorKind),
   TrailingCommasNotAllowed,
+  UnaryPlusNumbersNotAllowed,
   UnexpectedCloseBrace,
   UnexpectedCloseBracket,
   UnexpectedColon,
@@ -53,12 +56,21 @@ impl std::fmt::Display for ParseErrorKind {
       ExpectedStringObjectProperty => {
         write!(f, "Expected string for object property")
       }
+      HexadecimalNumbersNotAllowed => {
+        write!(f, "Hexadecimal numbers are not allowed")
+      }
       MultipleRootJsonValues => {
         write!(f, "Text cannot contain more than one JSON value")
+      }
+      SingleQuotedStringsNotAllowed => {
+        write!(f, "Single-quoted strings are not allowed")
       }
       String(kind) => kind.fmt(f),
       TrailingCommasNotAllowed => {
         write!(f, "Trailing commas are not allowed")
+      }
+      UnaryPlusNumbersNotAllowed => {
+        write!(f, "Unary plus on numbers is not allowed")
       }
       UnexpectedCloseBrace => {
         write!(f, "Unexpected close brace")

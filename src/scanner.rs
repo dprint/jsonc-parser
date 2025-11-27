@@ -14,13 +14,37 @@ pub struct Scanner<'a> {
   char_buffer: Vec<char>,
   current_token: Option<Token<'a>>,
   file_text: &'a str,
+  allow_single_quoted_strings: bool,
+  allow_hexadecimal_numbers: bool,
+  allow_unary_plus_numbers: bool,
 }
 
 const CHAR_BUFFER_MAX_SIZE: usize = 6;
 
+/// Options for the scanner.
+#[derive(Debug)]
+pub struct ScannerOptions {
+  /// Allow single-quoted strings (defaults to `true`).
+  pub allow_single_quoted_strings: bool,
+  /// Allow hexadecimal numbers like 0xFF (defaults to `true`).
+  pub allow_hexadecimal_numbers: bool,
+  /// Allow unary plus sign on numbers like +42 (defaults to `true`).
+  pub allow_unary_plus_numbers: bool,
+}
+
+impl Default for ScannerOptions {
+  fn default() -> Self {
+    Self {
+      allow_single_quoted_strings: true,
+      allow_hexadecimal_numbers: true,
+      allow_unary_plus_numbers: true,
+    }
+  }
+}
+
 impl<'a> Scanner<'a> {
-  /// Creates a new scanner based on the provided text.
-  pub fn new(file_text: &'a str) -> Scanner<'a> {
+  /// Creates a new scanner with specific options.
+  pub fn new(file_text: &'a str, options: &ScannerOptions) -> Scanner<'a> {
     let mut char_iter = file_text.chars();
     let mut char_buffer = Vec::with_capacity(CHAR_BUFFER_MAX_SIZE);
     let current_char = char_iter.next();
@@ -35,6 +59,9 @@ impl<'a> Scanner<'a> {
       char_buffer,
       current_token: None,
       file_text,
+      allow_single_quoted_strings: options.allow_single_quoted_strings,
+      allow_hexadecimal_numbers: options.allow_hexadecimal_numbers,
+      allow_unary_plus_numbers: options.allow_unary_plus_numbers,
     }
   }
 
@@ -72,7 +99,14 @@ impl<'a> Scanner<'a> {
           self.move_next_char();
           Ok(Token::Colon)
         }
-        '\'' | '"' => self.parse_string(),
+        '\'' => {
+          if self.allow_single_quoted_strings {
+            self.parse_string()
+          } else {
+            Err(self.create_error_for_current_token(ParseErrorKind::SingleQuotedStringsNotAllowed))
+          }
+        }
+        '"' => self.parse_string(),
         '/' => match self.peek_char() {
           Some('/') => Ok(self.parse_comment_line()),
           Some('*') => self.parse_comment_block(),
@@ -154,8 +188,13 @@ impl<'a> Scanner<'a> {
   fn parse_number(&mut self) -> Result<Token<'a>, ParseError> {
     let start_byte_index = self.byte_index;
 
-    // handle unary plus or minus
-    if self.is_negative_sign() || self.is_positive_sign() {
+    // handle unary plus and unary minus
+    if self.is_positive_sign() {
+      if !self.allow_unary_plus_numbers {
+        return Err(self.create_error_for_current_token(ParseErrorKind::UnaryPlusNumbersNotAllowed));
+      }
+      self.move_next_char();
+    } else if self.is_negative_sign() {
       self.move_next_char();
     }
 
@@ -164,6 +203,10 @@ impl<'a> Scanner<'a> {
 
       // check for hexadecimal literal (0x or 0X)
       if matches!(self.current_char(), Some('x') | Some('X')) {
+        if !self.allow_hexadecimal_numbers {
+          return Err(self.create_error_for_current_token(ParseErrorKind::HexadecimalNumbersNotAllowed));
+        }
+
         self.move_next_char();
 
         // must have at least one hex digit
@@ -625,7 +668,7 @@ mod tests {
   }
 
   fn assert_has_tokens(text: &str, tokens: Vec<Token>) {
-    let mut scanner = Scanner::new(text);
+    let mut scanner = Scanner::new(text, &Default::default());
     let mut scanned_tokens = Vec::new();
 
     loop {
@@ -640,7 +683,7 @@ mod tests {
   }
 
   fn assert_has_error(text: &str, message: &str) {
-    let mut scanner = Scanner::new(text);
+    let mut scanner = Scanner::new(text, &Default::default());
     let mut error_message = String::new();
 
     loop {
