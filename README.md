@@ -3,7 +3,7 @@
 [![](https://img.shields.io/crates/v/jsonc-parser.svg)](https://crates.io/crates/jsonc-parser)
 [![](https://docs.rs/jsonc-parser/badge.svg)](https://docs.rs/jsonc-parser)
 
-JSONC parsing and manipulation for Rust.
+A JSON parser and manipulator for Rust that supports comments and other JSON extensions.
 
 ## Documentation
 
