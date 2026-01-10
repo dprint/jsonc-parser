@@ -3,7 +3,7 @@ use super::ParseOptions;
 use super::errors::ParseError;
 use super::parse_to_ast;
 
-/// Parses a string containing JSONC to a `serde_json::Value.
+/// Parses a string containing JSONC to a `serde_json::Value`.
 ///
 /// Requires the "serde" cargo feature:
 ///
@@ -16,7 +16,10 @@ use super::parse_to_ast;
 /// ```rs
 /// use jsonc_parser::parse_to_serde_value;
 ///
-/// let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default()).unwrap();
+/// let json_value = parse_to_serde_value(
+///   r#"{ "test": 5 } // test"#,
+///   &Default::default(),
+/// ).unwrap();
 /// ```
 pub fn parse_to_serde_value(text: &str, parse_options: &ParseOptions) -> Result<Option<serde_json::Value>, ParseError> {
   let value = parse_to_ast(

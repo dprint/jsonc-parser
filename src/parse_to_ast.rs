@@ -55,6 +55,8 @@ pub struct ParseOptions {
   pub allow_loose_object_property_names: bool,
   /// Allow trailing commas on object literal and array literal values (defaults to `true`).
   pub allow_trailing_commas: bool,
+  /// Allow missing commas between object properties or array elements (defaults to `true`).
+  pub allow_missing_commas: bool,
   /// Allow single-quoted strings (defaults to `true`).
   pub allow_single_quoted_strings: bool,
   /// Allow hexadecimal numbers like 0xFF (defaults to `true`).
@@ -69,6 +71,7 @@ impl Default for ParseOptions {
       allow_comments: true,
       allow_loose_object_property_names: true,
       allow_trailing_commas: true,
+      allow_missing_commas: true,
       allow_single_quoted_strings: true,
       allow_hexadecimal_numbers: true,
       allow_unary_plus_numbers: true,
@@ -102,6 +105,7 @@ struct Context<'a> {
   collect_comments_as_tokens: bool,
   allow_comments: bool,
   allow_trailing_commas: bool,
+  allow_missing_commas: bool,
   allow_loose_object_property_names: bool,
 }
 
@@ -261,6 +265,7 @@ pub fn parse_to_ast<'a>(
     collect_comments_as_tokens: collect_options.comments == CommentCollectionStrategy::AsTokens,
     allow_comments: parse_options.allow_comments,
     allow_trailing_commas: parse_options.allow_trailing_commas,
+    allow_missing_commas: parse_options.allow_missing_commas,
     allow_loose_object_property_names: parse_options.allow_loose_object_property_names,
   };
   context.scan()?;
@@ -321,13 +326,24 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
     }
 
     // skip the comma
-    if let Some(Token::Comma) = context.scan()? {
-      let comma_range = context.create_range_from_last_token();
-      if let Some(Token::CloseBrace) = context.scan()?
-        && !context.allow_trailing_commas
-      {
-        return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
+    let after_value_end = context.last_token_end;
+    match context.scan()? {
+      Some(Token::Comma) => {
+        let comma_range = context.create_range_from_last_token();
+        if let Some(Token::CloseBrace) = context.scan()?
+          && !context.allow_trailing_commas
+        {
+          return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
+        }
       }
+      Some(Token::String(_) | Token::Word(_) | Token::Number(_)) if !context.allow_missing_commas => {
+        let range = Range {
+          start: after_value_end,
+          end: after_value_end,
+        };
+        return Err(context.create_error_for_range(range, ParseErrorKind::ExpectedComma));
+      }
+      _ => {}
     }
   }
 
@@ -567,6 +583,7 @@ mod tests {
         allow_comments: false,
         allow_loose_object_property_names: false,
         allow_trailing_commas: false,
+        allow_missing_commas: false,
         allow_single_quoted_strings: false,
         allow_hexadecimal_numbers: false,
         allow_unary_plus_numbers: false,
@@ -672,5 +689,50 @@ mod tests {
 
     let number_value = obj.properties[0].value.as_number_lit().unwrap();
     assert_eq!(number_value.value, "+42");
+  }
+
+  #[test]
+  fn missing_comma_between_properties() {
+    let text = r#"{
+  "name": "alice"
+  "age": 25
+}"#;
+    let result = parse_to_ast(text, &Default::default(), &Default::default()).unwrap();
+    assert_eq!(
+      result
+        .value
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .get_number("age")
+        .unwrap()
+        .value,
+      "25"
+    );
+
+    // but is strict when strict
+    assert_has_strict_error(text, "Expected comma on line 2 column 18");
+  }
+
+  #[test]
+  fn missing_comma_with_comment_between_properties() {
+    // when comments are allowed but missing commas are not,
+    // should still detect the missing comma after the comment is skipped
+    let result = parse_to_ast(
+      r#"{
+  "name": "alice" // comment here
+  "age": 25
+}"#,
+      &Default::default(),
+      &ParseOptions {
+        allow_comments: true,
+        allow_missing_commas: false,
+        ..Default::default()
+      },
+    );
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Expected comma on line 2 column 18"),
+    }
   }
 }
