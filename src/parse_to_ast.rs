@@ -713,4 +713,26 @@ mod tests {
     // but is strict when strict
     assert_has_strict_error(text, "Expected comma on line 2 column 18");
   }
+
+  #[test]
+  fn missing_comma_with_comment_between_properties() {
+    // when comments are allowed but missing commas are not,
+    // should still detect the missing comma after the comment is skipped
+    let result = parse_to_ast(
+      r#"{
+  "name": "alice" // comment here
+  "age": 25
+}"#,
+      &Default::default(),
+      &ParseOptions {
+        allow_comments: true,
+        allow_missing_commas: false,
+        ..Default::default()
+      },
+    );
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Expected comma on line 2 column 18"),
+    }
+  }
 }
