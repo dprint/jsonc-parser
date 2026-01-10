@@ -14,6 +14,7 @@ pub enum ParseErrorKind {
   ExpectedPlusMinusOrDigitInNumberLiteral,
   ExpectedStringObjectProperty,
   HexadecimalNumbersNotAllowed,
+  ExpectedComma,
   MultipleRootJsonValues,
   SingleQuotedStringsNotAllowed,
   String(ParseStringErrorKind),
@@ -58,6 +59,9 @@ impl std::fmt::Display for ParseErrorKind {
       }
       HexadecimalNumbersNotAllowed => {
         write!(f, "Hexadecimal numbers are not allowed")
+      }
+      ExpectedComma => {
+        write!(f, "Expected comma")
       }
       MultipleRootJsonValues => {
         write!(f, "Text cannot contain more than one JSON value")

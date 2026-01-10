@@ -94,7 +94,8 @@
 //!
 //! ## Parse Strictly as JSON
 //!
-//! Provide `ParseOptions` and set all the options to false:
+//! By default this library is extremely loose in what it allows parsing. To be strict,
+//! provide `ParseOptions` and set all the options to false:
 //!
 //! ```
 //! use jsonc_parser::parse_to_value;
@@ -106,6 +107,7 @@
 //!   allow_comments: false,
 //!   allow_loose_object_property_names: false,
 //!   allow_trailing_commas: false,
+//!   allow_missing_commas: false,
 //!   allow_single_quoted_strings: false,
 //!   allow_hexadecimal_numbers: false,
 //!   allow_unary_plus_numbers: false,
