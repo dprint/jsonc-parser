@@ -268,7 +268,7 @@ pub fn parse_to_ast<'a>(
     allow_trailing_commas: parse_options.allow_trailing_commas,
     allow_missing_commas: parse_options.allow_missing_commas,
     allow_loose_object_property_names: parse_options.allow_loose_object_property_names,
-    maximum_nesting_depth: 128,
+    maximum_nesting_depth: 512,
   };
   context.scan()?;
   let value = parse_value(&mut context)?;
