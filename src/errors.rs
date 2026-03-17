@@ -30,6 +30,7 @@ pub enum ParseErrorKind {
   UnterminatedArray,
   UnterminatedCommentBlock,
   UnterminatedObject,
+  NestingDepthExceeded,
 }
 
 impl std::fmt::Display for ParseErrorKind {
@@ -105,6 +106,9 @@ impl std::fmt::Display for ParseErrorKind {
       }
       UnterminatedObject => {
         write!(f, "Unterminated object")
+      }
+      NestingDepthExceeded => {
+        write!(f, "Maximum nesting depth exceeded")
       }
     }
   }

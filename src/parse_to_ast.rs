@@ -107,6 +107,7 @@ struct Context<'a> {
   allow_trailing_commas: bool,
   allow_missing_commas: bool,
   allow_loose_object_property_names: bool,
+  maximum_nesting_depth: usize,
 }
 
 impl<'a> Context<'a> {
@@ -267,6 +268,7 @@ pub fn parse_to_ast<'a>(
     allow_trailing_commas: parse_options.allow_trailing_commas,
     allow_missing_commas: parse_options.allow_missing_commas,
     allow_loose_object_property_names: parse_options.allow_loose_object_property_names,
+    maximum_nesting_depth: 512,
   };
   context.scan()?;
   let value = parse_value(&mut context)?;
@@ -285,6 +287,10 @@ pub fn parse_to_ast<'a>(
 }
 
 fn parse_value<'a>(context: &mut Context<'a>) -> Result<Option<Value<'a>>, ParseError> {
+  if context.range_stack.len() > context.maximum_nesting_depth {
+    return Err(context.create_error_for_current_range(ParseErrorKind::NestingDepthExceeded));
+  }
+
   match context.token() {
     None => Ok(None),
     Some(token) => match token {
@@ -733,6 +739,70 @@ mod tests {
     match result {
       Ok(_) => panic!("Expected error, but did not find one."),
       Err(err) => assert_eq!(err.to_string(), "Expected comma on line 2 column 18"),
+    }
+  }
+
+  #[test]
+  fn it_should_error_when_arrays_are_deeply_nested() {
+    // Deeply nested arrays cause a stack overflow when recursion depth is not limited
+    let mut json = String::new();
+    let depth = 30_000;
+
+    for _ in 0..depth {
+      json += "[";
+    }
+
+    for _ in 0..depth {
+      json += "]";
+    }
+
+    let result = parse_to_ast(&json, &Default::default(), &ParseOptions::default());
+
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Maximum nesting depth exceeded on line 1 column 513"),
+    }
+  }
+
+  #[test]
+  fn it_should_error_when_objects_are_deeply_nested() {
+    // Deeply nested objects cause a stack overflow when recursion depth is not limited
+    let mut json = String::new();
+    let depth = 30_000;
+
+    for _ in 0..depth {
+      json += "{\"q\":";
+    }
+
+    for _ in 0..depth {
+      json += "}";
+    }
+
+    let result = parse_to_ast(&json, &Default::default(), &ParseOptions::default());
+
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Maximum nesting depth exceeded on line 1 column 1282"),
+    }
+  }
+
+  #[test]
+  fn it_should_parse_large_shallow_objects() {
+    // Makes sure that nesting depth limit does not affect shallow objects
+    let mut json = "{\"q\":[".to_string();
+    let size = 1_000;
+
+    for _ in 0..size {
+      json += "{\"q\":[{}]}, [\"hello\"], ";
+    }
+
+    json += "]}";
+
+    let result = parse_to_ast(&json, &Default::default(), &ParseOptions::default());
+
+    match result {
+      Ok(_) => {}
+      Err(_) => panic!("Expected Ok, but did not find one."),
     }
   }
 }
