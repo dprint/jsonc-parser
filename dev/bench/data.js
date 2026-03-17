@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768085354238,
+  "lastUpdate": 1773779955914,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -4487,6 +4487,72 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 22573.01,
             "range": "± 330.66",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "46524979+mitahantahankintunkis@users.noreply.github.com",
+            "name": "mitahantahankintunkis",
+            "username": "mitahantahankintunkis"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8c4e6bd5df0ab905ccd8ffaaca498ac7d6c26996",
+          "message": "fix: add maximum recursion depth (#65)",
+          "timestamp": "2026-03-17T16:37:55-04:00",
+          "tree_id": "de0931f71d249f164573b06964cd01e9ab3b90d6",
+          "url": "https://github.com/dprint/jsonc-parser/commit/8c4e6bd5df0ab905ccd8ffaaca498ac7d6c26996"
+        },
+        "date": 1773779955370,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 46452691.4,
+            "range": "± 1247558.31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 31939585.9,
+            "range": "± 3852476.52",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 70466735,
+            "range": "± 2693964.07",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 63228.02,
+            "range": "± 3748.72",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 82788.81,
+            "range": "± 1492.23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 22001.15,
+            "range": "± 843.51",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 22640.71,
+            "range": "± 360.75",
             "unit": "ns/iter"
           }
         ]
