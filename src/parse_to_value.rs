@@ -219,4 +219,48 @@ mod tests {
     let err = parse_to_value(src, &Default::default()).err().unwrap();
     assert!(err.to_string().contains("unpaired low surrogate"));
   }
+
+  #[test]
+  fn it_should_error_when_arrays_are_deeply_nested() {
+    // Deeply nested arrays cause a stack overflow when recursion depth is not limited
+    let mut json = String::new();
+    let depth = 30_000;
+
+    for _ in 0..depth {
+      json += "[";
+    }
+
+    for _ in 0..depth {
+      json += "]";
+    }
+
+    let result = parse_to_value(&json, &ParseOptions::default());
+
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Maximum nesting depth exceeded on line 1 column 513"),
+    }
+  }
+
+  #[test]
+  fn it_should_error_when_objects_are_deeply_nested() {
+    // Deeply nested objects cause a stack overflow when recursion depth is not limited
+    let mut json = String::new();
+    let depth = 30_000;
+
+    for _ in 0..depth {
+      json += "{\"q\":";
+    }
+
+    for _ in 0..depth {
+      json += "}";
+    }
+
+    let result = parse_to_value(&json, &ParseOptions::default());
+
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Maximum nesting depth exceeded on line 1 column 1282"),
+    }
+  }
 }
