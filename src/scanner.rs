@@ -360,9 +360,10 @@ impl<'a> Scanner<'a> {
       // check non-ASCII alphanumeric
       if next_byte >= 0x80
         && let Some(c) = self.file_text[end..].chars().next()
-          && c.is_alphanumeric() {
-            return false;
-          }
+        && c.is_alphanumeric()
+      {
+        return false;
+      }
     }
     self.byte_index = end;
     true
