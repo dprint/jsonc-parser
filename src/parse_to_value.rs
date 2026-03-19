@@ -153,7 +153,7 @@ mod tests {
       .unwrap();
     assert_eq!(err.range().start, 8);
     assert_eq!(err.range().end, 11);
-    assert_eq!(err.kind().clone(), ParseErrorKind::UnexpectedToken);
+    assert!(matches!(err.kind(), ParseErrorKind::UnexpectedToken));
   }
 
   #[test]

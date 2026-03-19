@@ -76,21 +76,25 @@
 //! jsonc-parser = { version = "...", features = ["serde"] }
 //! ```
 //!
-//! Then you can use the `parse_to_serde_value` function to get a `serde_json::Value`:
+//! Then you can use the `parse_to_serde_value` function to deserialize JSONC directly into
+//! any type implementing `serde::Deserialize`:
 //!
 //! ```
 //! # #[cfg(feature = "serde")]
 //! # {
 //! use jsonc_parser::parse_to_serde_value;
 //!
+//! #[derive(serde::Deserialize)]
+//! struct Config {
+//!   test: u32,
+//! }
+//!
 //! # fn parse_example() -> Result<(), Box<dyn std::error::Error>> {
-//! let json_value = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default())?;
+//! let config: Option<Config> = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default())?;
 //! # Ok(())
 //! # }
 //! # }
 //! ```
-//!
-//! Alternatively, use `parse_to_ast` then call `.into()` (ex. `let value: serde_json::Value = ast.into();`).
 //!
 //! ## Parse Strictly as JSON
 //!

@@ -4,7 +4,7 @@ use crate::ParseStringErrorKind;
 
 use super::common::Range;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug)]
 pub enum ParseErrorKind {
   CommentsNotAllowed,
   ExpectedColonAfterObjectKey,
@@ -31,6 +31,9 @@ pub enum ParseErrorKind {
   UnterminatedCommentBlock,
   UnterminatedObject,
   NestingDepthExceeded,
+  /// Custom error message, used by the serde deserializer.
+  #[cfg(feature = "serde")]
+  Custom(String),
 }
 
 impl std::fmt::Display for ParseErrorKind {
@@ -110,11 +113,13 @@ impl std::fmt::Display for ParseErrorKind {
       NestingDepthExceeded => {
         write!(f, "Maximum nesting depth exceeded")
       }
+      #[cfg(feature = "serde")]
+      Custom(msg) => write!(f, "{}", msg),
     }
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 struct ParseErrorInner {
   range: Range,
   line_display: usize,
@@ -123,7 +128,7 @@ struct ParseErrorInner {
 }
 
 /// Error that could occur while parsing or tokenizing.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub struct ParseError(Box<ParseErrorInner>);
 
 impl std::error::Error for ParseError {}
@@ -161,6 +166,29 @@ impl ParseError {
   /// Error message.
   pub fn kind(&self) -> &ParseErrorKind {
     &self.0.kind
+  }
+
+  /// Creates an error with a custom message and no position info.
+  #[cfg(feature = "serde")]
+  pub(crate) fn custom_err(msg: String) -> ParseError {
+    ParseError(Box::new(ParseErrorInner {
+      range: Range { start: 0, end: 0 },
+      line_display: 1,
+      column_display: 1,
+      kind: ParseErrorKind::Custom(msg),
+    }))
+  }
+
+  /// Attaches position info to an error that doesn't have any yet.
+  #[cfg(feature = "serde")]
+  pub(crate) fn with_position(mut self, range: Range, file_text: &str) -> ParseError {
+    if self.0.range.start == 0 && self.0.range.end == 0 {
+      let (line_display, column_display) = get_line_and_column_display(range, file_text);
+      self.0.range = range;
+      self.0.line_display = line_display;
+      self.0.column_display = column_display;
+    }
+    self
   }
 }
 
