@@ -188,74 +188,59 @@ pub fn parse_string_with_char_provider<'a, T: CharProvider<'a>>(
   }
 }
 
-fn parse_hex_char<'a, T: CharProvider<'a>>(chars: &mut T) -> Result<char, ParseStringErrorKind> {
-  let mut hex_text = String::new();
-  // expect four hex values
-  for _ in 0..4 {
-    let current_char = chars.move_next_char();
-    if !is_hex(current_char) {
-      return Err(ParseStringErrorKind::ExpectedFourHexDigits);
-    }
-    if let Some(current_char) = current_char {
-      hex_text.push(current_char);
+fn read_four_hex_digits<'a, T: CharProvider<'a>>(
+  chars: &mut T,
+  buf: &mut [u8; 4],
+) -> Result<u32, ParseStringErrorKind> {
+  for slot in buf.iter_mut() {
+    match chars.move_next_char() {
+      Some(c) if c.is_ascii_hexdigit() => *slot = c as u8,
+      _ => return Err(ParseStringErrorKind::ExpectedFourHexDigits),
     }
   }
+  // safety: buf contains only ASCII hex digits
+  let hex_str = std::str::from_utf8(buf).unwrap();
+  u32::from_str_radix(hex_str, 16).map_err(|_| ParseStringErrorKind::InvalidUnicodeEscapeSequence(hex_str.to_string()))
+}
 
-  let hex_value = match u32::from_str_radix(&hex_text, 16) {
-    Ok(v) => v,
-    Err(_) => {
-      return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(hex_text));
-    }
-  };
+fn hex_buf_to_str(buf: &[u8; 4]) -> String {
+  std::str::from_utf8(buf).unwrap().to_string()
+}
 
-  // Check if this is a high surrogate (0xD800-0xDBFF)
+fn parse_hex_char<'a, T: CharProvider<'a>>(chars: &mut T) -> Result<char, ParseStringErrorKind> {
+  let mut buf1 = [0u8; 4];
+  let hex_value = read_four_hex_digits(chars, &mut buf1)?;
+
+  // check if this is a high surrogate (0xD800-0xDBFF)
   let hex_char = if (0xD800..=0xDBFF).contains(&hex_value) {
-    // High surrogate - must be followed by low surrogate
-    // Peek ahead for \uXXXX pattern
-    let next_char = chars.move_next_char();
-    if next_char != Some('\\') {
+    // high surrogate - must be followed by low surrogate (\uXXXX)
+    if chars.move_next_char() != Some('\\') {
       return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
         "{} (unpaired high surrogate)",
-        hex_text
+        hex_buf_to_str(&buf1)
       )));
     }
 
-    let next_char = chars.move_next_char();
-    if next_char != Some('u') {
+    if chars.move_next_char() != Some('u') {
       return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
         "{} (unpaired high surrogate)",
-        hex_text
+        hex_buf_to_str(&buf1)
       )));
     }
 
-    // Parse the second \uXXXX
-    let mut hex_text2 = String::new();
-    for _ in 0..4 {
-      let current_char = chars.move_next_char();
-      if !is_hex(current_char) {
-        return Err(ParseStringErrorKind::ExpectedFourHexDigits);
-      }
-      if let Some(current_char) = current_char {
-        hex_text2.push(current_char);
-      }
-    }
+    // parse the second \uXXXX
+    let mut buf2 = [0u8; 4];
+    let hex_value2 = read_four_hex_digits(chars, &mut buf2)?;
 
-    let hex_value2 = match u32::from_str_radix(&hex_text2, 16) {
-      Ok(v) => v,
-      Err(_) => {
-        return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(hex_text2));
-      }
-    };
-
-    // Verify it's a low surrogate (0xDC00-0xDFFF)
+    // verify it's a low surrogate (0xDC00-0xDFFF)
     if !(0xDC00..=0xDFFF).contains(&hex_value2) {
       return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
         "{} (high surrogate not followed by low surrogate)",
-        hex_text
+        hex_buf_to_str(&buf1)
       )));
     }
 
-    // Combine surrogate pair using RFC 8259 formula
+    // combine surrogate pair using RFC 8259 formula
     let code_point = ((hex_value - 0xD800) * 0x400) + (hex_value2 - 0xDC00) + 0x10000;
 
     match std::char::from_u32(code_point) {
@@ -263,35 +248,27 @@ fn parse_hex_char<'a, T: CharProvider<'a>>(chars: &mut T) -> Result<char, ParseS
       None => {
         return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
           "{}\\u{} (invalid surrogate pair)",
-          hex_text, hex_text2
+          hex_buf_to_str(&buf1),
+          hex_buf_to_str(&buf2)
         )));
       }
     }
   } else if (0xDC00..=0xDFFF).contains(&hex_value) {
-    // Low surrogate without high surrogate
+    // low surrogate without high surrogate
     return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(format!(
       "{} (unpaired low surrogate)",
-      hex_text
+      hex_buf_to_str(&buf1)
     )));
   } else {
-    // Normal unicode escape
+    // normal unicode escape
     match std::char::from_u32(hex_value) {
       Some(hex_char) => hex_char,
       None => {
-        return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(hex_text));
+        return Err(ParseStringErrorKind::InvalidUnicodeEscapeSequence(hex_buf_to_str(
+          &buf1,
+        )));
       }
     }
   };
   Ok(hex_char)
-}
-
-fn is_hex(c: Option<char>) -> bool {
-  let Some(c) = c else {
-    return false;
-  };
-  is_digit(c) || ('a'..='f').contains(&c) || ('A'..='F').contains(&c)
-}
-
-fn is_digit(c: char) -> bool {
-  c.is_ascii_digit()
 }
