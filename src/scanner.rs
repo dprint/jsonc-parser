@@ -1,25 +1,22 @@
+use std::borrow::Cow;
+
 use crate::string::CharProvider;
 
 use super::common::Range;
 use super::errors::*;
 use super::tokens::Token;
-use std::str::Chars;
 
 /// Converts text into a stream of tokens.
 pub struct Scanner<'a> {
   byte_index: usize,
   token_start: usize,
-  char_iter: Chars<'a>,
-  // todo(dsherret): why isn't this a VecDeque?
-  char_buffer: Vec<char>,
+  bytes: &'a [u8],
   current_token: Option<Token<'a>>,
   file_text: &'a str,
   allow_single_quoted_strings: bool,
   allow_hexadecimal_numbers: bool,
   allow_unary_plus_numbers: bool,
 }
-
-const CHAR_BUFFER_MAX_SIZE: usize = 6;
 
 /// Options for the scanner.
 #[derive(Debug)]
@@ -45,18 +42,10 @@ impl Default for ScannerOptions {
 impl<'a> Scanner<'a> {
   /// Creates a new scanner with specific options.
   pub fn new(file_text: &'a str, options: &ScannerOptions) -> Scanner<'a> {
-    let mut char_iter = file_text.chars();
-    let mut char_buffer = Vec::with_capacity(CHAR_BUFFER_MAX_SIZE);
-    let current_char = char_iter.next();
-    if let Some(current_char) = current_char {
-      char_buffer.push(current_char);
-    }
-
     Scanner {
       byte_index: 0,
       token_start: 0,
-      char_iter,
-      char_buffer,
+      bytes: file_text.as_bytes(),
       current_token: None,
       file_text,
       allow_single_quoted_strings: options.allow_single_quoted_strings,
@@ -73,58 +62,50 @@ impl<'a> Scanner<'a> {
   pub fn scan(&mut self) -> Result<Option<Token<'a>>, ParseError> {
     self.skip_whitespace();
     self.token_start = self.byte_index;
-    if let Some(current_char) = self.current_char() {
-      let token_result = match current_char {
-        '{' => {
-          self.move_next_char();
+    if let Some(&b) = self.bytes.get(self.byte_index) {
+      let token_result = match b {
+        b'{' => {
+          self.byte_index += 1;
           Ok(Token::OpenBrace)
         }
-        '}' => {
-          self.move_next_char();
+        b'}' => {
+          self.byte_index += 1;
           Ok(Token::CloseBrace)
         }
-        '[' => {
-          self.move_next_char();
+        b'[' => {
+          self.byte_index += 1;
           Ok(Token::OpenBracket)
         }
-        ']' => {
-          self.move_next_char();
+        b']' => {
+          self.byte_index += 1;
           Ok(Token::CloseBracket)
         }
-        ',' => {
-          self.move_next_char();
+        b',' => {
+          self.byte_index += 1;
           Ok(Token::Comma)
         }
-        ':' => {
-          self.move_next_char();
+        b':' => {
+          self.byte_index += 1;
           Ok(Token::Colon)
         }
-        '\'' => {
+        b'\'' => {
           if self.allow_single_quoted_strings {
             self.parse_string()
           } else {
             Err(self.create_error_for_current_token(ParseErrorKind::SingleQuotedStringsNotAllowed))
           }
         }
-        '"' => self.parse_string(),
-        '/' => match self.peek_char() {
-          Some('/') => Ok(self.parse_comment_line()),
-          Some('*') => self.parse_comment_block(),
+        b'"' => self.parse_string(),
+        b'/' => match self.bytes.get(self.byte_index + 1) {
+          Some(b'/') => Ok(self.parse_comment_line()),
+          Some(b'*') => self.parse_comment_block(),
           _ => Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken)),
         },
-        _ => {
-          if current_char == '-' || current_char == '+' || self.is_digit() {
-            self.parse_number()
-          } else if self.try_move_word("true") {
-            Ok(Token::Boolean(true))
-          } else if self.try_move_word("false") {
-            Ok(Token::Boolean(false))
-          } else if self.try_move_word("null") {
-            Ok(Token::Null)
-          } else {
-            self.parse_word()
-          }
-        }
+        b'-' | b'+' | b'0'..=b'9' => self.parse_number(),
+        b't' if self.try_move_word("true") => Ok(Token::Boolean(true)),
+        b'f' if self.try_move_word("false") => Ok(Token::Boolean(false)),
+        b'n' if self.try_move_word("null") => Ok(Token::Null),
+        _ => self.parse_word(),
       };
       match token_result {
         Ok(token) => {
@@ -179,6 +160,28 @@ impl<'a> Scanner<'a> {
   }
 
   fn parse_string(&mut self) -> Result<Token<'a>, ParseError> {
+    let quote = self.bytes[self.byte_index];
+    let start = self.byte_index + 1;
+
+    // fast path: scan for closing quote or backslash byte-by-byte.
+    // this is safe because quote (0x22/0x27) and backslash (0x5C) are ASCII
+    // and can never appear as continuation bytes in multi-byte UTF-8 sequences.
+    let mut i = start;
+    while i < self.bytes.len() {
+      let b = self.bytes[i];
+      if b == quote {
+        // found closing quote with no escapes
+        let s = &self.file_text[start..i];
+        self.byte_index = i + 1;
+        return Ok(Token::String(Cow::Borrowed(s)));
+      }
+      if b == b'\\' {
+        break;
+      }
+      i += 1;
+    }
+
+    // slow path: handle escape sequences via CharProvider
     crate::string::parse_string_with_char_provider(self)
       .map(Token::String)
       // todo(dsherret): don't convert the error kind to a string here
@@ -189,129 +192,151 @@ impl<'a> Scanner<'a> {
     let start_byte_index = self.byte_index;
 
     // handle unary plus and unary minus
-    if self.is_positive_sign() {
-      if !self.allow_unary_plus_numbers {
-        return Err(self.create_error_for_current_token(ParseErrorKind::UnaryPlusNumbersNotAllowed));
-      }
-      self.move_next_char();
-    } else if self.is_negative_sign() {
-      self.move_next_char();
-    }
-
-    if self.is_zero() {
-      self.move_next_char();
-
-      // check for hexadecimal literal (0x or 0X)
-      if matches!(self.current_char(), Some('x') | Some('X')) {
-        if !self.allow_hexadecimal_numbers {
-          return Err(self.create_error_for_current_token(ParseErrorKind::HexadecimalNumbersNotAllowed));
+    match self.bytes.get(self.byte_index) {
+      Some(b'+') => {
+        if !self.allow_unary_plus_numbers {
+          return Err(self.create_error_for_current_token(ParseErrorKind::UnaryPlusNumbersNotAllowed));
         }
-
-        self.move_next_char();
-
-        // must have at least one hex digit
-        if !self.is_hex_digit() {
-          return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
-        }
-
-        while self.is_hex_digit() {
-          self.move_next_char();
-        }
-
-        let end_byte_index = self.byte_index;
-        return Ok(Token::Number(&self.file_text[start_byte_index..end_byte_index]));
+        self.byte_index += 1;
       }
-    } else if self.is_one_nine() {
-      self.move_next_char();
-      while self.is_digit() {
-        self.move_next_char();
-      }
-    } else {
-      return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigitFollowingNegativeSign));
-    }
-
-    if self.is_decimal_point() {
-      self.move_next_char();
-
-      if !self.is_digit() {
-        return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
-      }
-
-      while self.is_digit() {
-        self.move_next_char();
-      }
-    }
-
-    match self.current_char() {
-      Some('e') | Some('E') => {
-        match self.move_next_char() {
-          Some('-') | Some('+') => {
-            self.move_next_char();
-            if !self.is_digit() {
-              return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
-            }
-          }
-          _ => {
-            if !self.is_digit() {
-              return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedPlusMinusOrDigitInNumberLiteral));
-            }
-          }
-        }
-
-        while self.is_digit() {
-          self.move_next_char();
-        }
+      Some(b'-') => {
+        self.byte_index += 1;
       }
       _ => {}
     }
 
-    let end_byte_index = self.byte_index;
-    Ok(Token::Number(&self.file_text[start_byte_index..end_byte_index]))
+    match self.bytes.get(self.byte_index) {
+      Some(b'0') => {
+        self.byte_index += 1;
+
+        // check for hexadecimal literal (0x or 0X)
+        if matches!(self.bytes.get(self.byte_index), Some(b'x' | b'X')) {
+          if !self.allow_hexadecimal_numbers {
+            return Err(self.create_error_for_current_token(ParseErrorKind::HexadecimalNumbersNotAllowed));
+          }
+
+          self.byte_index += 1;
+
+          // must have at least one hex digit
+          if !matches!(self.bytes.get(self.byte_index), Some(b) if b.is_ascii_hexdigit()) {
+            return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
+          }
+
+          while matches!(self.bytes.get(self.byte_index), Some(b) if b.is_ascii_hexdigit()) {
+            self.byte_index += 1;
+          }
+
+          return Ok(Token::Number(&self.file_text[start_byte_index..self.byte_index]));
+        }
+      }
+      Some(b'1'..=b'9') => {
+        self.byte_index += 1;
+        while matches!(self.bytes.get(self.byte_index), Some(b'0'..=b'9')) {
+          self.byte_index += 1;
+        }
+      }
+      _ => {
+        return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigitFollowingNegativeSign));
+      }
+    }
+
+    if self.bytes.get(self.byte_index) == Some(&b'.') {
+      self.byte_index += 1;
+
+      if !matches!(self.bytes.get(self.byte_index), Some(b'0'..=b'9')) {
+        return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
+      }
+
+      while matches!(self.bytes.get(self.byte_index), Some(b'0'..=b'9')) {
+        self.byte_index += 1;
+      }
+    }
+
+    if matches!(self.bytes.get(self.byte_index), Some(b'e' | b'E')) {
+      self.byte_index += 1;
+
+      match self.bytes.get(self.byte_index) {
+        Some(b'-' | b'+') => {
+          self.byte_index += 1;
+          if !matches!(self.bytes.get(self.byte_index), Some(b'0'..=b'9')) {
+            return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
+          }
+        }
+        Some(b'0'..=b'9') => {}
+        _ => {
+          return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedPlusMinusOrDigitInNumberLiteral));
+        }
+      }
+
+      while matches!(self.bytes.get(self.byte_index), Some(b'0'..=b'9')) {
+        self.byte_index += 1;
+      }
+    }
+
+    Ok(Token::Number(&self.file_text[start_byte_index..self.byte_index]))
   }
 
   fn parse_comment_line(&mut self) -> Token<'a> {
-    self.assert_then_move_char('/');
-    #[cfg(debug_assertions)]
-    self.assert_char('/');
-
+    debug_assert!(self.bytes[self.byte_index] == b'/');
+    self.byte_index += 1;
+    debug_assert!(self.bytes[self.byte_index] == b'/');
     let start_byte_index = self.byte_index + 1;
-    while self.move_next_char().is_some() {
-      if self.is_new_line() {
+    self.byte_index += 1;
+
+    // scan byte-by-byte for newline; \n (0x0A) and \r (0x0D) are ASCII
+    // and can never appear as UTF-8 continuation bytes
+    while let Some(&b) = self.bytes.get(self.byte_index) {
+      if b == b'\n' {
         break;
       }
+      if b == b'\r' && self.bytes.get(self.byte_index + 1) == Some(&b'\n') {
+        break;
+      }
+      self.byte_index += 1;
     }
 
     Token::CommentLine(&self.file_text[start_byte_index..self.byte_index])
   }
 
   fn parse_comment_block(&mut self) -> Result<Token<'a>, ParseError> {
-    self.assert_then_move_char('/');
-    #[cfg(debug_assertions)]
-    self.assert_char('*');
-    let mut found_end = false;
-
+    debug_assert!(self.bytes[self.byte_index] == b'/');
+    self.byte_index += 1;
+    debug_assert!(self.bytes[self.byte_index] == b'*');
     let start_byte_index = self.byte_index + 1;
-    while let Some(current_char) = self.move_next_char() {
-      if current_char == '*' && self.peek_char() == Some('/') {
-        found_end = true;
-        break;
-      }
-    }
+    self.byte_index += 1;
 
-    if found_end {
-      let end_byte_index = self.byte_index;
-      self.assert_then_move_char('*');
-      self.assert_then_move_char('/');
-      Ok(Token::CommentBlock(&self.file_text[start_byte_index..end_byte_index]))
-    } else {
-      Err(self.create_error_for_current_token(ParseErrorKind::UnterminatedCommentBlock))
+    // scan byte-by-byte for */; both are ASCII and safe to scan through UTF-8
+    loop {
+      match self.bytes.get(self.byte_index) {
+        Some(&b'*') if self.bytes.get(self.byte_index + 1) == Some(&b'/') => {
+          let end_byte_index = self.byte_index;
+          self.byte_index += 2;
+          return Ok(Token::CommentBlock(&self.file_text[start_byte_index..end_byte_index]));
+        }
+        Some(_) => self.byte_index += 1,
+        None => return Err(self.create_error_for_current_token(ParseErrorKind::UnterminatedCommentBlock)),
+      }
     }
   }
 
   fn skip_whitespace(&mut self) {
-    while let Some(current_char) = self.current_char() {
-      if current_char.is_whitespace() {
-        self.move_next_char();
+    while let Some(&b) = self.bytes.get(self.byte_index) {
+      if b <= b' ' {
+        match b {
+          b' ' | b'\t' | b'\n' | b'\r' => {
+            self.byte_index += 1;
+            continue;
+          }
+          _ => break,
+        }
+      } else if b >= 0x80 {
+        // handle non-ASCII unicode whitespace
+        let c = self.file_text[self.byte_index..].chars().next().unwrap();
+        if c.is_whitespace() {
+          self.byte_index += c.len_utf8();
+          continue;
+        }
+        break;
       } else {
         break;
       }
@@ -319,160 +344,87 @@ impl<'a> Scanner<'a> {
   }
 
   fn try_move_word(&mut self, text: &str) -> bool {
-    let mut char_index = 0;
-    for c in text.chars() {
-      if let Some(current_char) = self.peek_char_offset(char_index) {
-        if current_char != c {
-          return false;
-        }
-
-        char_index += 1;
-      } else {
-        return false;
-      }
-    }
-
-    if let Some(next_char) = self.peek_char_offset(char_index)
-      && next_char.is_alphanumeric()
-    {
+    let text_bytes = text.as_bytes();
+    let end = self.byte_index + text_bytes.len();
+    if end > self.bytes.len() {
       return false;
     }
-
-    for _ in 0..char_index {
-      self.move_next_char();
+    if &self.bytes[self.byte_index..end] != text_bytes {
+      return false;
     }
-
+    // ensure the word is not followed by an alphanumeric character
+    if let Some(&next_byte) = self.bytes.get(end) {
+      if next_byte.is_ascii_alphanumeric() {
+        return false;
+      }
+      // check non-ASCII alphanumeric
+      if next_byte >= 0x80
+        && let Some(c) = self.file_text[end..].chars().next()
+          && c.is_alphanumeric() {
+            return false;
+          }
+    }
+    self.byte_index = end;
     true
   }
 
   fn parse_word(&mut self) -> Result<Token<'a>, ParseError> {
     let start_byte_index = self.byte_index;
 
-    while let Some(current_char) = self.current_char() {
-      // check for word terminators
-      if current_char.is_whitespace() || current_char == ':' {
-        break;
+    while self.byte_index < self.bytes.len() {
+      let b = self.bytes[self.byte_index];
+      if b < 0x80 {
+        // ASCII fast path
+        if b.is_ascii_whitespace() || b == b':' {
+          break;
+        }
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' {
+          self.byte_index += 1;
+        } else {
+          return Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken));
+        }
+      } else {
+        // non-ASCII: decode char
+        let c = self.file_text[self.byte_index..].chars().next().unwrap();
+        if c.is_whitespace() {
+          break;
+        }
+        if c.is_alphanumeric() {
+          self.byte_index += c.len_utf8();
+        } else {
+          return Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken));
+        }
       }
-      // validate that the character is allowed in a word literal
-      if !current_char.is_alphanumeric() && current_char != '-' && current_char != '_' {
-        return Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken));
-      }
-
-      self.move_next_char();
     }
 
-    let end_byte_index = self.byte_index;
-
-    if end_byte_index - start_byte_index == 0 {
+    if self.byte_index == start_byte_index {
       return Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken));
     }
 
-    Ok(Token::Word(&self.file_text[start_byte_index..end_byte_index]))
-  }
-
-  fn assert_then_move_char(&mut self, _character: char) {
-    #[cfg(debug_assertions)]
-    self.assert_char(_character);
-
-    self.move_next_char();
-  }
-
-  #[cfg(debug_assertions)]
-  fn assert_char(&mut self, character: char) {
-    let current_char = self.current_char();
-    debug_assert!(
-      current_char == Some(character),
-      "Expected {:?}, was {:?}",
-      character,
-      current_char
-    );
-  }
-
-  fn move_next_char(&mut self) -> Option<char> {
-    if let Some(&current_char) = self.char_buffer.first() {
-      // shift the entire array to the left then pop the last item
-      for i in 1..self.char_buffer.len() {
-        self.char_buffer[i - 1] = self.char_buffer[i];
-      }
-      self.char_buffer.pop();
-
-      if self.char_buffer.is_empty()
-        && let Some(new_char) = self.char_iter.next()
-      {
-        self.char_buffer.push(new_char);
-      }
-
-      self.byte_index += current_char.len_utf8();
-    }
-
-    self.current_char()
-  }
-
-  fn peek_char(&mut self) -> Option<char> {
-    self.peek_char_offset(1)
-  }
-
-  fn peek_char_offset(&mut self, offset: usize) -> Option<char> {
-    // fill the char buffer
-    for _ in self.char_buffer.len()..offset + 1 {
-      if let Some(next_char) = self.char_iter.next() {
-        self.char_buffer.push(next_char);
-      } else {
-        // end of string
-        return None;
-      }
-    }
-
-    // should not exceed this
-    debug_assert!(self.char_buffer.len() <= CHAR_BUFFER_MAX_SIZE);
-
-    self.char_buffer.get(offset).copied()
+    Ok(Token::Word(&self.file_text[start_byte_index..self.byte_index]))
   }
 
   fn current_char(&self) -> Option<char> {
-    self.char_buffer.first().copied()
-  }
-
-  fn is_new_line(&mut self) -> bool {
-    match self.current_char() {
-      Some('\n') => true,
-      Some('\r') => self.peek_char() == Some('\n'),
-      _ => false,
+    let &b = self.bytes.get(self.byte_index)?;
+    if b < 0x80 {
+      Some(b as char)
+    } else {
+      self.file_text[self.byte_index..].chars().next()
     }
   }
 
-  fn is_digit(&self) -> bool {
-    self.is_one_nine() || self.is_zero()
-  }
-
-  fn is_hex_digit(&self) -> bool {
-    match self.current_char() {
-      Some(current_char) => current_char.is_ascii_hexdigit(),
-      _ => false,
+  fn move_next_char(&mut self) -> Option<char> {
+    if self.byte_index >= self.bytes.len() {
+      return None;
     }
-  }
-
-  fn is_zero(&self) -> bool {
-    self.current_char() == Some('0')
-  }
-
-  fn is_one_nine(&self) -> bool {
-    match self.current_char() {
-      Some(current_char) => ('1'..='9').contains(&current_char),
-      _ => false,
+    let b = self.bytes[self.byte_index];
+    if b < 0x80 {
+      self.byte_index += 1;
+    } else {
+      let c = self.file_text[self.byte_index..].chars().next().unwrap();
+      self.byte_index += c.len_utf8();
     }
-  }
-
-  fn is_negative_sign(&self) -> bool {
-    self.current_char() == Some('-')
-  }
-
-  fn is_positive_sign(&self) -> bool {
-    self.current_char() == Some('+')
-  }
-
-  fn is_decimal_point(&self) -> bool {
-    self.current_char() == Some('.')
+    self.current_char()
   }
 }
 
