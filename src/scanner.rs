@@ -323,7 +323,7 @@ impl<'a> Scanner<'a> {
     while let Some(&b) = self.bytes.get(self.byte_index) {
       if b <= b' ' {
         match b {
-          b' ' | b'\t' | b'\n' | b'\r' => {
+          b' ' | b'\t' | b'\n' | b'\r' | 0x0B | 0x0C => {
             self.byte_index += 1;
             continue;
           }
