@@ -13,9 +13,8 @@ use super::ParseOptions;
 use super::common::Range;
 use super::errors::ParseError;
 use super::errors::ParseErrorKind;
-use super::scanner::Scanner;
-use super::scanner::ScannerOptions;
 use super::tokens::Token;
+use crate::parser::JsoncParser;
 
 /// Parses a string containing JSONC to a `serde_json::Value` or any
 /// type that implements `serde::Deserialize`.
@@ -58,29 +57,13 @@ pub fn parse_to_serde_value<T: ::serde::de::DeserializeOwned>(
   text: &str,
   parse_options: &ParseOptions,
 ) -> Result<Option<T>, ParseError> {
-  let mut parser = SerdeParser {
-    scanner: Scanner::new(
-      text,
-      &ScannerOptions {
-        allow_single_quoted_strings: parse_options.allow_single_quoted_strings,
-        allow_hexadecimal_numbers: parse_options.allow_hexadecimal_numbers,
-        allow_unary_plus_numbers: parse_options.allow_unary_plus_numbers,
-      },
-    ),
-    text,
-    allow_comments: parse_options.allow_comments,
-    allow_trailing_commas: parse_options.allow_trailing_commas,
-    allow_missing_commas: parse_options.allow_missing_commas,
-    allow_loose_object_property_names: parse_options.allow_loose_object_property_names,
-    depth: 0,
-    pending_token: None,
-  };
+  let mut parser = JsoncParser::new(text, parse_options);
 
   let token = parser.scan()?;
   match token {
     None => Ok(None),
     Some(token) => {
-      parser.pending_token = Some(token);
+      parser.put_back(token);
       let value = T::deserialize(&mut parser)?;
       if parser.scan()?.is_some() {
         return Err(
@@ -100,169 +83,21 @@ impl ::serde::de::Error for ParseError {
   }
 }
 
-struct SerdeParser<'a> {
-  scanner: Scanner<'a>,
-  text: &'a str,
-  allow_comments: bool,
-  allow_trailing_commas: bool,
-  allow_missing_commas: bool,
-  allow_loose_object_property_names: bool,
-  depth: usize,
-  pending_token: Option<Token<'a>>,
-}
-
-impl<'a> SerdeParser<'a> {
-  fn scan(&mut self) -> Result<Option<Token<'a>>, ParseError> {
-    if let Some(token) = self.pending_token.take() {
-      return Ok(Some(token));
-    }
-    loop {
-      match self.scanner.scan()? {
-        Some(Token::CommentLine(_) | Token::CommentBlock(_)) => {
-          if !self.allow_comments {
-            return Err(
-              self
-                .scanner
-                .create_error_for_current_token(ParseErrorKind::CommentsNotAllowed),
-            );
-          }
-          continue;
-        }
-        token => return Ok(token),
-      }
-    }
-  }
-
-  fn deserialize_token<V: Visitor<'a>>(&mut self, token: Token<'a>, visitor: V) -> Result<V::Value, ParseError> {
-    let token_range = Range::new(self.scanner.token_start(), self.scanner.token_end());
-    let result = match token {
-      Token::Null => visitor.visit_unit(),
-      Token::Boolean(b) => visitor.visit_bool(b),
-      Token::Number(n) => visit_number(n, visitor),
-      Token::String(s) => match s {
-        Cow::Borrowed(b) => visitor.visit_borrowed_str(b),
-        Cow::Owned(o) => visitor.visit_string(o),
-      },
-      Token::OpenBracket => {
-        self.depth += 1;
-        if self.depth > 512 {
-          self.depth -= 1;
-          return Err(
-            self
-              .scanner
-              .create_error_for_current_token(ParseErrorKind::NestingDepthExceeded),
-          );
-        }
-        let result = visitor.visit_seq(ScannerSeqAccess { parser: self, first: true });
-        self.depth -= 1;
-        result
-      }
-      Token::OpenBrace => {
-        self.depth += 1;
-        if self.depth > 512 {
-          self.depth -= 1;
-          return Err(
-            self
-              .scanner
-              .create_error_for_current_token(ParseErrorKind::NestingDepthExceeded),
-          );
-        }
-        let result = visitor.visit_map(ScannerMapAccess {
-          parser: self,
-          first: true,
-        });
-        self.depth -= 1;
-        result
-      }
-      Token::CloseBracket => {
-        return Err(
-          self
-            .scanner
-            .create_error_for_current_token(ParseErrorKind::UnexpectedCloseBracket),
-        )
-      }
-      Token::CloseBrace => {
-        return Err(
-          self
-            .scanner
-            .create_error_for_current_token(ParseErrorKind::UnexpectedCloseBrace),
-        )
-      }
-      Token::Comma => {
-        return Err(
-          self
-            .scanner
-            .create_error_for_current_token(ParseErrorKind::UnexpectedComma),
-        )
-      }
-      Token::Colon => {
-        return Err(
-          self
-            .scanner
-            .create_error_for_current_token(ParseErrorKind::UnexpectedColon),
-        )
-      }
-      Token::Word(_) => {
-        return Err(
-          self
-            .scanner
-            .create_error_for_current_token(ParseErrorKind::UnexpectedWord),
-        )
-      }
-      Token::CommentLine(_) | Token::CommentBlock(_) => unreachable!(),
-    };
-    result.map_err(|e| e.with_position(token_range, self.text))
-  }
-
-  fn scan_object_key(&mut self) -> Result<Option<ObjectKey<'a>>, ParseError> {
-    match self.scan()? {
-      Some(Token::CloseBrace) => Ok(None),
-      Some(Token::String(s)) => Ok(Some(ObjectKey::String(s))),
-      Some(Token::Word(s) | Token::Number(s)) => {
-        if !self.allow_loose_object_property_names {
-          return Err(
-            self
-              .scanner
-              .create_error_for_current_token(ParseErrorKind::ExpectedStringObjectProperty),
-          );
-        }
-        Ok(Some(ObjectKey::Word(s)))
-      }
-      None => Err(
-        self
-          .scanner
-          .create_error_for_current_token(ParseErrorKind::UnterminatedObject),
-      ),
-      _ => Err(
-        self
-          .scanner
-          .create_error_for_current_token(ParseErrorKind::UnexpectedTokenInObject),
-      ),
-    }
-  }
-}
-
-enum ObjectKey<'a> {
-  String(Cow<'a, str>),
-  Word(&'a str),
-}
-
-impl<'de> ::serde::Deserializer<'de> for &mut SerdeParser<'de> {
+impl<'de> ::serde::Deserializer<'de> for &mut JsoncParser<'de> {
   type Error = ParseError;
 
   fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
     match self.scan()? {
       None => Err(ParseError::custom_err("unexpected end of input".to_string())),
-      Some(token) => self.deserialize_token(token, visitor),
+      Some(token) => deserialize_token(self, token, visitor),
     }
   }
 
   fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-    let token = self.scan()?;
-    match token {
+    match self.scan()? {
       Some(Token::Null) => visitor.visit_none(),
       Some(token) => {
-        self.pending_token = Some(token);
+        self.put_back(token);
         visitor.visit_some(self)
       }
       None => visitor.visit_none(),
@@ -277,6 +112,7 @@ impl<'de> ::serde::Deserializer<'de> for &mut SerdeParser<'de> {
   ) -> Result<V::Value, Self::Error> {
     let token = self.scan()?;
     let token_range = Range::new(self.scanner.token_start(), self.scanner.token_end());
+    let text = self.text;
     let result = match token {
       Some(Token::String(s)) => {
         let variant: String = s.into_owned();
@@ -290,22 +126,13 @@ impl<'de> ::serde::Deserializer<'de> for &mut SerdeParser<'de> {
             return Err(ParseError::new(
               token_range,
               ParseErrorKind::Custom("expected a string key for enum variant".to_string()),
-              self.text,
+              text,
             ));
           }
         };
 
         // expect colon
-        match self.scan()? {
-          Some(Token::Colon) => {}
-          _ => {
-            return Err(
-              self
-                .scanner
-                .create_error_for_current_token(ParseErrorKind::ExpectedColonAfterObjectKey),
-            )
-          }
-        }
+        self.scan_object_colon()?;
 
         let result = visitor.visit_enum(ObjectEnumAccess { parser: self, variant: key });
         result.and_then(|v| {
@@ -324,11 +151,11 @@ impl<'de> ::serde::Deserializer<'de> for &mut SerdeParser<'de> {
         return Err(ParseError::new(
           token_range,
           ParseErrorKind::Custom("expected a string or object for enum".to_string()),
-          self.text,
+          text,
         ));
       }
     };
-    result.map_err(|e| e.with_position(token_range, self.text))
+    result.map_err(|e| e.with_position(token_range, text))
   }
 
   fn deserialize_newtype_struct<V: Visitor<'de>>(
@@ -344,6 +171,38 @@ impl<'de> ::serde::Deserializer<'de> for &mut SerdeParser<'de> {
     char str string bytes byte_buf unit unit_struct
     seq tuple tuple_struct map struct identifier ignored_any
   }
+}
+
+fn deserialize_token<'de, V: Visitor<'de>>(
+  parser: &mut JsoncParser<'de>,
+  token: Token<'de>,
+  visitor: V,
+) -> Result<V::Value, ParseError> {
+  let token_range = Range::new(parser.scanner.token_start(), parser.scanner.token_end());
+  let text = parser.text;
+  let result = match token {
+    Token::Null => visitor.visit_unit(),
+    Token::Boolean(b) => visitor.visit_bool(b),
+    Token::Number(n) => visit_number(n, visitor),
+    Token::String(s) => match s {
+      Cow::Borrowed(b) => visitor.visit_borrowed_str(b),
+      Cow::Owned(o) => visitor.visit_string(o),
+    },
+    Token::OpenBracket => {
+      parser.enter_container()?;
+      let result = visitor.visit_seq(ScannerSeqAccess { parser, first: true });
+      parser.exit_container();
+      result
+    }
+    Token::OpenBrace => {
+      parser.enter_container()?;
+      let result = visitor.visit_map(ScannerMapAccess { parser, first: true });
+      parser.exit_container();
+      result
+    }
+    other => return Err(parser.unexpected_token_error(&other)),
+  };
+  result.map_err(|e| e.with_position(token_range, text))
 }
 
 // number handling
@@ -382,7 +241,7 @@ fn visit_number<'de, V: Visitor<'de>>(raw: &str, visitor: V) -> Result<V::Value,
 // array handling
 
 struct ScannerSeqAccess<'a, 'b> {
-  parser: &'b mut SerdeParser<'a>,
+  parser: &'b mut JsoncParser<'a>,
   first: bool,
 }
 
@@ -394,30 +253,13 @@ impl<'de, 'b> SeqAccess<'de> for ScannerSeqAccess<'de, 'b> {
       self.first = false;
       self.parser.scan()?
     } else {
-      // after previous element, handle comma
-      let token = self.parser.scan()?;
-      match token {
-        Some(Token::Comma) => {
-          let comma_range = Range::new(self.parser.scanner.token_start(), self.parser.scanner.token_end());
-          let next = self.parser.scan()?;
-          if matches!(&next, Some(Token::CloseBracket)) && !self.parser.allow_trailing_commas {
-            return Err(
-              self
-                .parser
-                .scanner
-                .create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed),
-            );
-          }
-          next
-        }
-        other => other,
-      }
+      self.parser.scan_array_comma()?
     };
 
     match token {
       Some(Token::CloseBracket) => Ok(None),
       Some(token) => {
-        self.parser.pending_token = Some(token);
+        self.parser.put_back(token);
         seed.deserialize(&mut *self.parser).map(Some)
       }
       None => Err(
@@ -433,7 +275,7 @@ impl<'de, 'b> SeqAccess<'de> for ScannerSeqAccess<'de, 'b> {
 // object handling
 
 struct ScannerMapAccess<'a, 'b> {
-  parser: &'b mut SerdeParser<'a>,
+  parser: &'b mut JsoncParser<'a>,
   first: bool,
 }
 
@@ -441,89 +283,13 @@ impl<'de, 'b> MapAccess<'de> for ScannerMapAccess<'de, 'b> {
   type Error = ParseError;
 
   fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> {
-    let key = if self.first {
-      self.first = false;
-      self.parser.scan_object_key()?
-    } else {
-      // after previous value, handle comma
-      let after_value_end = self.parser.scanner.token_end();
-      let token = self.parser.scan()?;
-      match token {
-        Some(Token::Comma) => {
-          let comma_range = Range::new(self.parser.scanner.token_start(), self.parser.scanner.token_end());
-          let key = self.parser.scan_object_key()?;
-          if key.is_none() && !self.parser.allow_trailing_commas {
-            return Err(
-              self
-                .parser
-                .scanner
-                .create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed),
-            );
-          }
-          key
-        }
-        Some(Token::CloseBrace) => None,
-        Some(Token::String(s)) => {
-          if !self.parser.allow_missing_commas {
-            let range = Range::new(after_value_end, after_value_end);
-            return Err(
-              self
-                .parser
-                .scanner
-                .create_error_for_range(range, ParseErrorKind::ExpectedComma),
-            );
-          }
-          Some(ObjectKey::String(s))
-        }
-        Some(Token::Word(s) | Token::Number(s)) => {
-          if !self.parser.allow_missing_commas {
-            let range = Range::new(after_value_end, after_value_end);
-            return Err(
-              self
-                .parser
-                .scanner
-                .create_error_for_range(range, ParseErrorKind::ExpectedComma),
-            );
-          }
-          if !self.parser.allow_loose_object_property_names {
-            return Err(
-              self
-                .parser
-                .scanner
-                .create_error_for_current_token(ParseErrorKind::ExpectedStringObjectProperty),
-            );
-          }
-          Some(ObjectKey::Word(s))
-        }
-        None => {
-          return Err(
-            self
-              .parser
-              .scanner
-              .create_error_for_current_token(ParseErrorKind::UnterminatedObject),
-          )
-        }
-        _ => {
-          return Err(
-            self
-              .parser
-              .scanner
-              .create_error_for_current_token(ParseErrorKind::UnexpectedTokenInObject),
-          )
-        }
-      }
-    };
+    let key = self.parser.scan_object_entry(self.first)?;
+    self.first = false;
 
     match key {
       None => Ok(None),
-      Some(ObjectKey::String(s)) => {
-        let key_str: String = s.into_owned();
-        seed
-          .deserialize(<String as IntoDeserializer<Self::Error>>::into_deserializer(key_str))
-          .map(Some)
-      }
-      Some(ObjectKey::Word(s)) => {
-        let key_str = s.to_string();
+      Some(key) => {
+        let key_str = key.into_string();
         seed
           .deserialize(<String as IntoDeserializer<Self::Error>>::into_deserializer(key_str))
           .map(Some)
@@ -532,19 +298,7 @@ impl<'de, 'b> MapAccess<'de> for ScannerMapAccess<'de, 'b> {
   }
 
   fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, Self::Error> {
-    // expect colon
-    match self.parser.scan()? {
-      Some(Token::Colon) => {}
-      _ => {
-        return Err(
-          self
-            .parser
-            .scanner
-            .create_error_for_current_token(ParseErrorKind::ExpectedColonAfterObjectKey),
-        )
-      }
-    }
-
+    self.parser.scan_object_colon()?;
     seed.deserialize(&mut *self.parser)
   }
 }
@@ -552,7 +306,7 @@ impl<'de, 'b> MapAccess<'de> for ScannerMapAccess<'de, 'b> {
 // enum handling
 
 struct ObjectEnumAccess<'a, 'b> {
-  parser: &'b mut SerdeParser<'a>,
+  parser: &'b mut JsoncParser<'a>,
   variant: String,
 }
 
@@ -569,7 +323,7 @@ impl<'de, 'b> EnumAccess<'de> for ObjectEnumAccess<'de, 'b> {
 }
 
 struct ObjectVariantAccess<'a, 'b> {
-  parser: &'b mut SerdeParser<'a>,
+  parser: &'b mut JsoncParser<'a>,
 }
 
 impl<'de, 'b> VariantAccess<'de> for ObjectVariantAccess<'de, 'b> {
@@ -584,15 +338,14 @@ impl<'de, 'b> VariantAccess<'de> for ObjectVariantAccess<'de, 'b> {
   }
 
   fn tuple_variant<V: Visitor<'de>>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error> {
-    let token = self.parser.scan()?;
-    match token {
+    match self.parser.scan()? {
       Some(Token::OpenBracket) => {
-        self.parser.depth += 1;
+        self.parser.enter_container()?;
         let result = visitor.visit_seq(ScannerSeqAccess {
           parser: self.parser,
           first: true,
         });
-        self.parser.depth -= 1;
+        self.parser.exit_container();
         result
       }
       _ => Err(ParseError::custom_err(
@@ -606,15 +359,14 @@ impl<'de, 'b> VariantAccess<'de> for ObjectVariantAccess<'de, 'b> {
     _fields: &'static [&'static str],
     visitor: V,
   ) -> Result<V::Value, Self::Error> {
-    let token = self.parser.scan()?;
-    match token {
+    match self.parser.scan()? {
       Some(Token::OpenBrace) => {
-        self.parser.depth += 1;
+        self.parser.enter_container()?;
         let result = visitor.visit_map(ScannerMapAccess {
           parser: self.parser,
           first: true,
         });
-        self.parser.depth -= 1;
+        self.parser.exit_container();
         result
       }
       _ => Err(ParseError::custom_err(
