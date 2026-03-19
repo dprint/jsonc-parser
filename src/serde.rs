@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ::serde::de::DeserializeSeed;
 use ::serde::de::EnumAccess;
 use ::serde::de::IntoDeserializer;
@@ -7,16 +9,12 @@ use ::serde::de::VariantAccess;
 use ::serde::de::Visitor;
 use ::serde::forward_to_deserialize_any;
 
-use super::CollectOptions;
 use super::ParseOptions;
-use super::ast::Array;
-use super::ast::NumberLit;
-use super::ast::ObjectProp;
-use super::ast::Value;
-use super::common::Ranged;
+use super::common::Range;
 use super::errors::ParseError;
 use super::errors::ParseErrorKind;
-use super::parse_to_ast;
+use super::tokens::Token;
+use crate::parser::JsoncParser;
 
 /// Parses a string containing JSONC to a `serde_json::Value` or any
 /// type that implements `serde::Deserialize`.
@@ -59,21 +57,23 @@ pub fn parse_to_serde_value<T: ::serde::de::DeserializeOwned>(
   text: &str,
   parse_options: &ParseOptions,
 ) -> Result<Option<T>, ParseError> {
-  let value = parse_to_ast(
-    text,
-    &CollectOptions {
-      comments: crate::CommentCollectionStrategy::Off,
-      tokens: false,
-    },
-    parse_options,
-  )?
-  .value;
-  match value {
-    Some(v) => {
-      let deserializer = AstDeserializer { value: v, text };
-      T::deserialize(deserializer).map(Some)
-    }
+  let mut parser = JsoncParser::new(text, parse_options);
+
+  let token = parser.scan()?;
+  match token {
     None => Ok(None),
+    Some(token) => {
+      parser.put_back(token);
+      let value = T::deserialize(&mut parser)?;
+      if parser.scan()?.is_some() {
+        return Err(
+          parser
+            .scanner
+            .create_error_for_current_token(ParseErrorKind::MultipleRootJsonValues),
+        );
+      }
+      Ok(Some(value))
+    }
   }
 }
 
@@ -83,36 +83,24 @@ impl ::serde::de::Error for ParseError {
   }
 }
 
-struct AstDeserializer<'a> {
-  value: Value<'a>,
-  text: &'a str,
-}
-
-impl<'de> ::serde::Deserializer<'de> for AstDeserializer<'de> {
+impl<'de> ::serde::Deserializer<'de> for &mut JsoncParser<'de> {
   type Error = ParseError;
 
   fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-    let range = self.value.range();
-    let text = self.text;
-    let result = match self.value {
-      Value::NullKeyword(_) => visitor.visit_unit(),
-      Value::BooleanLit(b) => visitor.visit_bool(b.value),
-      Value::NumberLit(n) => visit_number(n, visitor),
-      Value::StringLit(s) => match s.value {
-        std::borrow::Cow::Borrowed(b) => visitor.visit_borrowed_str(b),
-        std::borrow::Cow::Owned(o) => visitor.visit_string(o),
-      },
-      Value::Array(arr) => visit_array(arr, text, visitor),
-      Value::Object(obj) => visit_object(obj.properties, text, visitor),
-    };
-    result.map_err(|e| e.with_position(range, text))
+    match self.scan()? {
+      None => Err(ParseError::custom_err("unexpected end of input".to_string())),
+      Some(token) => deserialize_token(self, token, visitor),
+    }
   }
 
   fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
-    if matches!(&self.value, Value::NullKeyword(_)) {
-      visitor.visit_none()
-    } else {
-      visitor.visit_some(self)
+    match self.scan()? {
+      Some(Token::Null) => visitor.visit_none(),
+      Some(token) => {
+        self.put_back(token);
+        visitor.visit_some(self)
+      }
+      None => visitor.visit_none(),
     }
   }
 
@@ -122,37 +110,52 @@ impl<'de> ::serde::Deserializer<'de> for AstDeserializer<'de> {
     _variants: &'static [&'static str],
     visitor: V,
   ) -> Result<V::Value, Self::Error> {
-    let range = self.value.range();
+    let token = self.scan()?;
+    let token_range = Range::new(self.scanner.token_start(), self.scanner.token_end());
     let text = self.text;
-    let result = match self.value {
-      Value::StringLit(s) => {
-        let variant: String = s.value.into_owned();
+    let result = match token {
+      Some(Token::String(s)) => {
+        let variant: String = s.into_owned();
         visitor.visit_enum(variant.into_deserializer())
       }
-      Value::Object(obj) => {
-        if obj.properties.len() != 1 {
-          return Err(ParseError::new(
-            range,
-            ParseErrorKind::Custom("expected an object with exactly one property for enum".to_string()),
-            text,
-          ));
-        }
-        let prop = obj.properties.into_iter().next().unwrap();
-        visitor.visit_enum(ObjectEnumDeserializer {
-          variant: prop.name.into_string(),
-          value: prop.value,
-          text,
+      Some(Token::OpenBrace) => {
+        // expect exactly one property: { "Variant": data }
+        let key = match self.scan()? {
+          Some(Token::String(s)) => s.into_owned(),
+          _ => {
+            return Err(ParseError::new(
+              token_range,
+              ParseErrorKind::Custom("expected a string key for enum variant".to_string()),
+              text,
+            ));
+          }
+        };
+
+        // expect colon
+        self.scan_object_colon()?;
+
+        let result = visitor.visit_enum(ObjectEnumAccess { parser: self, variant: key });
+        result.and_then(|v| {
+          // expect close brace
+          match self.scan()? {
+            Some(Token::CloseBrace) => Ok(v),
+            _ => Err(
+              self
+                .scanner
+                .create_error_for_current_token(ParseErrorKind::UnterminatedObject),
+            ),
+          }
         })
       }
       _ => {
         return Err(ParseError::new(
-          range,
+          token_range,
           ParseErrorKind::Custom("expected a string or object for enum".to_string()),
           text,
         ));
       }
     };
-    result.map_err(|e| e.with_position(range, text))
+    result.map_err(|e| e.with_position(token_range, text))
   }
 
   fn deserialize_newtype_struct<V: Visitor<'de>>(
@@ -170,11 +173,41 @@ impl<'de> ::serde::Deserializer<'de> for AstDeserializer<'de> {
   }
 }
 
+fn deserialize_token<'de, V: Visitor<'de>>(
+  parser: &mut JsoncParser<'de>,
+  token: Token<'de>,
+  visitor: V,
+) -> Result<V::Value, ParseError> {
+  let token_range = Range::new(parser.scanner.token_start(), parser.scanner.token_end());
+  let text = parser.text;
+  let result = match token {
+    Token::Null => visitor.visit_unit(),
+    Token::Boolean(b) => visitor.visit_bool(b),
+    Token::Number(n) => visit_number(n, visitor),
+    Token::String(s) => match s {
+      Cow::Borrowed(b) => visitor.visit_borrowed_str(b),
+      Cow::Owned(o) => visitor.visit_string(o),
+    },
+    Token::OpenBracket => {
+      parser.enter_container()?;
+      let result = visitor.visit_seq(ScannerSeqAccess { parser, first: true });
+      parser.exit_container();
+      result
+    }
+    Token::OpenBrace => {
+      parser.enter_container()?;
+      let result = visitor.visit_map(ScannerMapAccess { parser, first: true });
+      parser.exit_container();
+      result
+    }
+    other => return Err(parser.unexpected_token_error(&other)),
+  };
+  result.map_err(|e| e.with_position(token_range, text))
+}
+
 // number handling
 
-fn visit_number<'de, V: Visitor<'de>>(num: NumberLit<'_>, visitor: V) -> Result<V::Value, ParseError> {
-  let raw = num.value;
-
+fn visit_number<'de, V: Visitor<'de>>(raw: &str, visitor: V) -> Result<V::Value, ParseError> {
   // handle hexadecimal
   let trimmed = raw.trim_start_matches(['-', '+']);
   if trimmed.len() > 2 && (trimmed.starts_with("0x") || trimmed.starts_with("0X")) {
@@ -207,135 +240,117 @@ fn visit_number<'de, V: Visitor<'de>>(num: NumberLit<'_>, visitor: V) -> Result<
 
 // array handling
 
-fn visit_array<'de, V: Visitor<'de>>(arr: Array<'de>, text: &'de str, visitor: V) -> Result<V::Value, ParseError> {
-  visitor.visit_seq(ArraySeqAccess {
-    iter: arr.elements.into_iter(),
-    text,
-  })
+struct ScannerSeqAccess<'a, 'b> {
+  parser: &'b mut JsoncParser<'a>,
+  first: bool,
 }
 
-struct ArraySeqAccess<'a> {
-  iter: std::vec::IntoIter<Value<'a>>,
-  text: &'a str,
-}
-
-impl<'de> SeqAccess<'de> for ArraySeqAccess<'de> {
+impl<'de, 'b> SeqAccess<'de> for ScannerSeqAccess<'de, 'b> {
   type Error = ParseError;
 
   fn next_element_seed<T: DeserializeSeed<'de>>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> {
-    match self.iter.next() {
-      Some(value) => seed.deserialize(AstDeserializer { value, text: self.text }).map(Some),
-      None => Ok(None),
+    let token = if self.first {
+      self.first = false;
+      self.parser.scan()?
+    } else {
+      self.parser.scan_array_comma()?
+    };
+
+    match token {
+      Some(Token::CloseBracket) => Ok(None),
+      Some(token) => {
+        self.parser.put_back(token);
+        seed.deserialize(&mut *self.parser).map(Some)
+      }
+      None => Err(
+        self
+          .parser
+          .scanner
+          .create_error_for_current_token(ParseErrorKind::UnterminatedArray),
+      ),
     }
   }
 }
 
 // object handling
 
-fn visit_object<'de, V: Visitor<'de>>(
-  properties: Vec<ObjectProp<'de>>,
-  text: &'de str,
-  visitor: V,
-) -> Result<V::Value, ParseError> {
-  visitor.visit_map(ObjectMapAccess {
-    iter: properties.into_iter(),
-    pending_value: None,
-    text,
-  })
+struct ScannerMapAccess<'a, 'b> {
+  parser: &'b mut JsoncParser<'a>,
+  first: bool,
 }
 
-struct ObjectMapAccess<'a> {
-  iter: std::vec::IntoIter<ObjectProp<'a>>,
-  pending_value: Option<Value<'a>>,
-  text: &'a str,
-}
-
-impl<'de> MapAccess<'de> for ObjectMapAccess<'de> {
+impl<'de, 'b> MapAccess<'de> for ScannerMapAccess<'de, 'b> {
   type Error = ParseError;
 
   fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> {
-    match self.iter.next() {
-      Some(prop) => {
-        let key = prop.name.into_string();
-        self.pending_value = Some(prop.value);
+    let key = self.parser.scan_object_entry(self.first)?;
+    self.first = false;
+
+    match key {
+      None => Ok(None),
+      Some(key) => {
+        let key_str = key.into_string();
         seed
-          .deserialize(<String as IntoDeserializer<Self::Error>>::into_deserializer(key))
+          .deserialize(<String as IntoDeserializer<Self::Error>>::into_deserializer(key_str))
           .map(Some)
       }
-      None => Ok(None),
     }
   }
 
   fn next_value_seed<V: DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, Self::Error> {
-    let value = self
-      .pending_value
-      .take()
-      .expect("next_value_seed called before next_key_seed");
-    seed.deserialize(AstDeserializer { value, text: self.text })
+    self.parser.scan_object_colon()?;
+    seed.deserialize(&mut *self.parser)
   }
 }
 
 // enum handling
 
-struct ObjectEnumDeserializer<'a> {
+struct ObjectEnumAccess<'a, 'b> {
+  parser: &'b mut JsoncParser<'a>,
   variant: String,
-  value: Value<'a>,
-  text: &'a str,
 }
 
-impl<'de> EnumAccess<'de> for ObjectEnumDeserializer<'de> {
+impl<'de, 'b> EnumAccess<'de> for ObjectEnumAccess<'de, 'b> {
   type Error = ParseError;
-  type Variant = ObjectVariantDeserializer<'de>;
+  type Variant = ObjectVariantAccess<'de, 'b>;
 
   fn variant_seed<V: DeserializeSeed<'de>>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error> {
     let variant = seed.deserialize(<String as IntoDeserializer<Self::Error>>::into_deserializer(
       self.variant,
     ))?;
-    Ok((
-      variant,
-      ObjectVariantDeserializer {
-        value: self.value,
-        text: self.text,
-      },
-    ))
+    Ok((variant, ObjectVariantAccess { parser: self.parser }))
   }
 }
 
-struct ObjectVariantDeserializer<'a> {
-  value: Value<'a>,
-  text: &'a str,
+struct ObjectVariantAccess<'a, 'b> {
+  parser: &'b mut JsoncParser<'a>,
 }
 
-impl<'de> VariantAccess<'de> for ObjectVariantDeserializer<'de> {
+impl<'de, 'b> VariantAccess<'de> for ObjectVariantAccess<'de, 'b> {
   type Error = ParseError;
 
   fn unit_variant(self) -> Result<(), Self::Error> {
-    let range = self.value.range();
-    ::serde::Deserialize::deserialize(AstDeserializer {
-      value: self.value,
-      text: self.text,
-    })
-    .map_err(|e: ParseError| e.with_position(range, self.text))
+    ::serde::Deserialize::deserialize(&mut *self.parser)
   }
 
   fn newtype_variant_seed<T: DeserializeSeed<'de>>(self, seed: T) -> Result<T::Value, Self::Error> {
-    seed.deserialize(AstDeserializer {
-      value: self.value,
-      text: self.text,
-    })
+    seed.deserialize(&mut *self.parser)
   }
 
   fn tuple_variant<V: Visitor<'de>>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error> {
-    match self.value {
-      Value::Array(arr) => visit_array(arr, self.text, visitor),
-      other => {
-        let range = other.range();
-        Err(ParseError::new(
-          range,
-          ParseErrorKind::Custom("expected an array for tuple variant".to_string()),
-          self.text,
-        ))
+    match self.parser.scan()? {
+      Some(Token::OpenBracket) => {
+        self.parser.enter_container()?;
+        let result = visitor.visit_seq(ScannerSeqAccess {
+          parser: self.parser,
+          first: true,
+        });
+        self.parser.exit_container();
+        result
       }
+      _ => Err(ParseError::custom_err(
+        "expected an array for tuple variant".to_string(),
+      )),
     }
   }
 
@@ -344,16 +359,19 @@ impl<'de> VariantAccess<'de> for ObjectVariantDeserializer<'de> {
     _fields: &'static [&'static str],
     visitor: V,
   ) -> Result<V::Value, Self::Error> {
-    match self.value {
-      Value::Object(obj) => visit_object(obj.properties, self.text, visitor),
-      other => {
-        let range = other.range();
-        Err(ParseError::new(
-          range,
-          ParseErrorKind::Custom("expected an object for struct variant".to_string()),
-          self.text,
-        ))
+    match self.parser.scan()? {
+      Some(Token::OpenBrace) => {
+        self.parser.enter_container()?;
+        let result = visitor.visit_map(ScannerMapAccess {
+          parser: self.parser,
+          first: true,
+        });
+        self.parser.exit_container();
+        result
       }
+      _ => Err(ParseError::custom_err(
+        "expected an object for struct variant".to_string(),
+      )),
     }
   }
 }
