@@ -26,6 +26,7 @@ impl<'a> ObjectKey<'a> {
 /// tracking, and comma/separator logic.
 pub(crate) struct JsoncParser<'a> {
   pub scanner: Scanner<'a>,
+  #[allow(dead_code)] // used by the serde feature
   pub text: &'a str,
   allow_comments: bool,
   allow_trailing_commas: bool,
@@ -80,6 +81,7 @@ impl<'a> JsoncParser<'a> {
   }
 
   /// Puts a token back so the next `scan()` returns it.
+  #[cfg(feature = "serde")]
   pub fn put_back(&mut self, token: Token<'a>) {
     debug_assert!(self.pending_token.is_none(), "put_back called with pending token");
     self.pending_token = Some(token);
