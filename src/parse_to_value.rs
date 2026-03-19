@@ -1,8 +1,9 @@
-use super::CollectOptions;
 use super::ParseOptions;
-use super::ast;
-use super::errors::ParseError;
-use super::parse_to_ast;
+use super::common::Range;
+use super::errors::*;
+use super::scanner::Scanner;
+use super::scanner::ScannerOptions;
+use super::tokens::Token;
 use super::value::*;
 use crate::value::Map;
 
@@ -18,43 +19,262 @@ use crate::value::Map;
 /// let json_value = parse_to_value(r#"{ "test": 5 } // test"#, &Default::default()).expect("Should parse.");
 /// ```
 pub fn parse_to_value<'a>(text: &'a str, options: &ParseOptions) -> Result<Option<JsonValue<'a>>, ParseError> {
-  let value = parse_to_ast(
-    text,
-    &CollectOptions {
-      comments: crate::CommentCollectionStrategy::Off,
-      tokens: false,
-    },
-    options,
-  )?
-  .value;
-  Ok(value.map(handle_value))
-}
+  let mut parser = ValueParser {
+    scanner: Scanner::new(
+      text,
+      &ScannerOptions {
+        allow_single_quoted_strings: options.allow_single_quoted_strings,
+        allow_hexadecimal_numbers: options.allow_hexadecimal_numbers,
+        allow_unary_plus_numbers: options.allow_unary_plus_numbers,
+      },
+    ),
+    allow_comments: options.allow_comments,
+    allow_trailing_commas: options.allow_trailing_commas,
+    allow_missing_commas: options.allow_missing_commas,
+    allow_loose_object_property_names: options.allow_loose_object_property_names,
+    depth: 0,
+  };
 
-fn handle_value(value: ast::Value) -> JsonValue {
-  match value {
-    ast::Value::StringLit(lit) => JsonValue::String(lit.value),
-    ast::Value::NumberLit(lit) => JsonValue::Number(lit.value),
-    ast::Value::BooleanLit(lit) => JsonValue::Boolean(lit.value),
-    ast::Value::Object(obj) => JsonValue::Object(handle_object(obj)),
-    ast::Value::Array(arr) => JsonValue::Array(handle_array(arr)),
-    ast::Value::NullKeyword(_) => JsonValue::Null,
+  let token = parser.scan()?;
+  let value = match token {
+    Some(token) => Some(parser.parse_value(token)?),
+    None => return Ok(None),
+  };
+
+  if parser.scan()?.is_some() {
+    return Err(
+      parser
+        .scanner
+        .create_error_for_current_token(ParseErrorKind::MultipleRootJsonValues),
+    );
   }
+
+  Ok(value)
 }
 
-fn handle_array(arr: ast::Array) -> JsonArray {
-  let elements = arr.elements.into_iter().map(handle_value).collect();
-
-  JsonArray::new(elements)
+struct ValueParser<'a> {
+  scanner: Scanner<'a>,
+  allow_comments: bool,
+  allow_trailing_commas: bool,
+  allow_missing_commas: bool,
+  allow_loose_object_property_names: bool,
+  depth: usize,
 }
 
-fn handle_object(obj: ast::Object) -> JsonObject {
-  let mut props = Map::with_capacity(obj.properties.len());
-  for prop in obj.properties.into_iter() {
-    let prop_name = prop.name.into_string();
-    let prop_value = handle_value(prop.value);
-    props.insert(prop_name, prop_value);
+impl<'a> ValueParser<'a> {
+  fn scan(&mut self) -> Result<Option<Token<'a>>, ParseError> {
+    loop {
+      match self.scanner.scan()? {
+        Some(Token::CommentLine(_) | Token::CommentBlock(_)) => {
+          if !self.allow_comments {
+            return Err(
+              self
+                .scanner
+                .create_error_for_current_token(ParseErrorKind::CommentsNotAllowed),
+            );
+          }
+          continue;
+        }
+        token => return Ok(token),
+      }
+    }
   }
-  JsonObject::new(props)
+
+  #[inline]
+  fn check_depth(&self) -> Result<(), ParseError> {
+    if self.depth > 512 {
+      Err(
+        self
+          .scanner
+          .create_error_for_current_token(ParseErrorKind::NestingDepthExceeded),
+      )
+    } else {
+      Ok(())
+    }
+  }
+
+  fn parse_value(&mut self, token: Token<'a>) -> Result<JsonValue<'a>, ParseError> {
+    match token {
+      Token::OpenBrace => self.parse_object(),
+      Token::OpenBracket => self.parse_array(),
+      Token::String(s) => Ok(JsonValue::String(s)),
+      Token::Number(n) => Ok(JsonValue::Number(n)),
+      Token::Boolean(b) => Ok(JsonValue::Boolean(b)),
+      Token::Null => Ok(JsonValue::Null),
+      Token::CloseBracket => Err(
+        self
+          .scanner
+          .create_error_for_current_token(ParseErrorKind::UnexpectedCloseBracket),
+      ),
+      Token::CloseBrace => Err(
+        self
+          .scanner
+          .create_error_for_current_token(ParseErrorKind::UnexpectedCloseBrace),
+      ),
+      Token::Comma => Err(
+        self
+          .scanner
+          .create_error_for_current_token(ParseErrorKind::UnexpectedComma),
+      ),
+      Token::Colon => Err(
+        self
+          .scanner
+          .create_error_for_current_token(ParseErrorKind::UnexpectedColon),
+      ),
+      Token::Word(_) => Err(
+        self
+          .scanner
+          .create_error_for_current_token(ParseErrorKind::UnexpectedWord),
+      ),
+      Token::CommentLine(_) | Token::CommentBlock(_) => unreachable!(),
+    }
+  }
+
+  fn parse_object(&mut self) -> Result<JsonValue<'a>, ParseError> {
+    self.depth += 1;
+    self.check_depth()?;
+    let mut props = Map::new();
+
+    let mut token = self.scan()?;
+
+    loop {
+      match token {
+        Some(Token::CloseBrace) => break,
+        Some(Token::String(name)) => {
+          let key = name.into_owned();
+          self.parse_property_value(&mut props, key)?;
+        }
+        Some(Token::Word(name) | Token::Number(name)) => {
+          if !self.allow_loose_object_property_names {
+            self.depth -= 1;
+            return Err(
+              self
+                .scanner
+                .create_error_for_current_token(ParseErrorKind::ExpectedStringObjectProperty),
+            );
+          }
+          let key = name.to_string();
+          self.parse_property_value(&mut props, key)?;
+        }
+        None => {
+          self.depth -= 1;
+          return Err(
+            self
+              .scanner
+              .create_error_for_current_token(ParseErrorKind::UnterminatedObject),
+          );
+        }
+        _ => {
+          self.depth -= 1;
+          return Err(
+            self
+              .scanner
+              .create_error_for_current_token(ParseErrorKind::UnexpectedTokenInObject),
+          );
+        }
+      }
+
+      // handle comma
+      let after_value_end = self.scanner.token_end();
+      token = self.scan()?;
+      match &token {
+        Some(Token::Comma) => {
+          let comma_range = Range::new(self.scanner.token_start(), self.scanner.token_end());
+          token = self.scan()?;
+          if matches!(&token, Some(Token::CloseBrace)) && !self.allow_trailing_commas {
+            self.depth -= 1;
+            return Err(
+              self
+                .scanner
+                .create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed),
+            );
+          }
+        }
+        Some(Token::String(_) | Token::Word(_) | Token::Number(_)) if !self.allow_missing_commas => {
+          let range = Range::new(after_value_end, after_value_end);
+          self.depth -= 1;
+          return Err(
+            self
+              .scanner
+              .create_error_for_range(range, ParseErrorKind::ExpectedComma),
+          );
+        }
+        _ => {}
+      }
+    }
+
+    self.depth -= 1;
+    Ok(JsonValue::Object(JsonObject::new(props)))
+  }
+
+  fn parse_property_value(&mut self, props: &mut Map<String, JsonValue<'a>>, key: String) -> Result<(), ParseError> {
+    match self.scan()? {
+      Some(Token::Colon) => {}
+      _ => {
+        return Err(
+          self
+            .scanner
+            .create_error_for_current_token(ParseErrorKind::ExpectedColonAfterObjectKey),
+        );
+      }
+    }
+
+    match self.scan()? {
+      Some(value_token) => {
+        let value = self.parse_value(value_token)?;
+        props.insert(key, value);
+        Ok(())
+      }
+      None => Err(
+        self
+          .scanner
+          .create_error_for_current_token(ParseErrorKind::ExpectedObjectValue),
+      ),
+    }
+  }
+
+  fn parse_array(&mut self) -> Result<JsonValue<'a>, ParseError> {
+    self.depth += 1;
+    self.check_depth()?;
+    let mut elements = Vec::new();
+
+    let mut token = self.scan()?;
+
+    loop {
+      match token {
+        Some(Token::CloseBracket) => break,
+        None => {
+          self.depth -= 1;
+          return Err(
+            self
+              .scanner
+              .create_error_for_current_token(ParseErrorKind::UnterminatedArray),
+          );
+        }
+        Some(value_token) => {
+          elements.push(self.parse_value(value_token)?);
+        }
+      }
+
+      // handle comma
+      token = self.scan()?;
+      if matches!(&token, Some(Token::Comma)) {
+        let comma_range = Range::new(self.scanner.token_start(), self.scanner.token_end());
+        token = self.scan()?;
+        if matches!(&token, Some(Token::CloseBracket)) && !self.allow_trailing_commas {
+          self.depth -= 1;
+          return Err(
+            self
+              .scanner
+              .create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed),
+          );
+        }
+      }
+    }
+
+    self.depth -= 1;
+    Ok(JsonValue::Array(JsonArray::new(elements)))
+  }
 }
 
 #[cfg(test)]
@@ -260,7 +480,7 @@ mod tests {
 
     match result {
       Ok(_) => panic!("Expected error, but did not find one."),
-      Err(err) => assert_eq!(err.to_string(), "Maximum nesting depth exceeded on line 1 column 1282"),
+      Err(err) => assert_eq!(err.to_string(), "Maximum nesting depth exceeded on line 1 column 2561"),
     }
   }
 }
