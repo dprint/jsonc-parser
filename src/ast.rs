@@ -57,7 +57,7 @@ impl<'a> Value<'a> {
   }
 }
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 impl<'a> From<Value<'a>> for serde_json::Value {
   fn from(value: Value<'a>) -> Self {
     use std::str::FromStr;
@@ -631,7 +631,7 @@ mod test {
     assert_eq!(obj.properties.len(), 1);
   }
 
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   #[test]
   fn it_should_coerce_to_serde_value() {
     let ast = parse_to_ast(
@@ -656,7 +656,7 @@ mod test {
     );
   }
 
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   #[test]
   fn handle_weird_data() {
     let ast = parse_to_ast(

@@ -598,7 +598,7 @@ impl CstNode {
   ///   println!("{}", json_value);
   /// }
   /// ```
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     match self {
       CstNode::Container(container) => container.to_serde_value(),
@@ -919,7 +919,7 @@ impl CstContainerNode {
   /// Converts a CST container node to a `serde_json::Value`.
   ///
   /// Returns `None` if the node cannot be converted to a value.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     match self {
       CstContainerNode::Root(node) => node.to_serde_value(),
@@ -1011,7 +1011,7 @@ impl CstLeafNode {
   /// Converts a CST leaf node to a `serde_json::Value`.
   ///
   /// Returns `None` if the node is trivia or cannot be converted to a value.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     match self {
       CstLeafNode::BooleanLit(node) => node.to_serde_value(),
@@ -1308,7 +1308,7 @@ impl CstRootNode {
   /// Converts the root CST node to a `serde_json::Value`.
   ///
   /// Returns `None` if the root has no value node.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     self.value()?.to_serde_value()
   }
@@ -1367,7 +1367,7 @@ impl CstStringLit {
   }
 
   /// Converts a CST string literal to a `serde_json::Value`.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     self.decoded_value().ok().map(serde_json::Value::String)
   }
@@ -1438,7 +1438,7 @@ impl CstNumberLit {
   }
 
   /// Converts a CST number literal to a `serde_json::Value`.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     use std::str::FromStr;
     let raw = self.0.borrow().value.clone();
@@ -1509,7 +1509,7 @@ impl CstBooleanLit {
   }
 
   /// Converts a CST boolean literal to a `serde_json::Value`.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     Some(serde_json::Value::Bool(self.value()))
   }
@@ -1545,7 +1545,7 @@ impl CstNullKeyword {
   }
 
   /// Converts a CST null keyword to a `serde_json::Value`.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     Some(serde_json::Value::Null)
   }
@@ -1786,7 +1786,7 @@ impl CstObject {
   }
 
   /// Converts a CST object to a `serde_json::Value`.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     let mut map = serde_json::map::Map::new();
     for prop in self.properties() {
@@ -1977,12 +1977,12 @@ impl CstObjectProp {
   /// Converts a CST object property to a `serde_json::Value`.
   ///
   /// Returns the value of the property, or `None` if it has no value.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     self.value()?.to_serde_value()
   }
 
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   fn name_decoded(&self) -> Option<String> {
     match self.name()? {
       ObjectPropName::String(s) => s.decoded_value().ok(),
@@ -2142,7 +2142,7 @@ impl CstArray {
   }
 
   /// Converts a CST array to a `serde_json::Value`.
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   pub fn to_serde_value(&self) -> Option<serde_json::Value> {
     let elements: Vec<serde_json::Value> = self
       .elements()
@@ -4020,7 +4020,7 @@ value3: true
     CstRootNode::parse(text, &crate::ParseOptions::default()).unwrap()
   }
 
-  #[cfg(feature = "serde")]
+  #[cfg(feature = "serde_json")]
   mod serde_tests {
     use super::build_cst;
     use serde_json::Value as SerdeValue;
