@@ -483,4 +483,215 @@ mod tests {
       Err(err) => assert_eq!(err.to_string(), "Maximum nesting depth exceeded on line 1 column 2561"),
     }
   }
+
+  // error cases
+
+  #[track_caller]
+  fn assert_has_error(text: &str, message: &str) {
+    let result = parse_to_value(text, &Default::default());
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), message),
+    }
+  }
+
+  #[track_caller]
+  fn assert_has_strict_error(text: &str, message: &str) {
+    let result = parse_to_value(
+      text,
+      &ParseOptions {
+        allow_comments: false,
+        allow_loose_object_property_names: false,
+        allow_trailing_commas: false,
+        allow_missing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
+      },
+    );
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), message),
+    }
+  }
+
+  #[test]
+  fn it_should_error_when_has_multiple_values() {
+    assert_has_error(
+      "[][]",
+      "Text cannot contain more than one JSON value on line 1 column 3",
+    );
+  }
+
+  #[test]
+  fn it_should_error_when_object_is_not_terminated() {
+    assert_has_error("{", "Unterminated object on line 1 column 2");
+  }
+
+  #[test]
+  fn it_should_error_when_object_has_unexpected_token() {
+    assert_has_error("{ [] }", "Unexpected token in object on line 1 column 3");
+  }
+
+  #[test]
+  fn it_should_error_when_object_has_two_non_string_tokens() {
+    assert_has_error(
+      "{ asdf asdf: 5 }",
+      "Expected colon after the string or word in object property on line 1 column 8",
+    );
+  }
+
+  #[test]
+  fn it_should_error_when_array_is_not_terminated() {
+    assert_has_error("[", "Unterminated array on line 1 column 2");
+  }
+
+  #[test]
+  fn it_should_error_when_array_has_unexpected_token() {
+    assert_has_error("[:]", "Unexpected colon on line 1 column 2");
+  }
+
+  #[test]
+  fn it_should_error_when_comment_block_not_closed() {
+    assert_has_error("/* test", "Unterminated comment block on line 1 column 1");
+  }
+
+  #[test]
+  fn it_should_error_when_string_lit_not_closed() {
+    assert_has_error("\" test", "Unterminated string literal on line 1 column 1");
+  }
+
+  #[test]
+  fn strict_should_error_object_trailing_comma() {
+    assert_has_strict_error(
+      r#"{ "test": 5, }"#,
+      "Trailing commas are not allowed on line 1 column 12",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_array_trailing_comma() {
+    assert_has_strict_error(r#"[ "test", ]"#, "Trailing commas are not allowed on line 1 column 9");
+  }
+
+  #[test]
+  fn strict_should_error_comment_line() {
+    assert_has_strict_error(r#"[ "test" ] // 1"#, "Comments are not allowed on line 1 column 12");
+  }
+
+  #[test]
+  fn strict_should_error_comment_block() {
+    assert_has_strict_error(r#"[ "test" /* 1 */]"#, "Comments are not allowed on line 1 column 10");
+  }
+
+  #[test]
+  fn strict_should_error_word_property() {
+    assert_has_strict_error(
+      r#"{ word: 5 }"#,
+      "Expected string for object property on line 1 column 3",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_single_quoted_string() {
+    assert_has_strict_error(
+      r#"{ "key": 'value' }"#,
+      "Single-quoted strings are not allowed on line 1 column 10",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_hexadecimal_number() {
+    assert_has_strict_error(
+      r#"{ "key": 0xFF }"#,
+      "Hexadecimal numbers are not allowed on line 1 column 10",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_unary_plus_number() {
+    assert_has_strict_error(
+      r#"{ "key": +42 }"#,
+      "Unary plus on numbers is not allowed on line 1 column 10",
+    );
+  }
+
+  #[test]
+  fn missing_comma_between_properties() {
+    let text = r#"{
+  "name": "alice"
+  "age": 25
+}"#;
+    let value = parse_to_value(text, &Default::default()).unwrap().unwrap();
+    let obj = match &value {
+      JsonValue::Object(o) => o,
+      _ => panic!("Expected object"),
+    };
+    assert_eq!(obj.get_number("age").unwrap(), "25");
+
+    // but is strict when strict
+    assert_has_strict_error(text, "Expected comma on line 2 column 18");
+  }
+
+  #[test]
+  fn missing_comma_with_comment_between_properties() {
+    // when comments are allowed but missing commas are not,
+    // should still detect the missing comma after the comment is skipped
+    let result = parse_to_value(
+      r#"{
+  "name": "alice" // comment here
+  "age": 25
+}"#,
+      &ParseOptions {
+        allow_comments: true,
+        allow_missing_commas: false,
+        ..Default::default()
+      },
+    );
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Expected comma on line 2 column 18"),
+    }
+  }
+
+  #[test]
+  fn it_should_parse_unquoted_keys_with_hex_and_trailing_comma() {
+    let text = r#"{
+      CP_CanFuncReqId: 0x7DF,  // 2015
+  }"#;
+    let value = parse_to_value(text, &Default::default()).unwrap().unwrap();
+    let obj = match &value {
+      JsonValue::Object(o) => o,
+      _ => panic!("Expected object"),
+    };
+    assert_eq!(obj.get_number("CP_CanFuncReqId").unwrap(), "0x7DF");
+  }
+
+  #[test]
+  fn it_should_parse_unary_plus_numbers() {
+    let value = parse_to_value(r#"{ "test": +42 }"#, &Default::default())
+      .unwrap()
+      .unwrap();
+    let obj = match &value {
+      JsonValue::Object(o) => o,
+      _ => panic!("Expected object"),
+    };
+    assert_eq!(obj.get_number("test").unwrap(), "+42");
+  }
+
+  #[test]
+  fn it_should_parse_large_shallow_objects() {
+    // makes sure that nesting depth limit does not affect shallow objects
+    let mut json = "{\"q\":[".to_string();
+    let size = 1_000;
+
+    for _ in 0..size {
+      json += "{\"q\":[{}]}, [\"hello\"], ";
+    }
+
+    json += "]}";
+
+    let result = parse_to_value(&json, &ParseOptions::default());
+    assert!(result.is_ok());
+  }
 }
