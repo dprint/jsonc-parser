@@ -30,6 +30,7 @@ pub enum ParseErrorKind {
   UnterminatedArray,
   UnterminatedCommentBlock,
   UnterminatedObject,
+  NestingDepthExceeded,
   /// Custom error message, used by the serde deserializer.
   #[cfg(feature = "serde")]
   Custom(String),
@@ -108,6 +109,9 @@ impl std::fmt::Display for ParseErrorKind {
       }
       UnterminatedObject => {
         write!(f, "Unterminated object")
+      }
+      NestingDepthExceeded => {
+        write!(f, "Maximum nesting depth exceeded")
       }
       #[cfg(feature = "serde")]
       Custom(msg) => write!(f, "{}", msg),
