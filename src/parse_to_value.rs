@@ -21,7 +21,7 @@ pub fn parse_to_value<'a>(text: &'a str, options: &ParseOptions) -> Result<Optio
 
   let token = parser.scan()?;
   let value = match token {
-    Some(token) => Some(parse_value(&mut parser, token)?),
+    Some(token) => parse_value(&mut parser, token)?,
     None => return Ok(None),
   };
 
@@ -33,7 +33,7 @@ pub fn parse_to_value<'a>(text: &'a str, options: &ParseOptions) -> Result<Optio
     );
   }
 
-  Ok(value)
+  Ok(Some(value))
 }
 
 fn parse_value<'a>(parser: &mut JsoncParser<'a>, token: Token<'a>) -> Result<JsonValue<'a>, ParseError> {
