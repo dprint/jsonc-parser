@@ -210,6 +210,19 @@ mod tests {
   }
 
   #[test]
+  fn error_unexpected_word_should_have_full_range() {
+    // https://github.com/dprint/jsonc-parser/issues/2
+    // the error range should cover the entire word, not just the first character
+    let err = parse_to_value(r#"{ "test": asdf }"#, &Default::default())
+      .err()
+      .unwrap();
+    assert!(matches!(err.kind(), ParseErrorKind::UnexpectedWord));
+    // "asdf" is at bytes 10..14
+    assert_eq!(err.range().start, 10);
+    assert_eq!(err.range().end, 14);
+  }
+
+  #[test]
   fn it_should_parse_surrogate_pair() {
     // RFC 8259 § 7: non-BMP character 𝄞 (U+1D11E) should be escaped as surrogate pair \uD834\uDD1E
     let src = r#""\uD834\uDD1E""#;

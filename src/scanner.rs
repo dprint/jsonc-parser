@@ -136,7 +136,20 @@ impl<'a> Scanner<'a> {
   }
 
   pub(super) fn create_error_for_current_token(&self, kind: ParseErrorKind) -> ParseError {
-    self.create_error_for_start(self.token_start, kind)
+    let end = if self.byte_index > self.token_start {
+      // token was fully scanned — use the exact token end
+      self.byte_index
+    } else if let Some(c) = self.file_text[self.byte_index..].chars().next() {
+      // scanner hasn't advanced past token_start — cover the current character
+      self.byte_index + c.len_utf8()
+    } else {
+      self.file_text.len()
+    };
+    let range = Range {
+      start: self.token_start,
+      end,
+    };
+    self.create_error_for_range(range, kind)
   }
 
   pub(super) fn create_error_for_current_char(&self, kind: ParseErrorKind) -> ParseError {
