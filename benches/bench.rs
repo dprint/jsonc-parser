@@ -78,9 +78,7 @@ fn bench_serde(b: &mut Bencher, json_text: &str) {
 
 #[cfg(feature = "serde")]
 fn bench_serde_value(b: &mut Bencher, json_text: &str) {
-  b.iter(|| {
-    jsonc_parser::parse_to_serde_value::<serde_json::Value>(json_text, &Default::default()).unwrap()
-  });
+  b.iter(|| jsonc_parser::parse_to_serde_value::<serde_json::Value>(json_text, &Default::default()).unwrap());
 }
 
 // data

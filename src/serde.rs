@@ -134,7 +134,10 @@ impl<'de> ::serde::Deserializer<'de> for &mut JsoncParser<'de> {
         // expect colon
         self.scan_object_colon()?;
 
-        let result = visitor.visit_enum(ObjectEnumAccess { parser: self, variant: key });
+        let result = visitor.visit_enum(ObjectEnumAccess {
+          parser: self,
+          variant: key,
+        });
         result.and_then(|v| {
           // expect close brace
           match self.scan()? {
