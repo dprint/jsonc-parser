@@ -673,7 +673,7 @@ mod tests {
     }
     #[cfg(feature = "serde")]
     {
-      let value: serde_json::Value = crate::parse_to_serde_value(text, &Default::default()).unwrap().unwrap();
+      let value: serde_json::Value = crate::parse_to_serde_value(text, &Default::default()).unwrap();
       // hexadecimal numbers are converted to decimal in serde output
       assert_eq!(
         value,

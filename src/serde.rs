@@ -32,7 +32,7 @@ use crate::parser::JsoncParser;
 /// ```rs
 /// use jsonc_parser::parse_to_serde_value;
 ///
-/// let json_value = parse_to_serde_value::<serde_json::Value>(
+/// let json_value: serde_json::Value = parse_to_serde_value(
 ///   r#"{ "test": 5 } // test"#,
 ///   &Default::default(),
 /// ).unwrap();
@@ -48,33 +48,36 @@ use crate::parser::JsoncParser;
 ///   test: u32,
 /// }
 ///
-/// let config = parse_to_serde_value::<Config>(
+/// let config: Config = parse_to_serde_value(
 ///   r#"{ "test": 5 } // test"#,
 ///   &Default::default(),
 /// ).unwrap();
 /// ```
+///
+/// Empty or whitespace-only input deserializes as `null`, which means
+/// `Option<T>` will produce `None` while other types will return a
+/// type-mismatch error.
 pub fn parse_to_serde_value<T: ::serde::de::DeserializeOwned>(
   text: &str,
   parse_options: &ParseOptions,
-) -> Result<Option<T>, ParseError> {
+) -> Result<T, ParseError> {
   let mut parser = JsoncParser::new(text, parse_options);
 
   let token = parser.scan()?;
   match token {
-    None => Ok(None),
-    Some(token) => {
-      parser.put_back(token);
-      let value = T::deserialize(&mut parser)?;
-      if parser.scan()?.is_some() {
-        return Err(
-          parser
-            .scanner
-            .create_error_for_current_token(ParseErrorKind::MultipleRootJsonValues),
-        );
-      }
-      Ok(Some(value))
-    }
+    Some(token) => parser.put_back(token),
+    None => parser.put_back(Token::Null),
   }
+
+  let value = T::deserialize(&mut parser)?;
+  if parser.scan()?.is_some() {
+    return Err(
+      parser
+        .scanner
+        .create_error_for_current_token(ParseErrorKind::MultipleRootJsonValues),
+    );
+  }
+  Ok(value)
 }
 
 impl ::serde::de::Error for ParseError {
@@ -430,7 +433,7 @@ mod tests {
     expected_value.insert("e".to_string(), SerdeValue::Bool(false));
     expected_value.insert("f".to_string(), SerdeValue::Null);
 
-    assert_eq!(result, Some(SerdeValue::Object(expected_value)));
+    assert_eq!(result, SerdeValue::Object(expected_value));
   }
 
   #[test]
@@ -450,7 +453,7 @@ mod tests {
     expected_value.insert("hex2".to_string(), SerdeValue::Number(serde_json::Number::from(255)));
     expected_value.insert("hex3".to_string(), SerdeValue::Number(serde_json::Number::from(16)));
 
-    assert_eq!(result, Some(SerdeValue::Object(expected_value)));
+    assert_eq!(result, SerdeValue::Object(expected_value));
   }
 
   #[test]
@@ -476,7 +479,7 @@ mod tests {
       SerdeValue::Number(serde_json::Number::from_str("1e10").unwrap()),
     );
 
-    assert_eq!(result, Some(SerdeValue::Object(expected_value)));
+    assert_eq!(result, SerdeValue::Object(expected_value));
   }
 
   #[test]
@@ -489,7 +492,7 @@ mod tests {
       enabled: bool,
     }
 
-    let result: Option<Config> = parse_to_serde_value(
+    let result: Config = parse_to_serde_value(
       r#"{ "name": "test", "value": 42, "enabled": true }"#,
       &Default::default(),
     )
@@ -497,11 +500,11 @@ mod tests {
 
     assert_eq!(
       result,
-      Some(Config {
+      Config {
         name: "test".to_string(),
         value: 42,
         enabled: true,
-      })
+      }
     );
   }
 
@@ -533,9 +536,9 @@ mod tests {
       b: Option<u32>,
     }
 
-    let result: Option<Config> = parse_to_serde_value(r#"{ "a": 5, "b": null }"#, &Default::default()).unwrap();
+    let result: Config = parse_to_serde_value(r#"{ "a": 5, "b": null }"#, &Default::default()).unwrap();
 
-    assert_eq!(result, Some(Config { a: Some(5), b: None }));
+    assert_eq!(result, Config { a: Some(5), b: None });
   }
 
   #[test]
@@ -554,9 +557,9 @@ mod tests {
       color: Color,
     }
 
-    let result: Option<Config> = parse_to_serde_value(r#"{ "color": "Red" }"#, &Default::default()).unwrap();
+    let result: Config = parse_to_serde_value(r#"{ "color": "Red" }"#, &Default::default()).unwrap();
 
-    assert_eq!(result, Some(Config { color: Color::Red }));
+    assert_eq!(result, Config { color: Color::Red });
   }
 
   #[test]
@@ -568,26 +571,53 @@ mod tests {
       Rectangle { width: f64, height: f64 },
     }
 
-    let result: Option<Shape> = parse_to_serde_value(r#"{ "Circle": 5.0 }"#, &Default::default()).unwrap();
-    assert_eq!(result, Some(Shape::Circle(5.0)));
+    let result: Shape = parse_to_serde_value(r#"{ "Circle": 5.0 }"#, &Default::default()).unwrap();
+    assert_eq!(result, Shape::Circle(5.0));
 
-    let result: Option<Shape> = parse_to_serde_value(
+    let result: Shape = parse_to_serde_value(
       r#"{ "Rectangle": { "width": 3.0, "height": 4.0 } }"#,
       &Default::default(),
     )
     .unwrap();
     assert_eq!(
       result,
-      Some(Shape::Rectangle {
+      Shape::Rectangle {
         width: 3.0,
         height: 4.0
-      })
+      }
     );
   }
 
   #[test]
-  fn it_should_return_none_for_empty_input() {
+  fn it_should_return_null_for_empty_input() {
     let result = parse_to_serde_value::<SerdeValue>("", &Default::default()).unwrap();
+    assert_eq!(result, SerdeValue::Null);
+  }
+
+  #[test]
+  fn it_should_return_none_for_empty_input_with_option() {
+    let result: Option<SerdeValue> = parse_to_serde_value("", &Default::default()).unwrap();
+    assert_eq!(result, None);
+  }
+
+  #[test]
+  fn it_should_return_some_for_non_empty_input_with_option() {
+    let result: Option<SerdeValue> = parse_to_serde_value(r#"{ "a": 1 }"#, &Default::default()).unwrap();
+    assert!(result.is_some());
+  }
+
+  #[test]
+  fn it_should_return_none_for_empty_input_with_option_struct() {
+    #[derive(::serde::Deserialize, Debug, PartialEq)]
+    #[serde(crate = "::serde")]
+    struct Config {
+      value: u32,
+    }
+
+    let result: Option<Config> = parse_to_serde_value("", &Default::default()).unwrap();
+    assert_eq!(result, None);
+
+    let result: Option<Config> = parse_to_serde_value("  \n  ", &Default::default()).unwrap();
     assert_eq!(result, None);
   }
 
@@ -599,7 +629,7 @@ mod tests {
       value: u32,
     }
 
-    let result: Option<Config> = parse_to_serde_value(
+    let result: Config = parse_to_serde_value(
       r#"{
         // this is a comment
         "value": 42 /* inline comment */
@@ -608,6 +638,6 @@ mod tests {
     )
     .unwrap();
 
-    assert_eq!(result, Some(Config { value: 42 }));
+    assert_eq!(result, Config { value: 42 });
   }
 }

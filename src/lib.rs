@@ -90,7 +90,7 @@
 //! }
 //!
 //! # fn parse_example() -> Result<(), Box<dyn std::error::Error>> {
-//! let config: Option<Config> = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default())?;
+//! let config: Config = parse_to_serde_value(r#"{ "test": 5 } // test"#, &Default::default())?;
 //! # Ok(())
 //! # }
 //! # }
