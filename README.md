@@ -8,3 +8,7 @@ A JSON parser and manipulator for Rust that supports comments and other JSON ext
 ## Documentation
 
 For usage examples and API documentation, see the [rustdoc documentation](https://docs.rs/jsonc-parser).
+
+## Benchmarks
+
+See [Benchmarks](https://dprint.github.io/jsonc-parser/dev/bench/)
