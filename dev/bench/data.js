@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1774016862030,
+  "lastUpdate": 1775141326276,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -5489,6 +5489,90 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 5086.81,
             "range": "± 98.97",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "dsherret@users.noreply.github.com",
+            "name": "David Sherret",
+            "username": "dsherret"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "6e5d365ea13fa637d1e3af5a3008eea36a6e7d90",
+          "message": "fix(serde): handle tuples (#75)\n\nCo-authored-by: elrafoon <elrafoon@users.noreply.github.com>",
+          "timestamp": "2026-04-02T10:47:22-04:00",
+          "tree_id": "83f0f20bcfa927a8844771be9e9f985daee1b8e9",
+          "url": "https://github.com/dprint/jsonc-parser/commit/6e5d365ea13fa637d1e3af5a3008eea36a6e7d90"
+        },
+        "date": 1775141325240,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 28573331.7,
+            "range": "± 862506.33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 30676837.4,
+            "range": "± 1630648.26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde_value",
+            "value": 38292023.9,
+            "range": "± 1426055.99",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 41020487.9,
+            "range": "± 1648748.05",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 27960.87,
+            "range": "± 257.19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_serde_value",
+            "value": 46127.62,
+            "range": "± 1024.95",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 51584.61,
+            "range": "± 1362.38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 5100.71,
+            "range": "± 105.92",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_serde_value",
+            "value": 4967.99,
+            "range": "± 170.4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 5102.25,
+            "range": "± 71.09",
             "unit": "ns/iter"
           }
         ]
