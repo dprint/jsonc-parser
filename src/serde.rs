@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::Cell;
 
 use ::serde::de::DeserializeSeed;
 use ::serde::de::EnumAccess;
@@ -196,7 +197,18 @@ fn deserialize_token<'de, V: Visitor<'de>>(
     },
     Token::OpenBracket => {
       parser.enter_container()?;
-      let result = visitor.visit_seq(ScannerSeqAccess { parser, first: true });
+      let finished = Cell::new(false);
+      let result = visitor.visit_seq(ScannerSeqAccess {
+        parser,
+        first: true,
+        finished: &finished,
+      });
+      if result.is_ok() && !finished.get() {
+        if let Err(e) = drain_array(parser) {
+          parser.exit_container();
+          return Err(e);
+        }
+      }
       parser.exit_container();
       result
     }
@@ -246,9 +258,31 @@ fn visit_number<'de, V: Visitor<'de>>(raw: &str, visitor: V) -> Result<V::Value,
 
 // array handling
 
+/// Consumes remaining array elements and the closing `]` when a visitor
+/// (e.g. for a tuple) stops reading before the end of the array.
+fn drain_array(parser: &mut JsoncParser) -> Result<(), ParseError> {
+  loop {
+    match parser.scan_array_comma()? {
+      Some(Token::CloseBracket) => return Ok(()),
+      Some(token) => {
+        parser.put_back(token);
+        <::serde::de::IgnoredAny as ::serde::Deserialize>::deserialize(&mut *parser)?;
+      }
+      None => {
+        return Err(
+          parser
+            .scanner
+            .create_error_for_current_token(ParseErrorKind::UnterminatedArray),
+        );
+      }
+    }
+  }
+}
+
 struct ScannerSeqAccess<'a, 'b> {
   parser: &'b mut JsoncParser<'a>,
   first: bool,
+  finished: &'b Cell<bool>,
 }
 
 impl<'de, 'b> SeqAccess<'de> for ScannerSeqAccess<'de, 'b> {
@@ -263,7 +297,10 @@ impl<'de, 'b> SeqAccess<'de> for ScannerSeqAccess<'de, 'b> {
     };
 
     match token {
-      Some(Token::CloseBracket) => Ok(None),
+      Some(Token::CloseBracket) => {
+        self.finished.set(true);
+        Ok(None)
+      }
       Some(token) => {
         self.parser.put_back(token);
         seed.deserialize(&mut *self.parser).map(Some)
@@ -347,10 +384,18 @@ impl<'de, 'b> VariantAccess<'de> for ObjectVariantAccess<'de, 'b> {
     match self.parser.scan()? {
       Some(Token::OpenBracket) => {
         self.parser.enter_container()?;
+        let finished = Cell::new(false);
         let result = visitor.visit_seq(ScannerSeqAccess {
           parser: self.parser,
           first: true,
+          finished: &finished,
         });
+        if result.is_ok() && !finished.get() {
+          if let Err(e) = drain_array(self.parser) {
+            self.parser.exit_container();
+            return Err(e);
+          }
+        }
         self.parser.exit_container();
         result
       }
@@ -619,6 +664,40 @@ mod tests {
 
     let result: Option<Config> = parse_to_serde_value("  \n  ", &Default::default()).unwrap();
     assert_eq!(result, None);
+  }
+
+  #[test]
+  fn it_should_deserialize_tuples() {
+    // 1-element
+    let result: (u8,) = parse_to_serde_value("[1]", &Default::default()).unwrap();
+    assert_eq!(result, (1,));
+
+    // 2-element with mixed types
+    let result: (u8, String) = parse_to_serde_value(r#"[1, "hello"]"#, &Default::default()).unwrap();
+    assert_eq!(result, (1, "hello".to_string()));
+
+    // 3-element in an object
+    #[derive(::serde::Deserialize, Debug, PartialEq)]
+    #[serde(crate = "::serde")]
+    struct Config {
+      version: (u8, u8, u8),
+    }
+    let result: Config = parse_to_serde_value(r#"{ "version": [0, 3, 0] }"#, &Default::default()).unwrap();
+    assert_eq!(result, Config { version: (0, 3, 0) });
+
+    // 6-element
+    let result: (u8, u8, u8, u8, u8, u8) = parse_to_serde_value("[1, 2, 3, 4, 5, 6]", &Default::default()).unwrap();
+    assert_eq!(result, (1, 2, 3, 4, 5, 6));
+
+    // 9-element
+    let result: (u8, u8, u8, u8, u8, u8, u8, u8, u8) =
+      parse_to_serde_value("[1, 2, 3, 4, 5, 6, 7, 8, 9]", &Default::default()).unwrap();
+    assert_eq!(result, (1, 2, 3, 4, 5, 6, 7, 8, 9));
+
+    // 12-element
+    let result: (u8, u8, u8, u8, u8, u8, u8, u8, u8, u8, u8, u8) =
+      parse_to_serde_value("[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]", &Default::default()).unwrap();
+    assert_eq!(result, (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
   }
 
   #[test]
