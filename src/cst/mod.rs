@@ -1335,7 +1335,25 @@ impl CstStringLit {
   }
 
   fn new_escaped(value: &str) -> Self {
-    Self::new(format!("\"{}\"", value.replace("\"", "\\\"")))
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+      match ch {
+        '"' => escaped.push_str("\\\""),
+        '\\' => escaped.push_str("\\\\"),
+        '\u{08}' => escaped.push_str("\\b"),
+        '\u{0c}' => escaped.push_str("\\f"),
+        '\n' => escaped.push_str("\\n"),
+        '\r' => escaped.push_str("\\r"),
+        '\t' => escaped.push_str("\\t"),
+        c if c.is_control() => {
+          escaped.push_str(&format!("\\u{:04x}", c as u32));
+        }
+        c => escaped.push(c),
+      }
+    }
+    escaped.push('"');
+    Self::new(escaped)
   }
 
   /// Sets the raw value of the string INCLUDING SURROUNDING QUOTES.
@@ -4229,5 +4247,133 @@ value3: true
 
       assert_eq!(prop_value, expected);
     }
+  }
+
+  #[test]
+  fn new_escaped_handles_backslashes() {
+    let cst = build_cst(r#"{"key": "old"}"#);
+    let root_obj = cst.object_value().unwrap();
+    let prop = root_obj.get("key").unwrap();
+    // String containing a backslash: /.github/workflows/lint\.yaml$/
+    prop.set_value(json!("/.github/workflows/lint\\.yaml$/"));
+    assert_eq!(
+      cst.to_string(),
+      r#"{"key": "/.github/workflows/lint\\.yaml$/"}"#,
+    );
+    // Verify decoded value roundtrips correctly
+    let decoded = root_obj
+      .get("key")
+      .unwrap()
+      .value()
+      .unwrap()
+      .as_string_lit()
+      .unwrap()
+      .decoded_value()
+      .unwrap();
+    assert_eq!(decoded, "/.github/workflows/lint\\.yaml$/");
+  }
+
+  #[test]
+  fn new_escaped_handles_control_characters() {
+    let cst = build_cst(r#"{}"#);
+    let root_obj = cst.object_value_or_create().unwrap();
+
+    root_obj.append("tab", json!("hello\tworld"));
+    root_obj.append("newline", json!("hello\nworld"));
+    root_obj.append("cr", json!("hello\rworld"));
+    root_obj.append("backspace", json!("hello\u{08}world"));
+    root_obj.append("formfeed", json!("hello\u{0c}world"));
+
+    let text = cst.to_string();
+    assert!(text.contains(r#""hello\tworld""#), "tab not escaped: {}", text);
+    assert!(text.contains(r#""hello\nworld""#), "newline not escaped: {}", text);
+    assert!(text.contains(r#""hello\rworld""#), "cr not escaped: {}", text);
+    assert!(text.contains(r#""hello\bworld""#), "backspace not escaped: {}", text);
+    assert!(text.contains(r#""hello\fworld""#), "formfeed not escaped: {}", text);
+
+    // Verify decoded values roundtrip correctly
+    for (key, expected) in [
+      ("tab", "hello\tworld"),
+      ("newline", "hello\nworld"),
+      ("cr", "hello\rworld"),
+      ("backspace", "hello\u{08}world"),
+      ("formfeed", "hello\u{0c}world"),
+    ] {
+      let decoded = root_obj
+        .get(key)
+        .unwrap()
+        .value()
+        .unwrap()
+        .as_string_lit()
+        .unwrap()
+        .decoded_value()
+        .unwrap();
+      assert_eq!(decoded, expected, "roundtrip failed for key: {}", key);
+    }
+  }
+
+  #[test]
+  fn new_escaped_handles_quotes_and_backslashes_together() {
+    let cst = build_cst(r#"{}"#);
+    let root_obj = cst.object_value_or_create().unwrap();
+
+    root_obj.append("mixed", json!("say \"hello\\world\""));
+
+    let text = cst.to_string();
+    assert!(
+      text.contains(r#""say \"hello\\world\"""#),
+      "mixed escaping failed: {}",
+      text
+    );
+
+    let decoded = root_obj
+      .get("mixed")
+      .unwrap()
+      .value()
+      .unwrap()
+      .as_string_lit()
+      .unwrap()
+      .decoded_value()
+      .unwrap();
+    assert_eq!(decoded, "say \"hello\\world\"");
+  }
+
+  #[test]
+  fn new_escaped_in_array_values() {
+    let cst = build_cst(r#"{"items": []}"#);
+    let root_obj = cst.object_value().unwrap();
+    let arr = root_obj.array_value("items").unwrap();
+
+    arr.append(json!("path\\to\\file"));
+    arr.append(json!("line1\nline2"));
+
+    let text = cst.to_string();
+    assert!(text.contains(r#""path\\to\\file""#), "backslash in array element: {}", text);
+    assert!(text.contains(r#""line1\nline2""#), "newline in array element: {}", text);
+  }
+
+  #[test]
+  fn new_escaped_property_name_with_special_chars() {
+    let cst = build_cst(r#"{}"#);
+    let root_obj = cst.object_value_or_create().unwrap();
+
+    root_obj.append("key\\with\\backslash", json!("value"));
+
+    let text = cst.to_string();
+    assert!(
+      text.contains(r#""key\\with\\backslash""#),
+      "property name escaping failed: {}",
+      text
+    );
+
+    let decoded = root_obj
+      .properties()
+      .first()
+      .unwrap()
+      .name()
+      .unwrap()
+      .decoded_value()
+      .unwrap();
+    assert_eq!(decoded, "key\\with\\backslash");
   }
 }
