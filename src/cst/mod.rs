@@ -2776,7 +2776,7 @@ fn insert_or_append_to_container(
         Some(&mut insert_index),
         vec![
           CstNewline::new(style_info.newline_kind).into(),
-          CstStringLit::new(child_indents.current_indent.clone()).into(),
+          CstWhitespace::new(child_indents.current_indent.clone()).into(),
         ],
       );
       container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
@@ -2804,7 +2804,7 @@ fn insert_or_append_to_container(
         Some(&mut insert_index),
         vec![
           CstNewline::new(style_info.newline_kind).into(),
-          CstStringLit::new(child_indents.current_indent.clone()).into(),
+          CstWhitespace::new(child_indents.current_indent.clone()).into(),
         ],
       );
       container.raw_insert_value_with_internal_indent(Some(&mut insert_index), value, &style_info, &child_indents);
@@ -2816,7 +2816,7 @@ fn insert_or_append_to_container(
           Some(&mut insert_index),
           vec![
             CstNewline::new(style_info.newline_kind).into(),
-            CstStringLit::new(indents.current_indent.clone()).into(),
+            CstWhitespace::new(indents.current_indent.clone()).into(),
           ],
         );
       }
@@ -2836,7 +2836,7 @@ fn insert_or_append_to_container(
           Some(&mut insert_index),
           vec![
             CstNewline::new(style_info.newline_kind).into(),
-            CstStringLit::new(indents.current_indent.clone()).into(),
+            CstWhitespace::new(indents.current_indent.clone()).into(),
           ],
         );
       }
@@ -3597,6 +3597,35 @@ value3: true
   }
 
   #[test]
+  fn append_to_multiline_array_does_not_expose_phantom_string_lit() {
+    // regression test for https://github.com/dprint/jsonc-parser/issues/78
+    let cst = build_cst(
+      r#"{
+  "servers": [
+    {"name": "linear"},
+    {"name": "supabase"}
+  ]
+}"#,
+    );
+    let arr = cst.object_value_or_create().unwrap().array_value("servers").unwrap();
+    arr.append(CstInputValue::Object(vec![(
+      "name".to_string(),
+      CstInputValue::String("github".to_string()),
+    )]));
+
+    let elements = arr.elements();
+    assert_eq!(elements.len(), 3);
+    for el in &elements {
+      assert!(
+        el.as_string_lit().is_none(),
+        "element should not be a string lit: {:?}",
+        el
+      );
+      assert!(el.as_object().is_some(), "element should be an object: {:?}", el);
+    }
+  }
+
+  #[test]
   fn insert_array_element_trailing_commas() {
     let cst = build_cst(
       r#"{
@@ -4256,10 +4285,7 @@ value3: true
     let prop = root_obj.get("key").unwrap();
     // String containing a backslash: /.github/workflows/lint\.yaml$/
     prop.set_value(json!("/.github/workflows/lint\\.yaml$/"));
-    assert_eq!(
-      cst.to_string(),
-      r#"{"key": "/.github/workflows/lint\\.yaml$/"}"#,
-    );
+    assert_eq!(cst.to_string(), r#"{"key": "/.github/workflows/lint\\.yaml$/"}"#,);
     // Verify decoded value roundtrips correctly
     let decoded = root_obj
       .get("key")
@@ -4348,7 +4374,11 @@ value3: true
     arr.append(json!("line1\nline2"));
 
     let text = cst.to_string();
-    assert!(text.contains(r#""path\\to\\file""#), "backslash in array element: {}", text);
+    assert!(
+      text.contains(r#""path\\to\\file""#),
+      "backslash in array element: {}",
+      text
+    );
     assert!(text.contains(r#""line1\nline2""#), "newline in array element: {}", text);
   }
 
