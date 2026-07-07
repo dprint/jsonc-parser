@@ -12,10 +12,14 @@ pub enum JsonValue<'a> {
   Null,
 }
 
-#[cfg(not(feature = "preserve_order"))]
+#[cfg(all(not(feature = "preserve_order"), not(feature = "fast_hash")))]
 pub type Map<K, V> = std::collections::HashMap<K, V>;
-#[cfg(feature = "preserve_order")]
+#[cfg(all(not(feature = "preserve_order"), feature = "fast_hash"))]
+pub type Map<K, V> = std::collections::HashMap<K, V, rustc_hash::FxBuildHasher>;
+#[cfg(all(feature = "preserve_order", not(feature = "fast_hash")))]
 pub type Map<K, V> = indexmap::IndexMap<K, V>;
+#[cfg(all(feature = "preserve_order", feature = "fast_hash"))]
+pub type Map<K, V> = indexmap::IndexMap<K, V, rustc_hash::FxBuildHasher>;
 
 /// A JSON object.
 #[derive(Clone, PartialEq, Debug)]
@@ -82,7 +86,7 @@ impl<'a> JsonObject<'a> {
 
   /// Creates a new JsonObject with the specified capacity.
   pub fn with_capacity(capacity: usize) -> JsonObject<'a> {
-    JsonObject(Map::with_capacity(capacity))
+    JsonObject(Map::with_capacity_and_hasher(capacity, Default::default()))
   }
 
   /// Drops the object returning the inner map.
@@ -230,7 +234,7 @@ mod test {
 
   #[test]
   fn it_should_take() {
-    let mut inner = Map::new();
+    let mut inner = Map::default();
     inner.insert(Cow::Borrowed("prop"), JsonValue::String(Cow::Borrowed("asdf")));
     inner.insert(Cow::Borrowed("other"), JsonValue::String(Cow::Borrowed("text")));
     let mut obj = JsonObject::new(inner);
@@ -250,7 +254,7 @@ mod test {
 
   #[test]
   fn it_should_get() {
-    let mut inner = Map::new();
+    let mut inner = Map::default();
     inner.insert(Cow::Borrowed("prop"), JsonValue::String(Cow::Borrowed("asdf")));
     let obj = JsonObject::new(inner);
 

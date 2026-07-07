@@ -50,7 +50,7 @@ fn parse_value<'a>(parser: &mut JsoncParser<'a>, token: Token<'a>) -> Result<Jso
 
 fn parse_object<'a>(parser: &mut JsoncParser<'a>) -> Result<JsonValue<'a>, ParseError> {
   parser.enter_container()?;
-  let mut props = Map::new();
+  let mut props = Map::default();
   let mut first = true;
 
   loop {
@@ -131,7 +131,7 @@ mod tests {
     .unwrap()
     .unwrap();
 
-    let mut object_map = Map::new();
+    let mut object_map = Map::default();
     object_map.insert(Cow::Borrowed("a"), JsonValue::Null);
     object_map.insert(
       Cow::Borrowed("b"),

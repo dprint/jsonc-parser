@@ -126,6 +126,21 @@
 //! which will pull in and use the [unicode-width](https://crates.io/crates/unicode-width) dependency internally.
 //! Otherwise it will use the character count, which isn't as accurate of a number, but will probably be good enough
 //! in most cases.
+//!
+//! ## Faster hashing
+//!
+//! Parsed objects are stored in a hash map that uses the standard library's default (DoS-resistant but slower)
+//! hasher. When parsing trusted input, enable the `fast_hash` cargo feature to instead use the faster
+//! [rustc-hash](https://crates.io/crates/rustc-hash) hasher, which can noticeably speed up parsing of
+//! object-heavy documents:
+//!
+//! ```toml
+//! # in Cargo.toml
+//! jsonc-parser = { version = "...", features = ["fast_hash"] }
+//! ```
+//!
+//! This hasher is not resistant to hash-collision denial-of-service attacks, so avoid it when parsing
+//! untrusted input. It composes with the `preserve_order` feature.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
