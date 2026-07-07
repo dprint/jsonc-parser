@@ -151,6 +151,7 @@ pub mod common;
 #[cfg(feature = "cst")]
 pub mod cst;
 pub mod errors;
+pub mod map;
 mod parse_to_ast;
 mod parse_to_value;
 mod parser;
@@ -161,6 +162,7 @@ mod string;
 pub mod tokens;
 mod value;
 
+pub use map::Map;
 pub use parse_to_ast::*;
 pub use parse_to_value::*;
 pub use scanner::*;
