@@ -19,6 +19,15 @@ impl<'a> ObjectKey<'a> {
       ObjectKey::Word(s) => s.to_string(),
     }
   }
+
+  /// Converts the key into a `Cow`, borrowing from the source when possible
+  /// to avoid an allocation for clean (unescaped) keys.
+  pub fn into_cow(self) -> Cow<'a, str> {
+    match self {
+      ObjectKey::String(s) => s,
+      ObjectKey::Word(s) => Cow::Borrowed(s),
+    }
+  }
 }
 
 /// Shared JSONC parser infrastructure used by both `parse_to_value` and
