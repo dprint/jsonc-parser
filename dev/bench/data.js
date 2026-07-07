@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783436220957,
+  "lastUpdate": 1783437256530,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -6439,6 +6439,102 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 5228.74,
             "range": "± 219.86",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "dsherret@users.noreply.github.com",
+            "name": "David Sherret",
+            "username": "dsherret"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2f3a4637ee79b1483de1c2555a25ae5151de1f9f",
+          "message": "feat(BREAKING): add new wrapped `Map` type (#83)",
+          "timestamp": "2026-07-07T11:12:51-04:00",
+          "tree_id": "4b6f355e1047cccb7e68eb599d08168599add6bc",
+          "url": "https://github.com/dprint/jsonc-parser/commit/2f3a4637ee79b1483de1c2555a25ae5151de1f9f"
+        },
+        "date": 1783437256190,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 30354302.7,
+            "range": "± 1103432.38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 31538783.4,
+            "range": "± 1292132.88",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde_value",
+            "value": 40223269.9,
+            "range": "± 1648498.61",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 32904307.5,
+            "range": "± 574130.32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "key_heavy_json_serde_struct",
+            "value": 12330024.6,
+            "range": "± 197533.4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "key_heavy_json_value",
+            "value": 19487221.6,
+            "range": "± 855180.74",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 28848.37,
+            "range": "± 249.14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_serde_value",
+            "value": 44341.39,
+            "range": "± 622.54",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 42324.09,
+            "range": "± 537.37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 5391.94,
+            "range": "± 51.87",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_serde_value",
+            "value": 5196,
+            "range": "± 87.86",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 5318.41,
+            "range": "± 186.73",
             "unit": "ns/iter"
           }
         ]
