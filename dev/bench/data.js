@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783437256530,
+  "lastUpdate": 1783440276953,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -6535,6 +6535,102 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 5318.41,
             "range": "± 186.73",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "dprintbot@users.noreply.github.com",
+            "name": "dprintbot",
+            "username": "dprintbot"
+          },
+          "committer": {
+            "email": "dprintbot@users.noreply.github.com",
+            "name": "dprintbot",
+            "username": "dprintbot"
+          },
+          "distinct": true,
+          "id": "20d89e23b87347c5542d3982fe0da269e1471723",
+          "message": "0.33.0",
+          "timestamp": "2026-07-07T16:03:17Z",
+          "tree_id": "fe197eba3edbb79ab4956903539c26459a3c3893",
+          "url": "https://github.com/dprint/jsonc-parser/commit/20d89e23b87347c5542d3982fe0da269e1471723"
+        },
+        "date": 1783440276029,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 26999177.3,
+            "range": "± 1470597.91",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 25703361.4,
+            "range": "± 1724624.52",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde_value",
+            "value": 35184127.3,
+            "range": "± 2217710.96",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 28046025.1,
+            "range": "± 1473235.85",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "key_heavy_json_serde_struct",
+            "value": 12477357.7,
+            "range": "± 80844.5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "key_heavy_json_value",
+            "value": 17725406.6,
+            "range": "± 95673.38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 28753.03,
+            "range": "± 321.44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_serde_value",
+            "value": 46729.22,
+            "range": "± 1011.16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 43315.86,
+            "range": "± 319.58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 5373.62,
+            "range": "± 65.55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_serde_value",
+            "value": 5281.12,
+            "range": "± 59.56",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 5302.64,
+            "range": "± 322.58",
             "unit": "ns/iter"
           }
         ]
