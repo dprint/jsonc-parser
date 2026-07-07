@@ -332,9 +332,12 @@ impl<'de, 'b> MapAccess<'de> for ScannerMapAccess<'de, 'b> {
     match key {
       None => Ok(None),
       Some(key) => {
-        let key_str = key.into_string();
+        // borrow the key from the source when it's clean, only allocating for
+        // owned (escaped) keys — mirrors the value path's `Cow` keys
         seed
-          .deserialize(<String as IntoDeserializer<Self::Error>>::into_deserializer(key_str))
+          .deserialize(<Cow<'de, str> as IntoDeserializer<Self::Error>>::into_deserializer(
+            key.into_cow(),
+          ))
           .map(Some)
       }
     }
