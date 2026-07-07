@@ -34,6 +34,26 @@ fn key_heavy_json_value(b: &mut Bencher) {
   bench_value(b, &get_key_heavy_json());
 }
 
+// struct deserialization matches keys against static field names, so borrowed
+// keys avoid the per-property allocation entirely (unlike a serde_json::Value
+// target, whose Map must own its keys regardless)
+#[bench]
+#[cfg(feature = "serde")]
+fn key_heavy_json_serde_struct(b: &mut Bencher) {
+  #[derive(serde::Deserialize)]
+  #[allow(dead_code)]
+  struct Item {
+    id: u32,
+    name: String,
+    kind: String,
+    enabled: bool,
+    count: u32,
+    tag: String,
+  }
+  let json = get_key_heavy_json();
+  b.iter(|| jsonc_parser::parse_to_serde_value::<Vec<Item>>(&json, &Default::default()).unwrap());
+}
+
 #[bench]
 fn tsconfig_json_ast(b: &mut Bencher) {
   bench_ast(b, &get_tsconfig_json());
