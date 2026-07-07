@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783435097324,
+  "lastUpdate": 1783436220957,
   "repoUrl": "https://github.com/dprint/jsonc-parser",
   "entries": {
     "Benchmark": [
@@ -6343,6 +6343,102 @@ window.BENCHMARK_DATA = {
             "name": "tsconfig_json_value",
             "value": 4558.37,
             "range": "± 96.02",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "dsherret@users.noreply.github.com",
+            "name": "David Sherret",
+            "username": "dsherret"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2f578b2602f9f1dde2b6c791bb268ef3e1fc1732",
+          "message": "perf: optional `fast_hash` feature for a faster (non-DoS-resistant) hasher (#82)",
+          "timestamp": "2026-07-07T10:55:38-04:00",
+          "tree_id": "22df57efbc1c717dcdbe53abb841a20090c9ee6c",
+          "url": "https://github.com/dprint/jsonc-parser/commit/2f578b2602f9f1dde2b6c791bb268ef3e1fc1732"
+        },
+        "date": 1783436220625,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "citm_catalog_json_large_ast",
+            "value": 28094792.8,
+            "range": "± 1549547.28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde",
+            "value": 26692545.9,
+            "range": "± 2094466.6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_serde_value",
+            "value": 36118744.5,
+            "range": "± 1914918.02",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "citm_catalog_json_large_value",
+            "value": 29549151.3,
+            "range": "± 1283602.24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "key_heavy_json_serde_struct",
+            "value": 12767984.4,
+            "range": "± 77562.55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "key_heavy_json_value",
+            "value": 17930516.1,
+            "range": "± 1141709.66",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_ast",
+            "value": 29339.4,
+            "range": "± 374.7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_serde_value",
+            "value": 44340.04,
+            "range": "± 601.58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "package_json_value",
+            "value": 43264.19,
+            "range": "± 901.19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_ast",
+            "value": 5287.73,
+            "range": "± 137.39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_serde_value",
+            "value": 5058.2,
+            "range": "± 185.53",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "tsconfig_json_value",
+            "value": 5228.74,
+            "range": "± 219.86",
             "unit": "ns/iter"
           }
         ]
