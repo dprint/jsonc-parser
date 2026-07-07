@@ -2,8 +2,8 @@ use super::ParseOptions;
 use super::errors::*;
 use super::tokens::Token;
 use super::value::*;
+use crate::map::Map;
 use crate::parser::JsoncParser;
-use crate::value::Map;
 
 /// Parses a string containing JSONC to a `JsonValue`.
 ///

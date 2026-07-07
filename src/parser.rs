@@ -13,13 +13,6 @@ pub(crate) enum ObjectKey<'a> {
 }
 
 impl<'a> ObjectKey<'a> {
-  pub fn into_string(self) -> String {
-    match self {
-      ObjectKey::String(s) => s.into_owned(),
-      ObjectKey::Word(s) => s.to_string(),
-    }
-  }
-
   /// Converts the key into a `Cow`, borrowing from the source when possible
   /// to avoid an allocation for clean (unescaped) keys.
   pub fn into_cow(self) -> Cow<'a, str> {

@@ -1,6 +1,9 @@
 use core::slice::Iter;
 use std::borrow::Cow;
 
+use crate::map::IntoIter as MapIntoIter;
+use crate::map::Map;
+
 /// A JSON value.
 #[derive(Clone, PartialEq, Debug)]
 pub enum JsonValue<'a> {
@@ -12,25 +15,13 @@ pub enum JsonValue<'a> {
   Null,
 }
 
-#[cfg(all(not(feature = "preserve_order"), not(feature = "fast_hash")))]
-pub type Map<K, V> = std::collections::HashMap<K, V>;
-#[cfg(all(not(feature = "preserve_order"), feature = "fast_hash"))]
-pub type Map<K, V> = std::collections::HashMap<K, V, rustc_hash::FxBuildHasher>;
-#[cfg(all(feature = "preserve_order", not(feature = "fast_hash")))]
-pub type Map<K, V> = indexmap::IndexMap<K, V>;
-#[cfg(all(feature = "preserve_order", feature = "fast_hash"))]
-pub type Map<K, V> = indexmap::IndexMap<K, V, rustc_hash::FxBuildHasher>;
-
 /// A JSON object.
 #[derive(Clone, PartialEq, Debug)]
 pub struct JsonObject<'a>(Map<Cow<'a, str>, JsonValue<'a>>);
 
 impl<'a> IntoIterator for JsonObject<'a> {
   type Item = (Cow<'a, str>, JsonValue<'a>);
-  #[cfg(not(feature = "preserve_order"))]
-  type IntoIter = std::collections::hash_map::IntoIter<Cow<'a, str>, JsonValue<'a>>;
-  #[cfg(feature = "preserve_order")]
-  type IntoIter = indexmap::map::IntoIter<Cow<'a, str>, JsonValue<'a>>;
+  type IntoIter = MapIntoIter<Cow<'a, str>, JsonValue<'a>>;
 
   fn into_iter(self) -> Self::IntoIter {
     self.0.into_iter()
@@ -43,21 +34,9 @@ impl<'a> From<Map<Cow<'a, str>, JsonValue<'a>>> for JsonObject<'a> {
   }
 }
 
-#[cfg(not(feature = "preserve_order"))]
-#[inline(always)]
-fn remove_entry<'a>(map: &mut Map<Cow<'a, str>, JsonValue<'a>>, key: &str) -> Option<(Cow<'a, str>, JsonValue<'a>)> {
-  map.remove_entry(key)
-}
-
-#[cfg(feature = "preserve_order")]
-#[inline(always)]
-fn remove_entry<'a>(map: &mut Map<Cow<'a, str>, JsonValue<'a>>, key: &str) -> Option<(Cow<'a, str>, JsonValue<'a>)> {
-  map.shift_remove_entry(key)
-}
-
 macro_rules! generate_take {
   ($self:ident, $name:ident, $value_type:ident) => {
-    match remove_entry(&mut $self.0, $name) {
+    match $self.0.remove_entry($name) {
       Some((_, JsonValue::$value_type(value))) => Some(value),
       Some((key, value)) => {
         // add it back
@@ -86,7 +65,7 @@ impl<'a> JsonObject<'a> {
 
   /// Creates a new JsonObject with the specified capacity.
   pub fn with_capacity(capacity: usize) -> JsonObject<'a> {
-    JsonObject(Map::with_capacity_and_hasher(capacity, Default::default()))
+    JsonObject(Map::with_capacity(capacity))
   }
 
   /// Drops the object returning the inner map.
@@ -143,7 +122,7 @@ impl<'a> JsonObject<'a> {
   /// Takes a value from the object by name.
   /// Returns `None` when it doesn't exist.
   pub fn take(&mut self, name: &str) -> Option<JsonValue<'a>> {
-    remove_entry(&mut self.0, name).map(|(_, value)| value)
+    self.0.remove_entry(name).map(|(_, value)| value)
   }
 
   /// Takes a string property value from the object by name.
