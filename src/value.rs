@@ -19,35 +19,35 @@ pub type Map<K, V> = indexmap::IndexMap<K, V>;
 
 /// A JSON object.
 #[derive(Clone, PartialEq, Debug)]
-pub struct JsonObject<'a>(Map<String, JsonValue<'a>>);
+pub struct JsonObject<'a>(Map<Cow<'a, str>, JsonValue<'a>>);
 
 impl<'a> IntoIterator for JsonObject<'a> {
-  type Item = (String, JsonValue<'a>);
+  type Item = (Cow<'a, str>, JsonValue<'a>);
   #[cfg(not(feature = "preserve_order"))]
-  type IntoIter = std::collections::hash_map::IntoIter<String, JsonValue<'a>>;
+  type IntoIter = std::collections::hash_map::IntoIter<Cow<'a, str>, JsonValue<'a>>;
   #[cfg(feature = "preserve_order")]
-  type IntoIter = indexmap::map::IntoIter<String, JsonValue<'a>>;
+  type IntoIter = indexmap::map::IntoIter<Cow<'a, str>, JsonValue<'a>>;
 
   fn into_iter(self) -> Self::IntoIter {
     self.0.into_iter()
   }
 }
 
-impl<'a> From<Map<String, JsonValue<'a>>> for JsonObject<'a> {
-  fn from(properties: Map<String, JsonValue>) -> JsonObject {
+impl<'a> From<Map<Cow<'a, str>, JsonValue<'a>>> for JsonObject<'a> {
+  fn from(properties: Map<Cow<'a, str>, JsonValue<'a>>) -> JsonObject<'a> {
     JsonObject::new(properties)
   }
 }
 
 #[cfg(not(feature = "preserve_order"))]
 #[inline(always)]
-fn remove_entry<'a>(map: &mut Map<String, JsonValue<'a>>, key: &str) -> Option<(String, JsonValue<'a>)> {
+fn remove_entry<'a>(map: &mut Map<Cow<'a, str>, JsonValue<'a>>, key: &str) -> Option<(Cow<'a, str>, JsonValue<'a>)> {
   map.remove_entry(key)
 }
 
 #[cfg(feature = "preserve_order")]
 #[inline(always)]
-fn remove_entry<'a>(map: &mut Map<String, JsonValue<'a>>, key: &str) -> Option<(String, JsonValue<'a>)> {
+fn remove_entry<'a>(map: &mut Map<Cow<'a, str>, JsonValue<'a>>, key: &str) -> Option<(Cow<'a, str>, JsonValue<'a>)> {
   map.shift_remove_entry(key)
 }
 
@@ -76,7 +76,7 @@ macro_rules! generate_get {
 
 impl<'a> JsonObject<'a> {
   /// Creates a new JsonObject.
-  pub fn new(inner: Map<String, JsonValue<'a>>) -> JsonObject<'a> {
+  pub fn new(inner: Map<Cow<'a, str>, JsonValue<'a>>) -> JsonObject<'a> {
     JsonObject(inner)
   }
 
@@ -86,7 +86,7 @@ impl<'a> JsonObject<'a> {
   }
 
   /// Drops the object returning the inner map.
-  pub fn take_inner(self) -> Map<String, JsonValue<'a>> {
+  pub fn take_inner(self) -> Map<Cow<'a, str>, JsonValue<'a>> {
     self.0
   }
 
@@ -231,8 +231,8 @@ mod test {
   #[test]
   fn it_should_take() {
     let mut inner = Map::new();
-    inner.insert(String::from("prop"), JsonValue::String(Cow::Borrowed("asdf")));
-    inner.insert(String::from("other"), JsonValue::String(Cow::Borrowed("text")));
+    inner.insert(Cow::Borrowed("prop"), JsonValue::String(Cow::Borrowed("asdf")));
+    inner.insert(Cow::Borrowed("other"), JsonValue::String(Cow::Borrowed("text")));
     let mut obj = JsonObject::new(inner);
 
     assert_eq!(obj.len(), 2);
@@ -251,7 +251,7 @@ mod test {
   #[test]
   fn it_should_get() {
     let mut inner = Map::new();
-    inner.insert(String::from("prop"), JsonValue::String(Cow::Borrowed("asdf")));
+    inner.insert(Cow::Borrowed("prop"), JsonValue::String(Cow::Borrowed("asdf")));
     let obj = JsonObject::new(inner);
 
     assert_eq!(obj.len(), 1);

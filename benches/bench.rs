@@ -30,6 +30,11 @@ fn citm_catalog_json_large_serde_value(b: &mut Bencher) {
 }
 
 #[bench]
+fn key_heavy_json_value(b: &mut Bencher) {
+  bench_value(b, &get_key_heavy_json());
+}
+
+#[bench]
 fn tsconfig_json_ast(b: &mut Bencher) {
   bench_ast(b, &get_tsconfig_json());
 }
@@ -90,6 +95,21 @@ fn get_citm_catalog_json_large() -> String {
 fn get_citm_catalog_json() -> String {
   // from https://github.com/serde-rs/json-benchmark/blob/master/data/citm_catalog.json
   read_to_string("benches/data/citm_catalog.json").unwrap()
+}
+
+fn get_key_heavy_json() -> String {
+  // array of many small objects with short distinct string keys, to stress
+  // per-property object-key allocation on the value-building path
+  let mut result = String::new();
+  result.push('[');
+  for i in 0..20_000 {
+    if i > 0 {
+      result.push(',');
+    }
+    result.push_str(r#"{"id":1,"name":"abc","kind":"widget","enabled":true,"count":42,"tag":"x"}"#);
+  }
+  result.push(']');
+  result
 }
 
 fn get_tsconfig_json() -> String {

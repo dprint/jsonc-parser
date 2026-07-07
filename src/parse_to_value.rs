@@ -58,7 +58,7 @@ fn parse_object<'a>(parser: &mut JsoncParser<'a>) -> Result<JsonValue<'a>, Parse
       None => break,
       Some(key) => {
         first = false;
-        let key_string = key.into_string();
+        let key_string = key.into_cow();
         parser.scan_object_colon()?;
         match parser.scan()? {
           Some(value_token) => {
@@ -132,13 +132,13 @@ mod tests {
     .unwrap();
 
     let mut object_map = Map::new();
-    object_map.insert(String::from("a"), JsonValue::Null);
+    object_map.insert(Cow::Borrowed("a"), JsonValue::Null);
     object_map.insert(
-      String::from("b"),
+      Cow::Borrowed("b"),
       JsonValue::Array(vec![JsonValue::Null, JsonValue::String(Cow::Borrowed("text"))].into()),
     );
-    object_map.insert(String::from("c"), JsonValue::Boolean(true));
-    object_map.insert(String::from("d"), JsonValue::Number("25.55"));
+    object_map.insert(Cow::Borrowed("c"), JsonValue::Boolean(true));
+    object_map.insert(Cow::Borrowed("d"), JsonValue::Number("25.55"));
     assert_eq!(value, JsonValue::Object(object_map.into()));
   }
 
