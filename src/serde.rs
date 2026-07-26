@@ -230,13 +230,25 @@ fn visit_number<'de, V: Visitor<'de>>(raw: &str, visitor: V) -> Result<V::Value,
   let trimmed = raw.trim_start_matches(['-', '+']);
   if trimmed.len() > 2 && (trimmed.starts_with("0x") || trimmed.starts_with("0X")) {
     let hex_part = &trimmed[2..];
-    match i64::from_str_radix(hex_part, 16) {
-      Ok(val) => {
-        let val = if raw.starts_with('-') { -val } else { val };
-        return visitor.visit_i64(val);
-      }
-      Err(_) => return visitor.visit_str(raw),
+    let negative = raw.starts_with('-');
+    if let Ok(val) = i64::from_str_radix(hex_part, 16) {
+      return visitor.visit_i64(if negative { -val } else { val });
     }
+    // fall back to an i128 for the values that don't fit in an i64, which
+    // are the ones that fit in a u64 and `i64::MIN`
+    return match i128::from_str_radix(hex_part, 16) {
+      Ok(val) => {
+        let val = if negative { -val } else { val };
+        if let Ok(val) = i64::try_from(val) {
+          visitor.visit_i64(val)
+        } else if let Ok(val) = u64::try_from(val) {
+          visitor.visit_u64(val)
+        } else {
+          Err(number_out_of_range_error())
+        }
+      }
+      Err(_) => Err(number_out_of_range_error()),
+    };
   }
 
   // strip unary plus
@@ -248,12 +260,19 @@ fn visit_number<'de, V: Visitor<'de>>(raw: &str, visitor: V) -> Result<V::Value,
   if let Ok(v) = num_str.parse::<u64>() {
     return visitor.visit_u64(v);
   }
-  if let Ok(v) = num_str.parse::<f64>() {
-    return visitor.visit_f64(v);
+  match num_str.parse::<f64>() {
+    Ok(v) if v.is_finite() => visitor.visit_f64(v),
+    // `parse` resolves to infinity instead of erroring for numbers that are
+    // too large and the scanner only ever provides numbers an f64 can parse
+    _ => Err(number_out_of_range_error()),
   }
+}
 
-  // fallback for unparseable numbers
-  visitor.visit_str(raw)
+/// Errors instead of silently changing the value's JSON type, which is what
+/// visiting a non-finite float would do (ex. `serde_json::Value` turns those
+/// into `null`).
+fn number_out_of_range_error() -> ParseError {
+  ParseError::custom_err("Number is out of range".to_string())
 }
 
 // array handling
@@ -528,6 +547,54 @@ mod tests {
     );
 
     assert_eq!(result, SerdeValue::Object(expected_value));
+  }
+
+  #[test]
+  fn it_should_error_when_number_is_out_of_f64_range() {
+    assert_has_error(r#"{ "amount": 1e400 }"#, "Number is out of range on line 1 column 13");
+    assert_has_error("[-1e400]", "Number is out of range on line 1 column 2");
+    assert_has_error("1.7976931348623159e308", "Number is out of range on line 1 column 1");
+
+    // deserializing to a float should error as well instead of resolving to infinity
+    let err = parse_to_serde_value::<f64>("1e400", &Default::default()).unwrap_err();
+    assert_eq!(err.to_string(), "Number is out of range on line 1 column 1");
+
+    // the number being out of range still errors when the value is ignored
+    #[derive(::serde::Deserialize, Debug, PartialEq)]
+    #[serde(crate = "::serde")]
+    struct Amount {
+      amount: u32,
+    }
+    let err = parse_to_serde_value::<Amount>(r#"{ "amount": 1, "other": 1e400 }"#, &Default::default()).unwrap_err();
+    assert_eq!(err.to_string(), "Number is out of range on line 1 column 25");
+
+    // numbers that underflow are fine
+    let result = parse_to_serde_value::<f64>("1e-400", &Default::default()).unwrap();
+    assert_eq!(result, 0.0);
+    let result = parse_to_serde_value::<f64>("-1e-400", &Default::default()).unwrap();
+    assert_eq!(result, -0.0);
+    assert!(result.is_sign_negative());
+
+    // the largest finite f64 is fine
+    let result = parse_to_serde_value::<f64>("1.7976931348623157e308", &Default::default()).unwrap();
+    assert_eq!(result, f64::MAX);
+  }
+
+  #[test]
+  fn it_should_error_when_hexadecimal_number_is_out_of_range() {
+    assert_has_error(
+      r#"{ "value": 0xFFFFFFFFFFFFFFFFFF }"#,
+      "Number is out of range on line 1 column 12",
+    );
+    assert_has_error("-0x8000000000000001", "Number is out of range on line 1 column 1");
+
+    // hexadecimal numbers that don't fit in an i64, but fit in a u64
+    let result = parse_to_serde_value::<u64>("0x8000000000000000", &Default::default()).unwrap();
+    assert_eq!(result, 9223372036854775808);
+
+    // i64::MIN
+    let result = parse_to_serde_value::<i64>("-0x8000000000000000", &Default::default()).unwrap();
+    assert_eq!(result, i64::MIN);
   }
 
   #[test]
