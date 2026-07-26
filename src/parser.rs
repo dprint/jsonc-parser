@@ -192,20 +192,29 @@ impl<'a> JsoncParser<'a> {
   /// After an array element, scans for the comma/close-bracket and
   /// returns the next token.
   pub fn scan_array_comma(&mut self) -> Result<Option<Token<'a>>, ParseError> {
-    let token = self.scan()?;
-    if matches!(&token, Some(Token::Comma)) {
-      let comma_range = Range::new(self.scanner.token_start(), self.scanner.token_end());
-      let next = self.scan()?;
-      if matches!(&next, Some(Token::CloseBracket)) && !self.allow_trailing_commas {
-        return Err(
+    let after_value_end = self.scanner.token_end();
+    match self.scan()? {
+      Some(Token::Comma) => {
+        let comma_range = Range::new(self.scanner.token_start(), self.scanner.token_end());
+        let next = self.scan()?;
+        if matches!(&next, Some(Token::CloseBracket)) && !self.allow_trailing_commas {
+          return Err(
+            self
+              .scanner
+              .create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed),
+          );
+        }
+        Ok(next)
+      }
+      Some(token) if token.is_value_start() && !self.allow_missing_commas => {
+        let range = Range::new(after_value_end, after_value_end);
+        Err(
           self
             .scanner
-            .create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed),
-        );
+            .create_error_for_range(range, ParseErrorKind::ExpectedComma),
+        )
       }
-      Ok(next)
-    } else {
-      Ok(token)
+      token => Ok(token),
     }
   }
 

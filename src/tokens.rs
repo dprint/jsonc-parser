@@ -44,6 +44,21 @@ impl<'a> Token<'a> {
       Token::CommentBlock(value) => value,
     }
   }
+
+  /// If this token could begin a value, which is used to detect a
+  /// missing comma between array elements.
+  pub(crate) fn is_value_start(&self) -> bool {
+    matches!(
+      self,
+      Token::OpenBrace
+        | Token::OpenBracket
+        | Token::String(_)
+        | Token::Word(_)
+        | Token::Boolean(_)
+        | Token::Number(_)
+        | Token::Null
+    )
+  }
 }
 
 /// A token with positional information.
