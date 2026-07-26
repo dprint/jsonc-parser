@@ -230,10 +230,15 @@ fn visit_number<'de, V: Visitor<'de>>(raw: &str, visitor: V) -> Result<V::Value,
   let trimmed = raw.trim_start_matches(['-', '+']);
   if trimmed.len() > 2 && (trimmed.starts_with("0x") || trimmed.starts_with("0X")) {
     let hex_part = &trimmed[2..];
-    // parse as an i128 so that values up to u64::MAX and down to i64::MIN fit
+    let negative = raw.starts_with('-');
+    if let Ok(val) = i64::from_str_radix(hex_part, 16) {
+      return visitor.visit_i64(if negative { -val } else { val });
+    }
+    // fall back to an i128 for the values that don't fit in an i64, which
+    // are the ones that fit in a u64 and `i64::MIN`
     return match i128::from_str_radix(hex_part, 16) {
       Ok(val) => {
-        let val = if raw.starts_with('-') { -val } else { val };
+        let val = if negative { -val } else { val };
         if let Ok(val) = i64::try_from(val) {
           visitor.visit_i64(val)
         } else if let Ok(val) = u64::try_from(val) {
