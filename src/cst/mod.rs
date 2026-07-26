@@ -4062,6 +4062,22 @@ value3: true
     }
   }
 
+  #[test]
+  fn missing_comma_between_array_elements() {
+    build_cst("[1 2]");
+
+    // but is strict when strict
+    let options = crate::ParseOptions {
+      allow_missing_commas: false,
+      ..Default::default()
+    };
+    assert_eq!(
+      CstRootNode::parse("[1 2]", &options).err().unwrap().to_string(),
+      "Expected comma on line 1 column 3"
+    );
+    CstRootNode::parse("[1, 2]", &options).unwrap();
+  }
+
   #[track_caller]
   fn build_cst(text: &str) -> CstRootNode {
     CstRootNode::parse(text, &crate::ParseOptions::default()).unwrap()

@@ -44,6 +44,14 @@ impl<'a> Token<'a> {
       Token::CommentBlock(value) => value,
     }
   }
+
+  /// Whether this token can begin a JSON value.
+  pub(crate) fn is_value_start(&self) -> bool {
+    matches!(
+      self,
+      Token::OpenBrace | Token::OpenBracket | Token::String(_) | Token::Boolean(_) | Token::Number(_) | Token::Null
+    )
+  }
 }
 
 /// A token with positional information.

@@ -722,4 +722,84 @@ mod tests {
 
     assert_eq!(result, Config { value: 42 });
   }
+
+  #[test]
+  fn missing_comma_between_array_elements() {
+    let result = parse_to_serde_value::<SerdeValue>("[1 2]", &Default::default()).unwrap();
+    assert_eq!(result, serde_json::json!([1, 2]));
+
+    // but is strict when strict
+    assert_has_strict_error("[1 2]", "Expected comma on line 1 column 3");
+    assert_has_strict_error("[01]", "Expected comma on line 1 column 3");
+    assert_has_strict_error(r#"["a" "b"]"#, "Expected comma on line 1 column 5");
+    assert_has_strict_error("[true false]", "Expected comma on line 1 column 6");
+    assert_has_strict_error("[null null]", "Expected comma on line 1 column 6");
+    assert_has_strict_error("[[1] [2]]", "Expected comma on line 1 column 5");
+    assert_has_strict_error(r#"[{"a":1} {"b":2}]"#, "Expected comma on line 1 column 9");
+
+    for text in ["[]", "[1,2]", "[1 , 2]", "[[1],[2]]", r#"[{"a":1},{"b":2}]"#] {
+      parse_to_serde_value_strict::<SerdeValue>(text).unwrap();
+    }
+  }
+
+  #[test]
+  fn missing_comma_between_array_elements_when_draining() {
+    // a tuple stops reading before the end of the array, so the
+    // remaining elements are drained and should still be strict
+    assert_has_strict_drain_error::<(u32,)>("[1 2]", "Expected comma on line 1 column 3");
+    // the drained element here ends with a `}`
+    assert_has_strict_drain_error::<(u32, SerdeValue)>(r#"[1, {"a":2} 3]"#, "Expected comma on line 1 column 12");
+  }
+
+  #[test]
+  fn missing_comma_with_comment_between_array_elements() {
+    // when comments are allowed but missing commas are not,
+    // should still detect the missing comma after the comment is skipped
+    let result = parse_to_serde_value::<SerdeValue>(
+      r#"[
+  1 // comment here
+  2
+]"#,
+      &ParseOptions {
+        allow_comments: true,
+        allow_missing_commas: false,
+        ..Default::default()
+      },
+    );
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Expected comma on line 2 column 4"),
+    }
+  }
+
+  #[track_caller]
+  fn assert_has_strict_error(text: &str, message: &str) {
+    match parse_to_serde_value_strict::<SerdeValue>(text) {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), message),
+    }
+  }
+
+  #[track_caller]
+  fn assert_has_strict_drain_error<T: ::serde::de::DeserializeOwned>(text: &str, message: &str) {
+    match parse_to_serde_value_strict::<T>(text) {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), message),
+    }
+  }
+
+  fn parse_to_serde_value_strict<T: ::serde::de::DeserializeOwned>(text: &str) -> Result<T, ParseError> {
+    parse_to_serde_value(
+      text,
+      &ParseOptions {
+        allow_comments: false,
+        allow_loose_object_property_names: false,
+        allow_trailing_commas: false,
+        allow_missing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
+      },
+    )
+  }
 }

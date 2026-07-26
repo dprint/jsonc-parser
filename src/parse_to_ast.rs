@@ -414,13 +414,24 @@ fn parse_array<'a>(context: &mut Context<'a>) -> Result<Array<'a>, ParseError> {
     }
 
     // skip the comma
-    if let Some(Token::Comma) = context.scan()? {
-      let comma_range = context.create_range_from_last_token();
-      if let Some(Token::CloseBracket) = context.scan()?
-        && !context.allow_trailing_commas
-      {
-        return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
+    let after_value_end = context.last_token_end;
+    match context.scan()? {
+      Some(Token::Comma) => {
+        let comma_range = context.create_range_from_last_token();
+        if let Some(Token::CloseBracket) = context.scan()?
+          && !context.allow_trailing_commas
+        {
+          return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
+        }
       }
+      Some(token) if !context.allow_missing_commas && token.is_value_start() => {
+        let range = Range {
+          start: after_value_end,
+          end: after_value_end,
+        };
+        return Err(context.create_error_for_range(range, ParseErrorKind::ExpectedComma));
+      }
+      _ => {}
     }
   }
 
@@ -582,22 +593,22 @@ mod tests {
 
   #[track_caller]
   fn assert_has_strict_error(text: &str, message: &str) {
-    let result = parse_to_ast(
-      text,
-      &Default::default(),
-      &ParseOptions {
-        allow_comments: false,
-        allow_loose_object_property_names: false,
-        allow_trailing_commas: false,
-        allow_missing_commas: false,
-        allow_single_quoted_strings: false,
-        allow_hexadecimal_numbers: false,
-        allow_unary_plus_numbers: false,
-      },
-    );
+    let result = parse_to_ast(text, &Default::default(), &strict_options());
     match result {
       Ok(_) => panic!("Expected error, but did not find one."),
       Err(err) => assert_eq!(err.to_string(), message),
+    }
+  }
+
+  fn strict_options() -> ParseOptions {
+    ParseOptions {
+      allow_comments: false,
+      allow_loose_object_property_names: false,
+      allow_trailing_commas: false,
+      allow_missing_commas: false,
+      allow_single_quoted_strings: false,
+      allow_hexadecimal_numbers: false,
+      allow_unary_plus_numbers: false,
     }
   }
 
@@ -739,6 +750,67 @@ mod tests {
     match result {
       Ok(_) => panic!("Expected error, but did not find one."),
       Err(err) => assert_eq!(err.to_string(), "Expected comma on line 2 column 18"),
+    }
+  }
+
+  #[test]
+  fn missing_comma_between_array_elements() {
+    let text = "[1 2]";
+    let result = parse_to_ast(text, &Default::default(), &Default::default()).unwrap();
+    let value = result.value.unwrap();
+    let elements = &value.as_array().unwrap().elements;
+    assert_eq!(elements.len(), 2);
+
+    // but is strict when strict
+    assert_has_strict_error(text, "Expected comma on line 1 column 3");
+    assert_has_strict_error("[01]", "Expected comma on line 1 column 3");
+    assert_has_strict_error(r#"["a" "b"]"#, "Expected comma on line 1 column 5");
+    assert_has_strict_error("[true false]", "Expected comma on line 1 column 6");
+    assert_has_strict_error("[null null]", "Expected comma on line 1 column 6");
+    assert_has_strict_error("[[1] [2]]", "Expected comma on line 1 column 5");
+    assert_has_strict_error(r#"[{"a":1} {"b":2}]"#, "Expected comma on line 1 column 9");
+    assert_has_strict_error("[1 2", "Expected comma on line 1 column 3");
+
+    // these are not missing commas
+    assert_has_strict_error("[1", "Unterminated array on line 1 column 1");
+    assert_has_strict_error("[1 a ]", "Unexpected word on line 1 column 4");
+
+    for text in ["[]", "[ ]", "[1,2]", "[1 , 2]", "[[1],[2]]", r#"[{"a":1},{"b":2}]"#] {
+      parse_to_ast(text, &Default::default(), &strict_options()).unwrap();
+    }
+  }
+
+  #[test]
+  fn missing_comma_not_allowed_with_trailing_commas_allowed_in_array() {
+    let options = ParseOptions {
+      allow_missing_commas: false,
+      allow_trailing_commas: true,
+      ..Default::default()
+    };
+    for text in ["[]", "[1,]", "[1, 2,]", "[[1,],[2,],]"] {
+      parse_to_ast(text, &Default::default(), &options).unwrap();
+    }
+  }
+
+  #[test]
+  fn missing_comma_with_comment_between_array_elements() {
+    // when comments are allowed but missing commas are not,
+    // should still detect the missing comma after the comment is skipped
+    let result = parse_to_ast(
+      r#"[
+  1 // comment here
+  2
+]"#,
+      &Default::default(),
+      &ParseOptions {
+        allow_comments: true,
+        allow_missing_commas: false,
+        ..Default::default()
+      },
+    );
+    match result {
+      Ok(_) => panic!("Expected error, but did not find one."),
+      Err(err) => assert_eq!(err.to_string(), "Expected comma on line 2 column 4"),
     }
   }
 
