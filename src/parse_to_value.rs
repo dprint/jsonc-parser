@@ -343,21 +343,22 @@ mod tests {
 
   #[track_caller]
   fn assert_has_strict_error(text: &str, message: &str) {
-    let result = parse_to_value(
-      text,
-      &ParseOptions {
-        allow_comments: false,
-        allow_loose_object_property_names: false,
-        allow_trailing_commas: false,
-        allow_missing_commas: false,
-        allow_single_quoted_strings: false,
-        allow_hexadecimal_numbers: false,
-        allow_unary_plus_numbers: false,
-      },
-    );
+    let result = parse_to_value(text, &strict_options());
     match result {
       Ok(_) => panic!("Expected error, but did not find one."),
       Err(err) => assert_eq!(err.to_string(), message),
+    }
+  }
+
+  fn strict_options() -> ParseOptions {
+    ParseOptions {
+      allow_comments: false,
+      allow_loose_object_property_names: false,
+      allow_trailing_commas: false,
+      allow_missing_commas: false,
+      allow_single_quoted_strings: false,
+      allow_hexadecimal_numbers: false,
+      allow_unary_plus_numbers: false,
     }
   }
 
@@ -517,6 +518,27 @@ mod tests {
     assert_has_strict_error("[null null]", "Expected comma on line 1 column 6");
     assert_has_strict_error("[[1] [2]]", "Expected comma on line 1 column 5");
     assert_has_strict_error(r#"[{"a":1} {"b":2}]"#, "Expected comma on line 1 column 9");
+    assert_has_strict_error("[1 2", "Expected comma on line 1 column 3");
+
+    // these are not missing commas
+    assert_has_strict_error("[1", "Unterminated array on line 1 column 3");
+    assert_has_strict_error("[1 a ]", "Unexpected word on line 1 column 4");
+
+    for text in ["[]", "[ ]", "[1,2]", "[1 , 2]", "[[1],[2]]", r#"[{"a":1},{"b":2}]"#] {
+      parse_to_value(text, &strict_options()).unwrap();
+    }
+  }
+
+  #[test]
+  fn missing_comma_not_allowed_with_trailing_commas_allowed_in_array() {
+    let options = ParseOptions {
+      allow_missing_commas: false,
+      allow_trailing_commas: true,
+      ..Default::default()
+    };
+    for text in ["[]", "[1,]", "[1, 2,]", "[[1,],[2,],]"] {
+      parse_to_value(text, &options).unwrap();
+    }
   }
 
   #[test]

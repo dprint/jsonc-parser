@@ -192,6 +192,7 @@ impl<'a> JsoncParser<'a> {
   /// After an array element, scans for the comma/close-bracket and
   /// returns the next token.
   pub fn scan_array_comma(&mut self) -> Result<Option<Token<'a>>, ParseError> {
+    debug_assert!(self.pending_token.is_none(), "the previous value must be consumed");
     let after_value_end = self.scanner.token_end();
     match self.scan()? {
       Some(Token::Comma) => {
@@ -206,7 +207,7 @@ impl<'a> JsoncParser<'a> {
         }
         Ok(next)
       }
-      Some(token) if token.is_value_start() && !self.allow_missing_commas => {
+      Some(token) if !self.allow_missing_commas && token.is_value_start() => {
         let range = Range::new(after_value_end, after_value_end);
         Err(
           self

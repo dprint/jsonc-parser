@@ -45,18 +45,11 @@ impl<'a> Token<'a> {
     }
   }
 
-  /// If this token could begin a value, which is used to detect a
-  /// missing comma between array elements.
+  /// Whether this token can begin a JSON value.
   pub(crate) fn is_value_start(&self) -> bool {
     matches!(
       self,
-      Token::OpenBrace
-        | Token::OpenBracket
-        | Token::String(_)
-        | Token::Word(_)
-        | Token::Boolean(_)
-        | Token::Number(_)
-        | Token::Null
+      Token::OpenBrace | Token::OpenBracket | Token::String(_) | Token::Boolean(_) | Token::Number(_) | Token::Null
     )
   }
 }
