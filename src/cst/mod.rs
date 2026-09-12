@@ -1,9 +1,7 @@
 //! CST for manipulating JSONC.
 //!
 //! Unlike the AST, this keeps every comment and every piece of whitespace, so a document can be
-//! edited and written back out with everything the author wrote still in place. Properties and
-//! elements can also be reordered with [`CstObject::sort_properties_by`] and
-//! [`CstArray::sort_elements_by`], which carry each one's comments along with it.
+//! edited and written back out with everything the author wrote still in place.
 //!
 //! # Example
 //!
@@ -40,6 +38,7 @@ use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::iter::Peekable;
+use std::ops::Range;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -1852,12 +1851,7 @@ impl CstObject {
   /// Behaves like [`CstObject::sort_properties_by`] in every other respect.
   pub fn sort_properties_by_key<K: Ord>(&self, mut key: impl FnMut(&CstObjectProp) -> K) {
     sort_comma_separated_children(&self.clone().into(), |groups| {
-      let mut keyed = std::mem::take(groups)
-        .into_iter()
-        .map(|group| (group.element.as_object_prop().map(|prop| key(&prop)), group))
-        .collect::<Vec<_>>();
-      keyed.sort_by(|left, right| left.0.cmp(&right.0));
-      groups.extend(keyed.into_iter().map(|(_, group)| group));
+      groups.sort_by_cached_key(|group| group.element.as_object_prop().map(|prop| key(&prop)))
     });
   }
 
@@ -2276,12 +2270,7 @@ impl CstArray {
   /// Behaves like [`CstArray::sort_elements_by`] in every other respect.
   pub fn sort_elements_by_key<K: Ord>(&self, mut key: impl FnMut(&CstNode) -> K) {
     sort_comma_separated_children(&self.clone().into(), |groups| {
-      let mut keyed = std::mem::take(groups)
-        .into_iter()
-        .map(|group| (key(&group.element), group))
-        .collect::<Vec<_>>();
-      keyed.sort_by(|left, right| left.0.cmp(&right.0));
-      groups.extend(keyed.into_iter().map(|(_, group)| group));
+      groups.sort_by_cached_key(|group| key(&group.element))
     });
   }
 
@@ -2680,24 +2669,32 @@ impl<'a> CstBuilder<'a> {
 
 /// What sits between two elements and stays where it is, because it positions whatever comes next
 /// rather than belonging to either element.
+///
+/// Both parts are stretches of the container's own children, which moving elements around only
+/// ever copies, so they're held as ranges rather than as lists of their own.
 struct Separator {
   /// The line break that ended the previous element line, or on a single line the space between
   /// the two elements.
-  before: Vec<CstNode>,
+  before: Range<usize>,
   /// The indentation directly in front of the element.
-  indent: Vec<CstNode>,
+  indent: Range<usize>,
 }
 
 /// An element of a comma separated container along with the trivia that travels with it.
+///
+/// Every part of it is a stretch of the container's own children, which reordering only ever
+/// copies, so they're held as ranges rather than as lists of their own.
 struct SortableGroup {
   /// Where the element was written, so that a sort changing nothing can leave the tree alone.
   index: usize,
   /// What was written before the element and belongs to it: its comments and the blank lines above it.
-  leading: Vec<CstNode>,
+  leading: Range<usize>,
   element: CstNode,
   /// Whatever separates the element from its comma, the comma, and any comment written after that
   /// on the same line.
-  trailing: Vec<CstNode>,
+  trailing: Range<usize>,
+  /// Where the element's comma sits, if it was written with one.
+  comma: Option<usize>,
 }
 
 /// Reorders the elements of an object or array, moving what was written with each element along
@@ -2724,19 +2721,22 @@ fn sort_comma_separated_children(container: &CstContainerNode, sort: impl FnOnce
     }
     if index == region.len() {
       // what follows the last element belongs to no element and stays where it is
-      break region[run_start..].to_vec();
+      break run_start..region.len();
     }
-    let (separator, leading) = split_separator(&region[run_start..index]);
+    let (separator, leading) = split_separator(region, run_start..index);
     separators.push(separator);
-    let element = region[index].clone();
-    let trailing_end = trailing_run_end(region, index + 1);
+    let trailing = index + 1..trailing_run_end(region, index + 1);
     groups.push(SortableGroup {
       index: groups.len(),
       leading,
-      element,
-      trailing: region[index + 1..trailing_end].to_vec(),
+      element: region[index].clone(),
+      comma: region[trailing.clone()]
+        .iter()
+        .position(|n| n.is_comma())
+        .map(|at| trailing.start + at),
+      trailing: trailing.clone(),
     });
-    index = trailing_end;
+    index = trailing.end;
   };
 
   if groups.len() < 2 {
@@ -2744,7 +2744,7 @@ fn sort_comma_separated_children(container: &CstContainerNode, sort: impl FnOnce
   }
 
   // whether the author ended the container with a comma, which the new last element takes over
-  let ends_with_comma = groups[groups.len() - 1].trailing.iter().any(|n| n.is_comma());
+  let ends_with_comma = groups[groups.len() - 1].comma.is_some();
   sort(&mut groups);
   if groups
     .iter()
@@ -2754,26 +2754,26 @@ fn sort_comma_separated_children(container: &CstContainerNode, sort: impl FnOnce
     return;
   }
 
-  let last_index = groups.len() - 1;
-  for (position, group) in groups.iter_mut().enumerate() {
-    set_group_comma(group, position < last_index || ends_with_comma);
-  }
   // a blank line here reads as a gap under the open token rather than as something written with
   // the element that follows, so it doesn't travel with whatever sorted to the top
   let first_leading = &mut groups[0].leading;
-  let blank_count = first_leading.iter().take_while(|n| n.is_newline()).count();
-  first_leading.drain(..blank_count);
+  first_leading.start += region[first_leading.clone()]
+    .iter()
+    .take_while(|n| n.is_newline())
+    .count();
 
+  let last_index = groups.len() - 1;
   let mut new_children = Vec::with_capacity(children.len());
   new_children.push(children[0].clone());
-  for (separator, group) in separators.into_iter().zip(groups) {
-    new_children.extend(separator.before);
-    new_children.extend(group.leading);
-    new_children.extend(separator.indent);
+  for (position, (separator, group)) in separators.into_iter().zip(groups).enumerate() {
+    new_children.extend_from_slice(&region[separator.before]);
+    new_children.extend_from_slice(&region[group.leading]);
+    new_children.extend_from_slice(&region[separator.indent]);
     new_children.push(group.element);
-    new_children.extend(group.trailing);
+    let wants_comma = position < last_index || ends_with_comma;
+    push_trailing(&mut new_children, region, group.trailing, group.comma, wants_comma);
   }
-  new_children.extend(tail);
+  new_children.extend_from_slice(&region[tail]);
   new_children.push(children[children.len() - 1].clone());
   let newline_kind = container
     .root_node()
@@ -2797,31 +2797,32 @@ fn is_sortable_element(node: &CstNode) -> bool {
 /// position whatever comes next, so they belong to the slot rather than to either element. What
 /// sits between them, such as blank lines and the comments written above the element, came with
 /// that element and travels with it.
-fn split_separator(run: &[CstNode]) -> (Separator, Vec<CstNode>) {
-  let Some(newline) = run.iter().position(|n| n.is_newline()) else {
-    // nothing indents anything on a single line, so all that's here is the space between the two
-    let before = run.iter().take_while(|n| n.is_whitespace()).count();
+fn split_separator(region: &[CstNode], run: Range<usize>) -> (Separator, Range<usize>) {
+  let nodes = &region[run.clone()];
+  let Some(newline) = nodes.iter().position(|n| n.is_newline()) else {
+    // nothing indents anything on a single line, so all that is here is the space between the two
+    let before = nodes.iter().take_while(|n| n.is_whitespace()).count();
     return (
       Separator {
-        before: run[..before].to_vec(),
-        indent: Vec::new(),
+        before: run.start..run.start + before,
+        indent: run.end..run.end,
       },
-      run[before..].to_vec(),
+      run.start + before..run.end,
     );
   };
   let leading_start = newline + 1;
-  let indent_len = run[leading_start..]
+  let indent_len = nodes[leading_start..]
     .iter()
     .rev()
     .take_while(|n| n.is_whitespace())
     .count();
-  let indent_start = run.len() - indent_len;
+  let indent_start = nodes.len() - indent_len;
   (
     Separator {
-      before: run[..leading_start].to_vec(),
-      indent: run[indent_start..].to_vec(),
+      before: run.start..run.start + leading_start,
+      indent: run.start + indent_start..run.end,
     },
-    run[leading_start..indent_start].to_vec(),
+    run.start + leading_start..run.start + indent_start,
   )
 }
 
@@ -2863,18 +2864,30 @@ fn rest_of_line_is_trivia(region: &[CstNode], start: usize) -> bool {
     .all(|n| n.is_whitespace() || n.is_comment())
 }
 
-/// Adds or removes the element's comma so that it suits the element's new position.
-fn set_group_comma(group: &mut SortableGroup, wants_comma: bool) {
-  match group.trailing.iter().position(|n| n.is_comma()) {
-    Some(index) if !wants_comma => {
-      group.trailing.remove(index);
+/// Writes out what followed the element, with its comma added or dropped to suit its new position.
+fn push_trailing(
+  out: &mut Vec<CstNode>,
+  region: &[CstNode],
+  trailing: Range<usize>,
+  comma: Option<usize>,
+  wants_comma: bool,
+) {
+  match comma {
+    Some(comma) if !wants_comma => {
       // the space that offset the comma has nothing left to offset
-      if index > 0 && group.trailing[index - 1].is_whitespace() {
-        group.trailing.remove(index - 1);
-      }
+      let end = if comma > trailing.start && region[comma - 1].is_whitespace() {
+        comma - 1
+      } else {
+        comma
+      };
+      out.extend_from_slice(&region[trailing.start..end]);
+      out.extend_from_slice(&region[comma + 1..trailing.end]);
     }
-    None if wants_comma => group.trailing.insert(0, CstToken::new(',').into()),
-    _ => {}
+    None if wants_comma => {
+      out.push(CstToken::new(',').into());
+      out.extend_from_slice(&region[trailing]);
+    }
+    _ => out.extend_from_slice(&region[trailing]),
   }
 }
 
