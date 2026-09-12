@@ -41,13 +41,13 @@ fn check(random: &mut Random, shape: Shape, options: Options) {
       let Some(object) = root.object_value() else {
         return;
       };
-      object.sort_properties().by_key(|prop| prop.decoded_name());
+      sort_properties(&object, options);
     }
     Shape::Array => {
       let Some(array) = root.array_value() else {
         return;
       };
-      array.sort_elements().by_key(|element| element.to_string());
+      sort_elements(&array, options);
     }
   }
 
@@ -61,11 +61,15 @@ fn check(random: &mut Random, shape: Shape, options: Options) {
     sorted_lines(&after),
     "contents changed\n--- input ---\n{text}\n--- output ---\n{sorted}"
   );
-  // only the key decides the order; members sharing one keep the order they were written in
-  assert!(
-    after.windows(2).all(|pair| pair[0].0 <= pair[1].0),
-    "not in order\n--- input ---\n{text}\n--- output ---\n{sorted}"
-  );
+  // Only the key decides the order, and members sharing one keep the order they were written
+  // in. Grouping deliberately leaves the container unsorted as a whole, so this only holds when
+  // the sort was free to move a member anywhere.
+  if !options.within_groups {
+    assert!(
+      after.windows(2).all(|pair| pair[0].0 <= pair[1].0),
+      "not in order\n--- input ---\n{text}\n--- output ---\n{sorted}"
+    );
+  }
   assert_eq!(
     keyed_order(&before),
     keyed_order(&after),

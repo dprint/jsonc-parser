@@ -130,7 +130,8 @@ macro_rules! add_parent_info_methods {
       indent_text(&self.clone().into())
     }
 
-    /// Whether a blank line separates this node from whatever was written before it.
+    /// Whether a blank line separates this node, and the comments written above it, from
+    /// whatever came before them.
     pub fn has_blank_line_before(&self) -> bool {
       has_blank_line_before(&self.clone().into())
     }
@@ -147,24 +148,10 @@ macro_rules! add_parent_info_methods {
   };
 }
 
-/// Whether a blank line separates the node from whatever was written before it.
+/// Whether a blank line separates the node, and the comments written above it, from what came
+/// before them.
 fn has_blank_line_before(node: &CstNode) -> bool {
-  let mut ended_a_line = false;
-  for previous in node.previous_siblings() {
-    if previous.is_newline() {
-      if ended_a_line {
-        return true;
-      }
-      ended_a_line = true;
-    } else if previous.is_whitespace() {
-      // keeps looking past the indentation
-    } else if previous.is_comment() {
-      ended_a_line = false;
-    } else {
-      return false;
-    }
-  }
-  false
+  has_blank_line(node.previous_siblings().take_while(|n| n.is_trivia()))
 }
 
 fn find_trailing_comma(node: &CstNode) -> Option<CstToken> {
@@ -1834,10 +1821,15 @@ impl CstObject {
   /// Sorts the properties of the object.
   ///
   /// What was written with a property travels with it: the comments and blank lines above it, and
-  /// a comment written after it on the same line. What belongs to no property stays where it is,
-  /// which includes whatever follows the open brace and whatever precedes the close brace. Each
-  /// property gains or loses a comma to suit its new position, and whether the object ends with a
-  /// trailing comma is preserved.
+  /// a comment written after it on the same line. Whatever precedes the close brace, and whatever
+  /// shares the open brace's line, belongs to no property and stays where it is. Each property
+  /// gains or loses a comma to suit its new position, and whether the object ends with a trailing
+  /// comma is preserved.
+  ///
+  /// A blank line under the open brace travels with the property it was written above, and one
+  /// that would end up there instead is dropped, since a gap there reads as belonging to the
+  /// object. A line comment that would otherwise comment out what now follows it gains a line
+  /// break, which can make a single line object span several.
   ///
   /// Nothing moves until [`PropertySort::by`] or [`PropertySort::by_key`] says how to order them.
   ///
@@ -2699,8 +2691,9 @@ impl<'a> PropertySort<'a> {
   ///   "prop2": 2
   /// }"#);
   /// ```
-  pub fn pin_comment_headers(self) -> Self {
-    self.pin_comment_headers_with(|prop, comments| blank_line_header_rule(&prop.clone().into(), comments))
+  pub fn pin_comment_headers(mut self) -> Self {
+    self.options.header_rule = Some(Box::new(blank_line_header_rule));
+    self
   }
 
   /// Decides for each property how much of what was written above it is a heading for what
@@ -2715,7 +2708,10 @@ impl<'a> PropertySort<'a> {
   /// else { 0 }`. A count in between splits a block that is partly a heading and partly a note
   /// about the property itself.
   ///
-  /// The rule must not add or remove properties. Doing so leaves the sort with nothing safe to
+  /// The rule is only consulted where a header could be written, which is a property on a line of
+  /// its own; it is not called for an object written on one line.
+  ///
+  /// The rule must not change the object's children. Doing so leaves the sort with nothing safe to
   /// write back, so it gives up and leaves the object as the rule left it.
   pub fn pin_comment_headers_with(mut self, mut rule: impl FnMut(&CstObjectProp, &[CstComment]) -> usize + 'a) -> Self {
     self.options.header_rule = Some(Box::new(move |element, comments| match element.as_object_prop() {
@@ -2769,8 +2765,8 @@ impl<'a> PropertySort<'a> {
   /// Sorts the properties with the given comparator.
   ///
   /// The sort is stable, so properties that compare equal keep the order they were written in. The
-  /// comparator must describe a total order, as [`slice::sort_by`] panics otherwise, and it must
-  /// not add or remove properties; see [`PropertySort::pin_comment_headers_with`].
+  /// comparator must describe a total order, as the sort may panic otherwise, and it must not
+  /// change the object's children; see [`PropertySort::pin_comment_headers_with`].
   pub fn by(self, mut compare: impl FnMut(&CstObjectProp, &CstObjectProp) -> Ordering) {
     let object = self.object.clone().into();
     sort_comma_separated_children(&object, self.options, |groups| {
@@ -2787,8 +2783,9 @@ impl<'a> PropertySort<'a> {
 
   /// Sorts the properties by a key, which is worked out once per property.
   ///
-  /// A property whose name can't be decoded has no key, and sorts above every property that has
-  /// one. Behaves like [`PropertySort::by`] in every other respect.
+  /// A child that isn't a property, which is only possible if the tree has been manipulated into
+  /// holding something else, has no key and sorts above every property. Behaves like
+  /// [`PropertySort::by`] in every other respect.
   pub fn by_key<K: Ord>(self, mut key: impl FnMut(&CstObjectProp) -> K) {
     let object = self.object.clone().into();
     sort_comma_separated_children(&object, self.options, |groups| {
@@ -2897,8 +2894,7 @@ struct Separator {
 
 /// An element of a comma separated container along with the trivia that travels with it.
 ///
-/// Every part of it is a stretch of the container's own children, which reordering only ever
-/// copies, so they're held as ranges rather than as lists of their own.
+/// Held as ranges for the same reason as [`Separator`].
 struct SortableGroup {
   /// Where the element was written, so that a sort changing nothing can leave the tree alone.
   index: usize,
@@ -2948,7 +2944,7 @@ fn sort_comma_separated_children(
       break run_start..region.len();
     }
     let run = run_start..index;
-    let starts_group = !groups.is_empty() && run_has_blank_line(&region[run.clone()]);
+    let starts_group = has_blank_line(region[run.clone()].iter().cloned());
     let (separator, leading) = split_separator(region, run, &region[index], starts_group, &mut options);
     separators.push(separator);
     let trailing = index + 1..trailing_run_end(region, index + 1);
@@ -2980,9 +2976,15 @@ fn sort_comma_separated_children(
   } else {
     sort(&mut groups);
   }
-  // Adding or removing members while the sort runs would leave the ranges worked out above
-  // pointing at children that have moved, so writing them back would corrupt the tree.
-  if container.children().len() != children.len() {
+  // Changing the container while the sort runs would leave the ranges worked out above pointing
+  // at children that have moved, so writing them back would undo the change and detach whatever
+  // the caller is holding. A child that was removed or replaced no longer answers to its slot.
+  let unchanged = container.children().len() == children.len()
+    && children
+      .iter()
+      .enumerate()
+      .all(|(index, child)| child.parent_info().map(|info| info.child_index) == Some(index));
+  if !unchanged {
     return;
   }
   if groups
@@ -2996,11 +2998,7 @@ fn sort_comma_separated_children(
   // a blank line here reads as a gap under the open token rather than as something written with
   // the element that follows, so it doesn't travel with whatever sorted to the top
   let first_leading = &mut groups[0].leading;
-  let blank_count = region[first_leading.clone()]
-    .iter()
-    .take_while(|n| n.is_newline())
-    .count();
-  first_leading.start += blank_count;
+  first_leading.start += leading_blank_line_len(&region[first_leading.clone()]);
 
   let last_index = groups.len() - 1;
   let mut new_children = Vec::with_capacity(children.len());
@@ -3029,9 +3027,33 @@ fn is_sortable_element(node: &CstNode) -> bool {
   !node.is_trivia() && !node.is_token()
 }
 
+/// How much of the start of a run is blank lines, counting a line of nothing but whitespace as one.
+///
+/// Stops at the first line holding anything, so the indentation in front of a comment is left for
+/// the comment rather than counted as a blank line of its own.
+fn leading_blank_line_len(run: &[CstNode]) -> usize {
+  let mut len = 0;
+  let mut index = 0;
+  while index < run.len() {
+    let mut end = index;
+    while end < run.len() && run[end].is_whitespace() {
+      end += 1;
+    }
+    if end < run.len() && run[end].is_newline() {
+      index = end + 1;
+      len = index;
+    } else {
+      break;
+    }
+  }
+  len
+}
+
 /// Whether a run of trivia leaves a line empty, which is what marks a group boundary and what
 /// tells a comment heading a group from one describing the element beneath it.
-fn run_has_blank_line(run: &[CstNode]) -> bool {
+///
+/// Reads the same either way round, so the run may be walked forwards or backwards.
+fn has_blank_line(run: impl IntoIterator<Item = CstNode>) -> bool {
   let mut ended_a_line = false;
   for node in run {
     if node.is_newline() {
@@ -3103,6 +3125,10 @@ fn split_separator(
 /// The header runs up to the line the first comment that isn't part of it begins on, so that the
 /// blank line under a header stays with the header where it reads.
 fn header_len(leading: &[CstNode], element: &CstNode, options: &mut SortOptions<'_>) -> usize {
+  // the common sort sets no rule at all, and then nothing above an element ever stays
+  if options.header_rule.is_none() {
+    return 0;
+  }
   let comments = leading
     .iter()
     .filter_map(|node| match node {
@@ -3111,23 +3137,29 @@ fn header_len(leading: &[CstNode], element: &CstNode, options: &mut SortOptions<
     })
     .collect::<Vec<_>>();
   let pinned = options.pinned_comment_count(element, &comments);
-  if pinned == 0 {
-    return 0;
-  }
   if pinned >= comments.len() {
     return leading.len();
   }
-  let mut split = leading
+  // A blank line is how the container was laid out rather than something written with the element,
+  // so it stays put whenever the caller is deciding what travels, even when no comment does.
+  let blank_lines = leading_blank_line_len(leading);
+  if pinned == 0 {
+    return blank_lines;
+  }
+  let first_travelling = leading
     .iter()
     .enumerate()
     .filter(|(_, node)| node.is_comment())
     .map(|(index, _)| index)
     .nth(pinned)
-    .unwrap_or(leading.len());
-  while split > 0 && leading[split - 1].is_whitespace() {
+    .expect("a comment past the pinned ones, since fewer were pinned than there are");
+  // back up to the start of that comment's line, so that a header never ends part way along one
+  // and leaves what follows glued to it
+  let mut split = first_travelling;
+  while split > 0 && !leading[split - 1].is_newline() {
     split -= 1;
   }
-  split
+  split.max(blank_lines)
 }
 
 /// The end of the run after an element that was written with it: whatever separates the element
@@ -4950,7 +4982,6 @@ value3: true
     }
 
     // a blank line divides the object and nothing sorts across it
-    // a blank line divides the object and nothing sorts across it
     run_test(
       "{\n  \"m\": 1,\n\n  // section\n  \"z\": 2,\n  \"a\": 3\n}",
       "{\n  \"m\": 1,\n\n  // section\n  \"a\": 3,\n  \"z\": 2\n}",
@@ -5031,6 +5062,23 @@ value3: true
   \"a\": 1
 }"
     );
+  }
+
+  #[test]
+  fn sort_gives_up_when_the_comparator_replaces_a_member() {
+    let cst = build_cst("{\n  \"b\": 2,\n  \"a\": 1\n}");
+    let root_obj = cst.object_value().unwrap();
+    root_obj.sort_properties().by_key(|prop| {
+      let name = prop.decoded_name();
+      // a replacement leaves the child count alone, so only checking that would miss it
+      if name.as_deref() == Some("b") {
+        prop.clone().replace_with("zzz", json!(9));
+      }
+      name
+    });
+
+    // the replacement stands and nothing was reordered on top of it
+    assert_eq!(cst.to_string(), "{\n  \"zzz\": 9,\n  \"a\": 1\n}");
   }
 
   #[test]
