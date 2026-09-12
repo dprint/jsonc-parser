@@ -130,6 +130,11 @@ macro_rules! add_parent_info_methods {
       indent_text(&self.clone().into())
     }
 
+    /// Whether a blank line separates this node from whatever was written before it.
+    pub fn has_blank_line_before(&self) -> bool {
+      has_blank_line_before(&self.clone().into())
+    }
+
     /// Gets the trailing comma token of the node, if it exists.
     pub fn trailing_comma(&self) -> Option<CstToken> {
       find_trailing_comma(&self.clone().into())
@@ -140,6 +145,26 @@ macro_rules! add_parent_info_methods {
       uses_trailing_commas(self.clone().into())
     }
   };
+}
+
+/// Whether a blank line separates the node from whatever was written before it.
+fn has_blank_line_before(node: &CstNode) -> bool {
+  let mut ended_a_line = false;
+  for previous in node.previous_siblings() {
+    if previous.is_newline() {
+      if ended_a_line {
+        return true;
+      }
+      ended_a_line = true;
+    } else if previous.is_whitespace() {
+      // keeps looking past the indentation
+    } else if previous.is_comment() {
+      ended_a_line = false;
+    } else {
+      return false;
+    }
+  }
+  false
 }
 
 fn find_trailing_comma(node: &CstNode) -> Option<CstToken> {
@@ -1924,8 +1949,7 @@ impl CstObjectProp {
 
   /// Name of the object property with any escapes in it resolved.
   ///
-  /// Returns `None` if the name doesn't exist or can't be decoded, which sorts such a property
-  /// above every property whose name does decode.
+  /// Returns `None` if the name doesn't exist or can't be decoded.
   pub fn decoded_name(&self) -> Option<String> {
     match self.name()? {
       ObjectPropName::String(s) => s.decoded_value().ok(),
@@ -2627,22 +2651,16 @@ impl<'a> CstBuilder<'a> {
   }
 }
 
-/// What a sort does with the trivia it moves past, set through [`PropertySort`] and [`ElementSort`].
-#[derive(Debug, Default, Clone, Copy)]
-struct SortOptions {
-  maintain_comment_headers: bool,
-}
-
 /// A sort of an object's properties, waiting to be told how to order them.
 ///
 /// Built by [`CstObject::sort_properties`].
 #[must_use = "nothing is sorted until `by` or `by_key` is called"]
 pub struct PropertySort<'a> {
   object: &'a CstObject,
-  options: SortOptions,
+  options: SortOptions<'a>,
 }
 
-impl PropertySort<'_> {
+impl<'a> PropertySort<'a> {
   /// Leaves a comment that heads a group of properties where it was written.
   ///
   /// A comment with a blank line above it reads as a heading for the properties beneath it rather
@@ -2670,7 +2688,7 @@ impl PropertySort<'_> {
   /// let root_obj = root.object_value().unwrap();
   /// root_obj
   ///   .sort_properties()
-  ///   .maintain_comment_headers()
+  ///   .pin_comment_headers()
   ///   .by_key(|prop| prop.decoded_name());
   ///
   /// assert_eq!(root.to_string(), r#"{
@@ -2681,18 +2699,81 @@ impl PropertySort<'_> {
   ///   "prop2": 2
   /// }"#);
   /// ```
-  pub fn maintain_comment_headers(mut self) -> Self {
-    self.options.maintain_comment_headers = true;
+  pub fn pin_comment_headers(self) -> Self {
+    self.pin_comment_headers_with(|prop, comments| blank_line_header_rule(&prop.clone().into(), comments))
+  }
+
+  /// Decides for each property how much of what was written above it is a heading for what
+  /// follows rather than part of the property.
+  ///
+  /// `rule` is handed the property and the comments written above it, in the order they appear,
+  /// and returns how many of them, counting from the top, stay where they were written. The rest
+  /// travel with the property, as does the blank line under whatever stayed.
+  ///
+  /// Returning `comments.len()` pins everything above the property and `0` pins nothing, so
+  /// [`PropertySort::pin_comment_headers`] is `if prop.has_blank_line_before() { comments.len() }
+  /// else { 0 }`. A count in between splits a block that is partly a heading and partly a note
+  /// about the property itself.
+  ///
+  /// The rule must not add or remove properties. Doing so leaves the sort with nothing safe to
+  /// write back, so it gives up and leaves the object as the rule left it.
+  pub fn pin_comment_headers_with(mut self, mut rule: impl FnMut(&CstObjectProp, &[CstComment]) -> usize + 'a) -> Self {
+    self.options.header_rule = Some(Box::new(move |element, comments| match element.as_object_prop() {
+      Some(prop) => rule(&prop, comments),
+      None => 0,
+    }));
+    self
+  }
+
+  /// Sorts each run of properties between blank lines on its own, so that no property crosses one.
+  ///
+  /// A blank line, and whatever was written under it, is the boundary between two groups, and a
+  /// boundary stays where it is. A rule set by [`PropertySort::pin_comment_headers_with`] still
+  /// decides what travels with the properties inside each group.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use jsonc_parser::ParseOptions;
+  /// use jsonc_parser::cst::CstRootNode;
+  ///
+  /// let json_text = r#"{
+  ///   "m": 1,
+  ///
+  ///   // section
+  ///   "z": 2,
+  ///   "a": 3
+  /// }"#;
+  ///
+  /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
+  /// let root_obj = root.object_value().unwrap();
+  /// root_obj
+  ///   .sort_properties()
+  ///   .within_groups()
+  ///   .by_key(|prop| prop.decoded_name());
+  ///
+  /// // "m" stays above the blank line and only "z" and "a" trade places
+  /// assert_eq!(root.to_string(), r#"{
+  ///   "m": 1,
+  ///
+  ///   // section
+  ///   "a": 3,
+  ///   "z": 2
+  /// }"#);
+  /// ```
+  pub fn within_groups(mut self) -> Self {
+    self.options.within_groups = true;
     self
   }
 
   /// Sorts the properties with the given comparator.
   ///
   /// The sort is stable, so properties that compare equal keep the order they were written in. The
-  /// comparator must not modify the object, as changes made while it runs are discarded, and it
-  /// must describe a total order, as [`slice::sort_by`] panics otherwise.
+  /// comparator must describe a total order, as [`slice::sort_by`] panics otherwise, and it must
+  /// not add or remove properties; see [`PropertySort::pin_comment_headers_with`].
   pub fn by(self, mut compare: impl FnMut(&CstObjectProp, &CstObjectProp) -> Ordering) {
-    sort_comma_separated_children(&self.object.clone().into(), self.options, |groups| {
+    let object = self.object.clone().into();
+    sort_comma_separated_children(&object, self.options, |groups| {
       groups.sort_by(|left, right| {
         match (left.element.as_object_prop(), right.element.as_object_prop()) {
           (Some(left), Some(right)) => compare(&left, &right),
@@ -2706,9 +2787,11 @@ impl PropertySort<'_> {
 
   /// Sorts the properties by a key, which is worked out once per property.
   ///
-  /// Behaves like [`PropertySort::by`] in every other respect.
+  /// A property whose name can't be decoded has no key, and sorts above every property that has
+  /// one. Behaves like [`PropertySort::by`] in every other respect.
   pub fn by_key<K: Ord>(self, mut key: impl FnMut(&CstObjectProp) -> K) {
-    sort_comma_separated_children(&self.object.clone().into(), self.options, |groups| {
+    let object = self.object.clone().into();
+    sort_comma_separated_children(&object, self.options, |groups| {
       groups.sort_by_cached_key(|group| group.element.as_object_prop().map(|prop| key(&prop)))
     });
   }
@@ -2720,15 +2803,31 @@ impl PropertySort<'_> {
 #[must_use = "nothing is sorted until `by` or `by_key` is called"]
 pub struct ElementSort<'a> {
   array: &'a CstArray,
-  options: SortOptions,
+  options: SortOptions<'a>,
 }
 
-impl ElementSort<'_> {
+impl<'a> ElementSort<'a> {
   /// Leaves a comment that heads a group of elements where it was written.
   ///
-  /// Behaves like [`PropertySort::maintain_comment_headers`].
-  pub fn maintain_comment_headers(mut self) -> Self {
-    self.options.maintain_comment_headers = true;
+  /// Behaves like [`PropertySort::pin_comment_headers`].
+  pub fn pin_comment_headers(self) -> Self {
+    self.pin_comment_headers_with(blank_line_header_rule)
+  }
+
+  /// Decides for each element how much of what was written above it is a heading for what follows
+  /// rather than part of the element.
+  ///
+  /// Behaves like [`PropertySort::pin_comment_headers_with`].
+  pub fn pin_comment_headers_with(mut self, rule: impl FnMut(&CstNode, &[CstComment]) -> usize + 'a) -> Self {
+    self.options.header_rule = Some(Box::new(rule));
+    self
+  }
+
+  /// Sorts each run of elements between blank lines on its own, so that no element crosses one.
+  ///
+  /// Behaves like [`PropertySort::within_groups`].
+  pub fn within_groups(mut self) -> Self {
+    self.options.within_groups = true;
     self
   }
 
@@ -2736,7 +2835,8 @@ impl ElementSort<'_> {
   ///
   /// Behaves like [`PropertySort::by`].
   pub fn by(self, mut compare: impl FnMut(&CstNode, &CstNode) -> Ordering) {
-    sort_comma_separated_children(&self.array.clone().into(), self.options, |groups| {
+    let array = self.array.clone().into();
+    sort_comma_separated_children(&array, self.options, |groups| {
       groups.sort_by(|left, right| compare(&left.element, &right.element))
     });
   }
@@ -2745,9 +2845,40 @@ impl ElementSort<'_> {
   ///
   /// Behaves like [`PropertySort::by_key`].
   pub fn by_key<K: Ord>(self, mut key: impl FnMut(&CstNode) -> K) {
-    sort_comma_separated_children(&self.array.clone().into(), self.options, |groups| {
+    let array = self.array.clone().into();
+    sort_comma_separated_children(&array, self.options, |groups| {
       groups.sort_by_cached_key(|group| key(&group.element))
     });
+  }
+}
+
+/// Decides how many of the comments written above an element stay where they are when it moves.
+type HeaderRule<'a> = Box<dyn FnMut(&CstNode, &[CstComment]) -> usize + 'a>;
+
+/// What a sort does with the trivia it moves past, set through [`PropertySort`] and [`ElementSort`].
+#[derive(Default)]
+struct SortOptions<'a> {
+  header_rule: Option<HeaderRule<'a>>,
+  within_groups: bool,
+}
+
+impl SortOptions<'_> {
+  /// How many of `comments` stay where they were written rather than travelling with `element`.
+  fn pinned_comment_count(&mut self, element: &CstNode, comments: &[CstComment]) -> usize {
+    match &mut self.header_rule {
+      Some(rule) => rule(element, comments),
+      None => 0,
+    }
+  }
+}
+
+/// The rule [`PropertySort::pin_comment_headers`] and [`ElementSort::pin_comment_headers`] use: a
+/// comment with a blank line above it heads what follows rather than describing the first of them.
+fn blank_line_header_rule(element: &CstNode, comments: &[CstComment]) -> usize {
+  if element.has_blank_line_before() {
+    comments.len()
+  } else {
+    0
   }
 }
 
@@ -2757,8 +2888,8 @@ impl ElementSort<'_> {
 /// Both parts are stretches of the container's own children, which moving elements around only
 /// ever copies, so they're held as ranges rather than as lists of their own.
 struct Separator {
-  /// The line break that ended the previous element line, or on a single line the space between
-  /// the two elements.
+  /// The line break that ended the previous element line, whatever of the trivia under it was
+  /// written as a header for what follows, and on a single line the space between two elements.
   before: Range<usize>,
   /// The indentation directly in front of the element.
   indent: Range<usize>,
@@ -2771,7 +2902,10 @@ struct Separator {
 struct SortableGroup {
   /// Where the element was written, so that a sort changing nothing can leave the tree alone.
   index: usize,
-  /// What was written before the element and belongs to it: its comments and the blank lines above it.
+  /// Whether a blank line separates this element from the one before it, which is what divides a
+  /// container into groups.
+  starts_group: bool,
+  /// What was written before the element and belongs to it: its own comments and indentation.
   leading: Range<usize>,
   element: CstNode,
   /// Whatever separates the element from its comma, the comma, and any comment written after that
@@ -2784,11 +2918,13 @@ struct SortableGroup {
 /// Reorders the elements of an object or array, moving what was written with each element along
 /// with it and leaving the separators between them where they are.
 ///
-/// `sort` is handed the groups in the order they were written and is expected to sort them stably.
+/// `sort` is handed the elements of one group at a time, in the order they were written, and is
+/// expected to sort them stably. Without [`SortOptions::within_groups`] there is a single group
+/// holding everything.
 fn sort_comma_separated_children(
   container: &CstContainerNode,
-  options: SortOptions,
-  sort: impl FnOnce(&mut Vec<SortableGroup>),
+  mut options: SortOptions<'_>,
+  mut sort: impl FnMut(&mut [SortableGroup]),
 ) {
   let children = container.children();
   // the surrounding tokens are what the elements sit between, so there's nothing to sort without them
@@ -2811,11 +2947,14 @@ fn sort_comma_separated_children(
       // what follows the last element belongs to no element and stays where it is
       break run_start..region.len();
     }
-    let (separator, leading) = split_separator(region, run_start..index, options);
+    let run = run_start..index;
+    let starts_group = !groups.is_empty() && run_has_blank_line(&region[run.clone()]);
+    let (separator, leading) = split_separator(region, run, &region[index], starts_group, &mut options);
     separators.push(separator);
     let trailing = index + 1..trailing_run_end(region, index + 1);
     groups.push(SortableGroup {
       index: groups.len(),
+      starts_group,
       leading,
       element: region[index].clone(),
       comma: region[trailing.clone()]
@@ -2833,7 +2972,19 @@ fn sort_comma_separated_children(
 
   // whether the author ended the container with a comma, which the new last element takes over
   let ends_with_comma = groups[groups.len() - 1].comma.is_some();
-  sort(&mut groups);
+  if options.within_groups {
+    // a blank line divides the container, and a divider is not something an element sorts past
+    for group in groups.chunk_by_mut(|_, next| !next.starts_group) {
+      sort(group);
+    }
+  } else {
+    sort(&mut groups);
+  }
+  // Adding or removing members while the sort runs would leave the ranges worked out above
+  // pointing at children that have moved, so writing them back would corrupt the tree.
+  if container.children().len() != children.len() {
+    return;
+  }
   if groups
     .iter()
     .enumerate()
@@ -2845,10 +2996,11 @@ fn sort_comma_separated_children(
   // a blank line here reads as a gap under the open token rather than as something written with
   // the element that follows, so it doesn't travel with whatever sorted to the top
   let first_leading = &mut groups[0].leading;
-  first_leading.start += region[first_leading.clone()]
+  let blank_count = region[first_leading.clone()]
     .iter()
     .take_while(|n| n.is_newline())
     .count();
+  first_leading.start += blank_count;
 
   let last_index = groups.len() - 1;
   let mut new_children = Vec::with_capacity(children.len());
@@ -2877,15 +3029,38 @@ fn is_sortable_element(node: &CstNode) -> bool {
   !node.is_trivia() && !node.is_token()
 }
 
+/// Whether a run of trivia leaves a line empty, which is what marks a group boundary and what
+/// tells a comment heading a group from one describing the element beneath it.
+fn run_has_blank_line(run: &[CstNode]) -> bool {
+  let mut ended_a_line = false;
+  for node in run {
+    if node.is_newline() {
+      if ended_a_line {
+        return true;
+      }
+      ended_a_line = true;
+    } else if !node.is_whitespace() {
+      ended_a_line = false;
+    }
+  }
+  false
+}
+
 /// Splits what was written between two elements into the separator, which stays where it is, and
 /// the trivia belonging to the element that follows.
 ///
 /// The separator is the line break that ended the previous element's line together with the
 /// indentation under it, or on a single line the whitespace between the two elements. Both
 /// position whatever comes next, so they belong to the slot rather than to either element. What
-/// sits between them, such as blank lines and the comments written above the element, came with
-/// that element and travels with it.
-fn split_separator(region: &[CstNode], run: Range<usize>, options: SortOptions) -> (Separator, Range<usize>) {
+/// sits between them came with the element that follows and travels with it, except for however
+/// much of it the sort's header rule says was written as a header for what comes next.
+fn split_separator(
+  region: &[CstNode],
+  run: Range<usize>,
+  element: &CstNode,
+  starts_group: bool,
+  options: &mut SortOptions<'_>,
+) -> (Separator, Range<usize>) {
   let nodes = &region[run.clone()];
   let Some(newline) = nodes.iter().position(|n| n.is_newline()) else {
     // nothing indents anything on a single line, so all that is here is the space between the two
@@ -2898,20 +3073,21 @@ fn split_separator(region: &[CstNode], run: Range<usize>, options: SortOptions) 
       run.start + before..run.end,
     );
   };
-  let mut leading_start = newline + 1;
-  // A blank line makes any comment under it read as a heading for the elements beneath rather than
-  // as a description of the first of them, so the whole run stays with the slot. The element's own
-  // indentation is in there too, which is where it needs to be either way.
-  let blank_line_follows = nodes.get(leading_start).map(|n| n.is_newline()).unwrap_or(false);
-  if options.maintain_comment_headers && blank_line_follows {
-    leading_start = nodes.len();
-  }
-  let indent_len = nodes[leading_start..]
+  let indent_len = nodes[newline + 1..]
     .iter()
     .rev()
     .take_while(|n| n.is_whitespace())
     .count();
   let indent_start = nodes.len() - indent_len;
+  let leading = &nodes[newline + 1..indent_start];
+  let header_len = if starts_group && options.within_groups {
+    // the blank line and whatever was written under it are the boundary between two groups, and a
+    // boundary is not something an element sorts past, so none of it travels
+    leading.len()
+  } else {
+    header_len(leading, element, options)
+  };
+  let leading_start = newline + 1 + header_len;
   (
     Separator {
       before: run.start..run.start + leading_start,
@@ -2919,6 +3095,39 @@ fn split_separator(region: &[CstNode], run: Range<usize>, options: SortOptions) 
     },
     run.start + leading_start..run.start + indent_start,
   )
+}
+
+/// How much of what was written above an element was written as a header for it rather than as
+/// part of it, and so stays where it is when the element moves.
+///
+/// The header runs up to the line the first comment that isn't part of it begins on, so that the
+/// blank line under a header stays with the header where it reads.
+fn header_len(leading: &[CstNode], element: &CstNode, options: &mut SortOptions<'_>) -> usize {
+  let comments = leading
+    .iter()
+    .filter_map(|node| match node {
+      CstNode::Leaf(CstLeafNode::Comment(comment)) => Some(comment.clone()),
+      _ => None,
+    })
+    .collect::<Vec<_>>();
+  let pinned = options.pinned_comment_count(element, &comments);
+  if pinned == 0 {
+    return 0;
+  }
+  if pinned >= comments.len() {
+    return leading.len();
+  }
+  let mut split = leading
+    .iter()
+    .enumerate()
+    .filter(|(_, node)| node.is_comment())
+    .map(|(index, _)| index)
+    .nth(pinned)
+    .unwrap_or(leading.len());
+  while split > 0 && leading[split - 1].is_whitespace() {
+    split -= 1;
+  }
+  split
 }
 
 /// The end of the run after an element that was written with it: whatever separates the element
@@ -4679,14 +4888,14 @@ value3: true
   }
 
   #[test]
-  fn sort_properties_maintaining_comment_headers() {
+  fn sort_properties_pinning_comment_headers() {
     #[track_caller]
     fn run_test(json: &str, expected: &str) {
       let cst = build_cst(json);
       let root_obj = cst.object_value().unwrap();
       root_obj
         .sort_properties()
-        .maintain_comment_headers()
+        .pin_comment_headers()
         .by_key(|prop| prop.decoded_name());
       assert_eq!(cst.to_string(), expected);
       build_cst(&cst.to_string());
@@ -4724,6 +4933,104 @@ value3: true
     );
     // an object with no blank lines sorts exactly as it does without the option
     run_test("{\n  \"b\": 2,\n  \"a\": 1\n}", "{\n  \"a\": 1,\n  \"b\": 2\n}");
+  }
+
+  #[test]
+  fn sort_properties_within_groups() {
+    #[track_caller]
+    fn run_test(json: &str, expected: &str) {
+      let cst = build_cst(json);
+      let root_obj = cst.object_value().unwrap();
+      root_obj
+        .sort_properties()
+        .within_groups()
+        .by_key(|prop| prop.decoded_name());
+      assert_eq!(cst.to_string(), expected);
+      build_cst(&cst.to_string());
+    }
+
+    // a blank line divides the object and nothing sorts across it
+    // a blank line divides the object and nothing sorts across it
+    run_test(
+      "{\n  \"m\": 1,\n\n  // section\n  \"z\": 2,\n  \"a\": 3\n}",
+      "{\n  \"m\": 1,\n\n  // section\n  \"a\": 3,\n  \"z\": 2\n}",
+    );
+    // every group sorts on its own
+    run_test(
+      "{\n  \"d\": 4,\n  \"c\": 3,\n\n  \"b\": 2,\n  \"a\": 1\n}",
+      "{\n  \"c\": 3,\n  \"d\": 4,\n\n  \"a\": 1,\n  \"b\": 2\n}",
+    );
+    // the trailing comma still belongs to whatever ends the object
+    run_test(
+      "{\n  \"b\": 2,\n\n  \"d\": 4,\n  \"c\": 3,\n}",
+      "{\n  \"b\": 2,\n\n  \"c\": 3,\n  \"d\": 4,\n}",
+    );
+    // a group of one has nothing to sort
+    run_test("{\n  \"b\": 2,\n\n  \"a\": 1\n}", "{\n  \"b\": 2,\n\n  \"a\": 1\n}");
+    // an object with no blank line is one group
+    run_test("{\n  \"b\": 2,\n  \"a\": 1\n}", "{\n  \"a\": 1,\n  \"b\": 2\n}");
+    // a comment directly under the blank line is part of the boundary and stays with it
+    run_test(
+      "{\n  \"z\": 1,\n\n  // section\n  \"b\": 2,\n  \"a\": 3\n}",
+      "{\n  \"z\": 1,\n\n  // section\n  \"a\": 3,\n  \"b\": 2\n}",
+    );
+    // but one written further down the group belongs to its property and travels with it
+    run_test(
+      "{\n  \"z\": 1,\n\n  \"c\": 3,\n  // about b\n  \"b\": 2,\n  \"a\": 0\n}",
+      "{\n  \"z\": 1,\n\n  \"a\": 0,\n  // about b\n  \"b\": 2,\n  \"c\": 3\n}",
+    );
+  }
+
+  #[test]
+  fn sort_properties_pinning_some_of_the_comments() {
+    #[track_caller]
+    fn run_test(json: &str, expected: &str) {
+      let cst = build_cst(json);
+      let root_obj = cst.object_value().unwrap();
+      // only the first comment above a property heads its group; the rest are its own
+      root_obj
+        .sort_properties()
+        .pin_comment_headers_with(|prop, _| if prop.has_blank_line_before() { 1 } else { 0 })
+        .by_key(|prop| prop.decoded_name());
+      assert_eq!(cst.to_string(), expected);
+      build_cst(&cst.to_string());
+    }
+
+    // the first comment heads the group and the second describes the property under it
+    run_test(
+      "{\n  \"c\": 3,\n\n  // section\n  // about b\n  \"b\": 2,\n  \"a\": 1\n}",
+      "{\n  \"a\": 1,\n\n  // section\n  // about b\n  \"b\": 2,\n  \"c\": 3\n}",
+    );
+    // a blank line between the header and the note keeps the blank with the header
+    run_test(
+      "{\n  \"c\": 3,\n\n  // section\n\n  // about b\n  \"b\": 2,\n  \"a\": 1\n}",
+      "{\n  \"a\": 1,\n\n  // section\n\n  // about b\n  \"b\": 2,\n  \"c\": 3\n}",
+    );
+  }
+
+  #[test]
+  fn sort_gives_up_when_the_comparator_changes_the_object() {
+    let text = "{
+  \"b\": 2,
+  \"a\": 1
+}";
+    let cst = build_cst(text);
+    let root_obj = cst.object_value().unwrap();
+    root_obj.sort_properties().by_key(|prop| {
+      // removing a property leaves the sort with nothing safe to write back
+      if prop.decoded_name().as_deref() == Some("b") {
+        prop.clone().remove();
+      }
+      prop.decoded_name()
+    });
+
+    // the removal stands, but nothing was reordered on top of it
+    assert_eq!(
+      cst.to_string(),
+      "{
+  \"a\": 1
+}"
+    );
   }
 
   #[test]

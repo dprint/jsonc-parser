@@ -16,14 +16,18 @@ use jsonc_parser::cst::CstRootNode;
 fn sorting_generated_documents_preserves_them() {
   let mut random = Random::new(0x5eed_1234_9abc_def0);
   for _ in 0..20_000 {
-    // the option only changes which trivia travels, so both settings have to hold the same invariants
-    let maintain_headers = random.chance(2);
-    check(&mut random, Shape::Object, maintain_headers);
-    check(&mut random, Shape::Array, maintain_headers);
+    // the options only change which trivia travels and how far an element may move, so every
+    // combination has to hold the same invariants
+    let options = Options {
+      pin_headers: random.chance(2),
+      within_groups: random.chance(2),
+    };
+    check(&mut random, Shape::Object, options);
+    check(&mut random, Shape::Array, options);
   }
 }
 
-fn check(random: &mut Random, shape: Shape, maintain_headers: bool) {
+fn check(random: &mut Random, shape: Shape, options: Options) {
   let text = generate(random, shape);
   let Ok(root) = CstRootNode::parse(&text, &ParseOptions::default()) else {
     // the generator is allowed to produce something the parser rejects; nothing to sort then
@@ -75,8 +79,8 @@ fn check(random: &mut Random, shape: Shape, maintain_headers: bool) {
 
   // sorting what is already sorted leaves it alone
   match shape {
-    Shape::Object => sort_properties(&reparsed.object_value().unwrap(), maintain_headers),
-    Shape::Array => sort_elements(&reparsed.array_value().unwrap(), maintain_headers),
+    Shape::Object => sort_properties(&reparsed.object_value().unwrap(), options),
+    Shape::Array => sort_elements(&reparsed.array_value().unwrap(), options),
   }
   assert_eq!(
     reparsed.to_string(),
@@ -85,23 +89,31 @@ fn check(random: &mut Random, shape: Shape, maintain_headers: bool) {
   );
 }
 
-fn sort_properties(object: &CstObject, maintain_headers: bool) {
-  let sort = object.sort_properties();
-  let sort = if maintain_headers {
-    sort.maintain_comment_headers()
-  } else {
-    sort
-  };
+#[derive(Clone, Copy)]
+struct Options {
+  pin_headers: bool,
+  within_groups: bool,
+}
+
+fn sort_properties(object: &CstObject, options: Options) {
+  let mut sort = object.sort_properties();
+  if options.pin_headers {
+    sort = sort.pin_comment_headers();
+  }
+  if options.within_groups {
+    sort = sort.within_groups();
+  }
   sort.by_key(|prop| prop.decoded_name());
 }
 
-fn sort_elements(array: &CstArray, maintain_headers: bool) {
-  let sort = array.sort_elements();
-  let sort = if maintain_headers {
-    sort.maintain_comment_headers()
-  } else {
-    sort
-  };
+fn sort_elements(array: &CstArray, options: Options) {
+  let mut sort = array.sort_elements();
+  if options.pin_headers {
+    sort = sort.pin_comment_headers();
+  }
+  if options.within_groups {
+    sort = sort.within_groups();
+  }
   sort.by_key(|element| element.to_string());
 }
 
