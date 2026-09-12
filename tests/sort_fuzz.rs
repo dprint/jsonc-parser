@@ -8,18 +8,22 @@
 #![cfg(feature = "cst")]
 
 use jsonc_parser::ParseOptions;
+use jsonc_parser::cst::CstArray;
+use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstRootNode;
 
 #[test]
 fn sorting_generated_documents_preserves_them() {
   let mut random = Random::new(0x5eed_1234_9abc_def0);
   for _ in 0..20_000 {
-    check(&mut random, Shape::Object);
-    check(&mut random, Shape::Array);
+    // the option only changes which trivia travels, so both settings have to hold the same invariants
+    let maintain_headers = random.chance(2);
+    check(&mut random, Shape::Object, maintain_headers);
+    check(&mut random, Shape::Array, maintain_headers);
   }
 }
 
-fn check(random: &mut Random, shape: Shape) {
+fn check(random: &mut Random, shape: Shape, maintain_headers: bool) {
   let text = generate(random, shape);
   let Ok(root) = CstRootNode::parse(&text, &ParseOptions::default()) else {
     // the generator is allowed to produce something the parser rejects; nothing to sort then
@@ -33,13 +37,13 @@ fn check(random: &mut Random, shape: Shape) {
       let Some(object) = root.object_value() else {
         return;
       };
-      object.sort_properties_by_key(|prop| prop.decoded_name());
+      object.sort_properties().by_key(|prop| prop.decoded_name());
     }
     Shape::Array => {
       let Some(array) = root.array_value() else {
         return;
       };
-      array.sort_elements_by_key(|element| element.to_string());
+      array.sort_elements().by_key(|element| element.to_string());
     }
   }
 
@@ -71,20 +75,34 @@ fn check(random: &mut Random, shape: Shape) {
 
   // sorting what is already sorted leaves it alone
   match shape {
-    Shape::Object => reparsed
-      .object_value()
-      .unwrap()
-      .sort_properties_by_key(|prop| prop.decoded_name()),
-    Shape::Array => reparsed
-      .array_value()
-      .unwrap()
-      .sort_elements_by_key(|element| element.to_string()),
+    Shape::Object => sort_properties(&reparsed.object_value().unwrap(), maintain_headers),
+    Shape::Array => sort_elements(&reparsed.array_value().unwrap(), maintain_headers),
   }
   assert_eq!(
     reparsed.to_string(),
     sorted,
     "not idempotent\n--- input ---\n{text}\n--- output ---\n{sorted}"
   );
+}
+
+fn sort_properties(object: &CstObject, maintain_headers: bool) {
+  let sort = object.sort_properties();
+  let sort = if maintain_headers {
+    sort.maintain_comment_headers()
+  } else {
+    sort
+  };
+  sort.by_key(|prop| prop.decoded_name());
+}
+
+fn sort_elements(array: &CstArray, maintain_headers: bool) {
+  let sort = array.sort_elements();
+  let sort = if maintain_headers {
+    sort.maintain_comment_headers()
+  } else {
+    sort
+  };
+  sort.by_key(|element| element.to_string());
 }
 
 #[derive(Clone, Copy)]

@@ -1794,22 +1794,27 @@ impl CstObject {
     self.insert_or_append(Some(index), prop_name, value)
   }
 
-  /// Sorts the properties of the object with the given comparator.
+  fn insert_or_append(&self, index: Option<usize>, prop_name: &str, value: CstInputValue) -> CstObjectProp {
+    self.ensure_multiline();
+    insert_or_append_to_container(
+      &CstContainerNode::Object(self.clone()),
+      self.properties().into_iter().map(|c| c.into()).collect(),
+      index,
+      InsertValue::Property(prop_name, value),
+    )
+    .as_object_prop()
+    .unwrap()
+  }
+
+  /// Sorts the properties of the object.
   ///
-  /// What was written with a property travels with it: the comments and blank lines above it, its
-  /// indentation, and a comment written after it on the same line. What belongs to no property
-  /// stays where it is, which includes whatever follows the open brace and whatever precedes the
-  /// close brace. Each property gains or loses a comma to suit its new position, and whether the
-  /// object ends with a trailing comma is preserved.
+  /// What was written with a property travels with it: the comments and blank lines above it, and
+  /// a comment written after it on the same line. What belongs to no property stays where it is,
+  /// which includes whatever follows the open brace and whatever precedes the close brace. Each
+  /// property gains or loses a comma to suit its new position, and whether the object ends with a
+  /// trailing comma is preserved.
   ///
-  /// Two exceptions are worth knowing about. A blank line that ends up directly under the open
-  /// brace is dropped rather than moved, since a gap there reads as belonging to the object rather
-  /// than to the property beneath it. And a line comment that no longer ends its line gains a line
-  /// break, so that it can't comment out whatever follows it.
-  ///
-  /// The sort is stable, so properties that compare equal keep the order they were written in. The
-  /// comparator must not modify this object, as changes made while it runs are discarded, and it
-  /// must describe a total order, as [`slice::sort_by`] panics otherwise.
+  /// Nothing moves until [`PropertySort::by`] or [`PropertySort::by_key`] says how to order them.
   ///
   /// # Example
   ///
@@ -1825,7 +1830,7 @@ impl CstObject {
   ///
   /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
   /// let root_obj = root.object_value().unwrap();
-  /// root_obj.sort_properties_by_key(|prop| prop.decoded_name());
+  /// root_obj.sort_properties().by_key(|prop| prop.decoded_name());
   ///
   /// assert_eq!(root.to_string(), r#"{
   ///   // written about a
@@ -1833,38 +1838,11 @@ impl CstObject {
   ///   "b": 2 // written about b
   /// }"#);
   /// ```
-  pub fn sort_properties_by(&self, mut compare: impl FnMut(&CstObjectProp, &CstObjectProp) -> Ordering) {
-    sort_comma_separated_children(&self.clone().into(), |groups| {
-      groups.sort_by(
-        |left, right| match (left.element.as_object_prop(), right.element.as_object_prop()) {
-          (Some(left), Some(right)) => compare(&left, &right),
-          // an object holds properties, so this only happens if the tree has been manipulated into
-          // holding something else, in which case leaving the order alone is the safe answer
-          _ => Ordering::Equal,
-        },
-      )
-    });
-  }
-
-  /// Sorts the properties of the object by a key, which is worked out once per property.
-  ///
-  /// Behaves like [`CstObject::sort_properties_by`] in every other respect.
-  pub fn sort_properties_by_key<K: Ord>(&self, mut key: impl FnMut(&CstObjectProp) -> K) {
-    sort_comma_separated_children(&self.clone().into(), |groups| {
-      groups.sort_by_cached_key(|group| group.element.as_object_prop().map(|prop| key(&prop)))
-    });
-  }
-
-  fn insert_or_append(&self, index: Option<usize>, prop_name: &str, value: CstInputValue) -> CstObjectProp {
-    self.ensure_multiline();
-    insert_or_append_to_container(
-      &CstContainerNode::Object(self.clone()),
-      self.properties().into_iter().map(|c| c.into()).collect(),
-      index,
-      InsertValue::Property(prop_name, value),
-    )
-    .as_object_prop()
-    .unwrap()
+  pub fn sort_properties(&self) -> PropertySort<'_> {
+    PropertySort {
+      object: self,
+      options: SortOptions::default(),
+    }
   }
 
   /// Replaces this node with a new value.
@@ -2221,21 +2199,11 @@ impl CstArray {
     self.insert_or_append(Some(index), value)
   }
 
-  /// Sorts the elements of the array with the given comparator.
+  /// Sorts the elements of the array.
   ///
-  /// What was written with an element travels with it: the comments and blank lines above it, its
-  /// indentation, and a comment written after it on the same line. What belongs to no element
-  /// stays where it is, which includes whatever follows the open bracket and whatever precedes the
-  /// close bracket. Each element gains or loses a comma to suit its new position, and whether the
-  /// array ends with a trailing comma is preserved.
-  ///
-  /// A blank line that ends up directly under the open bracket is dropped rather than moved, and a
-  /// line comment that no longer ends its line gains a line break so that it can't comment out
-  /// whatever follows it.
-  ///
-  /// The sort is stable, so elements that compare equal keep the order they were written in. The
-  /// comparator must not modify this array, as changes made while it runs are discarded, and it
-  /// must describe a total order, as [`slice::sort_by`] panics otherwise.
+  /// Behaves like [`CstObject::sort_properties`], moving what was written with an element along
+  /// with it. Nothing moves until [`ElementSort::by`] or [`ElementSort::by_key`] says how to
+  /// order them.
   ///
   /// # Example
   ///
@@ -2251,7 +2219,7 @@ impl CstArray {
   ///
   /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
   /// let array = root.array_value().unwrap();
-  /// array.sort_elements_by_key(|element| element.to_string());
+  /// array.sort_elements().by_key(|element| element.to_string());
   ///
   /// assert_eq!(root.to_string(), r#"[
   ///   // written about a
@@ -2259,19 +2227,11 @@ impl CstArray {
   ///   "b" // written about b
   /// ]"#);
   /// ```
-  pub fn sort_elements_by(&self, mut compare: impl FnMut(&CstNode, &CstNode) -> Ordering) {
-    sort_comma_separated_children(&self.clone().into(), |groups| {
-      groups.sort_by(|left, right| compare(&left.element, &right.element))
-    });
-  }
-
-  /// Sorts the elements of the array by a key, which is worked out once per element.
-  ///
-  /// Behaves like [`CstArray::sort_elements_by`] in every other respect.
-  pub fn sort_elements_by_key<K: Ord>(&self, mut key: impl FnMut(&CstNode) -> K) {
-    sort_comma_separated_children(&self.clone().into(), |groups| {
-      groups.sort_by_cached_key(|group| key(&group.element))
-    });
+  pub fn sort_elements(&self) -> ElementSort<'_> {
+    ElementSort {
+      array: self,
+      options: SortOptions::default(),
+    }
   }
 
   /// Ensures the array spans multiple lines.
@@ -2667,6 +2627,130 @@ impl<'a> CstBuilder<'a> {
   }
 }
 
+/// What a sort does with the trivia it moves past, set through [`PropertySort`] and [`ElementSort`].
+#[derive(Debug, Default, Clone, Copy)]
+struct SortOptions {
+  maintain_comment_headers: bool,
+}
+
+/// A sort of an object's properties, waiting to be told how to order them.
+///
+/// Built by [`CstObject::sort_properties`].
+#[must_use = "nothing is sorted until `by` or `by_key` is called"]
+pub struct PropertySort<'a> {
+  object: &'a CstObject,
+  options: SortOptions,
+}
+
+impl PropertySort<'_> {
+  /// Leaves a comment that heads a group of properties where it was written.
+  ///
+  /// A comment with a blank line above it reads as a heading for the properties beneath it rather
+  /// than as a description of the first of them, so it stays put and the properties sort past it.
+  /// Without this, every comment above a property travels with that property, which carries a
+  /// heading off to wherever its first property happens to land.
+  ///
+  /// The blank line itself stays too, as does a blank line with no comment under it.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use jsonc_parser::ParseOptions;
+  /// use jsonc_parser::cst::CstRootNode;
+  ///
+  /// let json_text = r#"{
+  ///   "prop": 1,
+  ///
+  ///   // section
+  ///   "prop2": 2,
+  ///   "prop1": 1
+  /// }"#;
+  ///
+  /// let root = CstRootNode::parse(json_text, &ParseOptions::default()).unwrap();
+  /// let root_obj = root.object_value().unwrap();
+  /// root_obj
+  ///   .sort_properties()
+  ///   .maintain_comment_headers()
+  ///   .by_key(|prop| prop.decoded_name());
+  ///
+  /// assert_eq!(root.to_string(), r#"{
+  ///   "prop": 1,
+  ///
+  ///   // section
+  ///   "prop1": 1,
+  ///   "prop2": 2
+  /// }"#);
+  /// ```
+  pub fn maintain_comment_headers(mut self) -> Self {
+    self.options.maintain_comment_headers = true;
+    self
+  }
+
+  /// Sorts the properties with the given comparator.
+  ///
+  /// The sort is stable, so properties that compare equal keep the order they were written in. The
+  /// comparator must not modify the object, as changes made while it runs are discarded, and it
+  /// must describe a total order, as [`slice::sort_by`] panics otherwise.
+  pub fn by(self, mut compare: impl FnMut(&CstObjectProp, &CstObjectProp) -> Ordering) {
+    sort_comma_separated_children(&self.object.clone().into(), self.options, |groups| {
+      groups.sort_by(|left, right| {
+        match (left.element.as_object_prop(), right.element.as_object_prop()) {
+          (Some(left), Some(right)) => compare(&left, &right),
+          // an object holds properties, so this only happens if the tree has been manipulated into
+          // holding something else, in which case leaving the order alone is the safe answer
+          _ => Ordering::Equal,
+        }
+      })
+    });
+  }
+
+  /// Sorts the properties by a key, which is worked out once per property.
+  ///
+  /// Behaves like [`PropertySort::by`] in every other respect.
+  pub fn by_key<K: Ord>(self, mut key: impl FnMut(&CstObjectProp) -> K) {
+    sort_comma_separated_children(&self.object.clone().into(), self.options, |groups| {
+      groups.sort_by_cached_key(|group| group.element.as_object_prop().map(|prop| key(&prop)))
+    });
+  }
+}
+
+/// A sort of an array's elements, waiting to be told how to order them.
+///
+/// Built by [`CstArray::sort_elements`].
+#[must_use = "nothing is sorted until `by` or `by_key` is called"]
+pub struct ElementSort<'a> {
+  array: &'a CstArray,
+  options: SortOptions,
+}
+
+impl ElementSort<'_> {
+  /// Leaves a comment that heads a group of elements where it was written.
+  ///
+  /// Behaves like [`PropertySort::maintain_comment_headers`].
+  pub fn maintain_comment_headers(mut self) -> Self {
+    self.options.maintain_comment_headers = true;
+    self
+  }
+
+  /// Sorts the elements with the given comparator.
+  ///
+  /// Behaves like [`PropertySort::by`].
+  pub fn by(self, mut compare: impl FnMut(&CstNode, &CstNode) -> Ordering) {
+    sort_comma_separated_children(&self.array.clone().into(), self.options, |groups| {
+      groups.sort_by(|left, right| compare(&left.element, &right.element))
+    });
+  }
+
+  /// Sorts the elements by a key, which is worked out once per element.
+  ///
+  /// Behaves like [`PropertySort::by_key`].
+  pub fn by_key<K: Ord>(self, mut key: impl FnMut(&CstNode) -> K) {
+    sort_comma_separated_children(&self.array.clone().into(), self.options, |groups| {
+      groups.sort_by_cached_key(|group| key(&group.element))
+    });
+  }
+}
+
 /// What sits between two elements and stays where it is, because it positions whatever comes next
 /// rather than belonging to either element.
 ///
@@ -2701,7 +2785,11 @@ struct SortableGroup {
 /// with it and leaving the separators between them where they are.
 ///
 /// `sort` is handed the groups in the order they were written and is expected to sort them stably.
-fn sort_comma_separated_children(container: &CstContainerNode, sort: impl FnOnce(&mut Vec<SortableGroup>)) {
+fn sort_comma_separated_children(
+  container: &CstContainerNode,
+  options: SortOptions,
+  sort: impl FnOnce(&mut Vec<SortableGroup>),
+) {
   let children = container.children();
   // the surrounding tokens are what the elements sit between, so there's nothing to sort without them
   if children.len() < 2 || !children[0].is_token() || !children[children.len() - 1].is_token() {
@@ -2723,7 +2811,7 @@ fn sort_comma_separated_children(container: &CstContainerNode, sort: impl FnOnce
       // what follows the last element belongs to no element and stays where it is
       break run_start..region.len();
     }
-    let (separator, leading) = split_separator(region, run_start..index);
+    let (separator, leading) = split_separator(region, run_start..index, options);
     separators.push(separator);
     let trailing = index + 1..trailing_run_end(region, index + 1);
     groups.push(SortableGroup {
@@ -2797,7 +2885,7 @@ fn is_sortable_element(node: &CstNode) -> bool {
 /// position whatever comes next, so they belong to the slot rather than to either element. What
 /// sits between them, such as blank lines and the comments written above the element, came with
 /// that element and travels with it.
-fn split_separator(region: &[CstNode], run: Range<usize>) -> (Separator, Range<usize>) {
+fn split_separator(region: &[CstNode], run: Range<usize>, options: SortOptions) -> (Separator, Range<usize>) {
   let nodes = &region[run.clone()];
   let Some(newline) = nodes.iter().position(|n| n.is_newline()) else {
     // nothing indents anything on a single line, so all that is here is the space between the two
@@ -2810,7 +2898,14 @@ fn split_separator(region: &[CstNode], run: Range<usize>) -> (Separator, Range<u
       run.start + before..run.end,
     );
   };
-  let leading_start = newline + 1;
+  let mut leading_start = newline + 1;
+  // A blank line makes any comment under it read as a heading for the elements beneath rather than
+  // as a description of the first of them, so the whole run stays with the slot. The element's own
+  // indentation is in there too, which is where it needs to be either way.
+  let blank_line_follows = nodes.get(leading_start).map(|n| n.is_newline()).unwrap_or(false);
+  if options.maintain_comment_headers && blank_line_follows {
+    leading_start = nodes.len();
+  }
   let indent_len = nodes[leading_start..]
     .iter()
     .rev()
@@ -4474,12 +4569,12 @@ value3: true
     fn run_test(json: &str, expected: &str) {
       let cst = build_cst(json);
       let root_obj = cst.object_value().unwrap();
-      root_obj.sort_properties_by_key(|prop| prop.decoded_name());
+      root_obj.sort_properties().by_key(|prop| prop.decoded_name());
       assert_eq!(cst.to_string(), expected);
       // the result is still the same json, and sorting it again changes nothing
       build_cst(&cst.to_string());
       let sorted = cst.to_string();
-      root_obj.sort_properties_by_key(|prop| prop.decoded_name());
+      root_obj.sort_properties().by_key(|prop| prop.decoded_name());
       assert_eq!(cst.to_string(), sorted);
     }
 
@@ -4531,11 +4626,11 @@ value3: true
     fn run_test(json: &str, expected: &str) {
       let cst = build_cst(json);
       let root_obj = cst.object_value().unwrap();
-      root_obj.sort_properties_by_key(|prop| prop.decoded_name());
+      root_obj.sort_properties().by_key(|prop| prop.decoded_name());
       assert_eq!(cst.to_string(), expected);
       build_cst(&cst.to_string());
       let sorted = cst.to_string();
-      root_obj.sort_properties_by_key(|prop| prop.decoded_name());
+      root_obj.sort_properties().by_key(|prop| prop.decoded_name());
       assert_eq!(cst.to_string(), sorted);
     }
 
@@ -4584,17 +4679,65 @@ value3: true
   }
 
   #[test]
+  fn sort_properties_maintaining_comment_headers() {
+    #[track_caller]
+    fn run_test(json: &str, expected: &str) {
+      let cst = build_cst(json);
+      let root_obj = cst.object_value().unwrap();
+      root_obj
+        .sort_properties()
+        .maintain_comment_headers()
+        .by_key(|prop| prop.decoded_name());
+      assert_eq!(cst.to_string(), expected);
+      build_cst(&cst.to_string());
+    }
+
+    // a comment under a blank line heads what follows, so the properties sort past it
+    run_test(
+      "{\n  \"prop\": 1,\n\n  // section\n  \"prop2\": 2,\n  \"prop1\": 1\n}",
+      "{\n  \"prop\": 1,\n\n  // section\n  \"prop1\": 1,\n  \"prop2\": 2\n}",
+    );
+    // but a comment written flush against its property still describes it and travels with it
+    run_test(
+      "{\n  // about b\n  \"b\": 2,\n  \"a\": 1\n}",
+      "{\n  \"a\": 1,\n  // about b\n  \"b\": 2\n}",
+    );
+    // the two can sit in the same object
+    run_test(
+      "{\n  \"c\": 3,\n\n  // section\n  // about b\n  \"b\": 2,\n  \"a\": 1\n}",
+      "{\n  \"a\": 1,\n\n  // section\n  // about b\n  \"b\": 2,\n  \"c\": 3\n}",
+    );
+    // a blank line with no comment under it stays where it is as well
+    run_test(
+      "{\n  \"c\": 3,\n\n  \"b\": 2,\n  \"a\": 1\n}",
+      "{\n  \"a\": 1,\n\n  \"b\": 2,\n  \"c\": 3\n}",
+    );
+    // every heading stays over its own group
+    run_test(
+      "{\n\n  // first\n  \"d\": 4,\n  \"c\": 3,\n\n  // second\n  \"b\": 2,\n  \"a\": 1\n}",
+      "{\n\n  // first\n  \"a\": 1,\n  \"b\": 2,\n\n  // second\n  \"c\": 3,\n  \"d\": 4\n}",
+    );
+    // a block comment heads a group the same way
+    run_test(
+      "{\n  \"c\": 3,\n\n  /* section */\n  \"b\": 2,\n  \"a\": 1\n}",
+      "{\n  \"a\": 1,\n\n  /* section */\n  \"b\": 2,\n  \"c\": 3\n}",
+    );
+    // an object with no blank lines sorts exactly as it does without the option
+    run_test("{\n  \"b\": 2,\n  \"a\": 1\n}", "{\n  \"a\": 1,\n  \"b\": 2\n}");
+  }
+
+  #[test]
   fn sort_keeps_line_comments_ending_their_line() {
     #[track_caller]
     fn run_test(json: &str, expected: &str) {
       let cst = build_cst(json);
       let root_obj = cst.object_value().unwrap();
-      root_obj.sort_properties_by_key(|prop| prop.decoded_name());
+      root_obj.sort_properties().by_key(|prop| prop.decoded_name());
       assert_eq!(cst.to_string(), expected);
       // without the line break the comment would swallow whatever follows it
       build_cst(&cst.to_string());
       let sorted = cst.to_string();
-      root_obj.sort_properties_by_key(|prop| prop.decoded_name());
+      root_obj.sort_properties().by_key(|prop| prop.decoded_name());
       assert_eq!(cst.to_string(), sorted);
     }
 
@@ -4620,7 +4763,7 @@ value3: true
     let cst = build_cst("{\n  \"b\": 2,\n  \"a\": 1\n}");
     let root_obj = cst.object_value().unwrap();
     let b = root_obj.get("b").unwrap();
-    root_obj.sort_properties_by_key(|prop| prop.decoded_name());
+    root_obj.sort_properties().by_key(|prop| prop.decoded_name());
 
     // the handle taken before the sort still points at the same property in its new place
     assert_eq!(b.decoded_name().unwrap(), "b");
@@ -4644,11 +4787,11 @@ value3: true
     fn run_test(json: &str, expected: &str) {
       let cst = build_cst(json);
       let array = cst.array_value().unwrap();
-      array.sort_elements_by_key(|element| element.to_string());
+      array.sort_elements().by_key(|element| element.to_string());
       assert_eq!(cst.to_string(), expected);
       build_cst(&cst.to_string());
       let sorted = cst.to_string();
-      array.sort_elements_by_key(|element| element.to_string());
+      array.sort_elements().by_key(|element| element.to_string());
       assert_eq!(cst.to_string(), sorted);
     }
 
