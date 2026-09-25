@@ -6,6 +6,7 @@ use super::common::Range;
 
 #[derive(Debug)]
 pub enum ParseErrorKind {
+  BareDecimalPointNumbersNotAllowed,
   CommentsNotAllowed,
   ExpectedColonAfterObjectKey,
   ExpectedObjectValue,
@@ -16,6 +17,7 @@ pub enum ParseErrorKind {
   HexadecimalNumbersNotAllowed,
   ExpectedComma,
   MultipleRootJsonValues,
+  NonFiniteNumbersNotAllowed,
   SingleQuotedStringsNotAllowed,
   String(ParseStringErrorKind),
   TrailingCommasNotAllowed,
@@ -40,6 +42,9 @@ impl std::fmt::Display for ParseErrorKind {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     use ParseErrorKind::*;
     match self {
+      BareDecimalPointNumbersNotAllowed => {
+        write!(f, "Leading or trailing decimal points on numbers are not allowed")
+      }
       CommentsNotAllowed => {
         write!(f, "Comments are not allowed")
       }
@@ -69,6 +74,9 @@ impl std::fmt::Display for ParseErrorKind {
       }
       MultipleRootJsonValues => {
         write!(f, "Text cannot contain more than one JSON value")
+      }
+      NonFiniteNumbersNotAllowed => {
+        write!(f, "Infinity and NaN are not allowed")
       }
       SingleQuotedStringsNotAllowed => {
         write!(f, "Single-quoted strings are not allowed")

@@ -1518,8 +1518,8 @@ impl CstNumberLit {
       }
     } else {
       // standard decimal number - strip leading + if present (serde_json doesn't accept it)
-      let num_for_parsing = raw.trim_start_matches('+');
-      match serde_json::Number::from_str(num_for_parsing) {
+      let parsed = serde_json::Number::from_str(&crate::common::fill_bare_decimal_point(raw.trim_start_matches('+')));
+      match parsed {
         Ok(number) => Some(serde_json::Value::Number(number)),
         // if the number is invalid, return it as a string (same behavior as AST conversion)
         Err(_) => Some(serde_json::Value::String(raw)),
@@ -5201,6 +5201,15 @@ value3: true
       let root = build_cst(r#"null"#);
       let value = root.to_serde_value().unwrap();
       assert_eq!(value, SerdeValue::Null);
+    }
+
+    #[test]
+    fn test_cst_to_serde_value_json5_numbers() {
+      let root = build_cst(r#"[.5, -.5, +5., 5.e3, NaN]"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, serde_json::json!([0.5, -0.5, 5.0, 5000.0, "NaN"]));
+      assert!(value[2].is_f64());
+      assert_eq!(root.to_string(), "[.5, -.5, +5., 5.e3, NaN]");
     }
 
     #[test]

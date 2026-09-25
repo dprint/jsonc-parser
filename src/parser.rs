@@ -47,6 +47,8 @@ impl<'a> JsoncParser<'a> {
           allow_single_quoted_strings: options.allow_single_quoted_strings,
           allow_hexadecimal_numbers: options.allow_hexadecimal_numbers,
           allow_unary_plus_numbers: options.allow_unary_plus_numbers,
+          allow_bare_decimal_point_numbers: options.allow_bare_decimal_point_numbers,
+          allow_non_finite_numbers: options.allow_non_finite_numbers,
         },
       ),
       text,

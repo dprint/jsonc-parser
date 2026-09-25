@@ -23,6 +23,24 @@ impl Ranged for Range {
   }
 }
 
+/// Adds the digit serde_json needs beside a leading or trailing decimal point (ex. `.5` to `0.5`).
+#[cfg(feature = "serde_json")]
+pub(crate) fn fill_bare_decimal_point(num: &str) -> std::borrow::Cow<'_, str> {
+  let Some(dot) = num.find('.') else {
+    return std::borrow::Cow::Borrowed(num);
+  };
+  let before = num[..dot].ends_with(|c: char| c.is_ascii_digit());
+  let after = num[dot + 1..].starts_with(|c: char| c.is_ascii_digit());
+  if before && after {
+    return std::borrow::Cow::Borrowed(num);
+  }
+  let mut filled = String::with_capacity(num.len() + 1);
+  filled.push_str(&num[..dot]);
+  filled.push_str(if before { ".0" } else { "0." });
+  filled.push_str(&num[dot + 1..]);
+  std::borrow::Cow::Owned(filled)
+}
+
 /// Represents an object that has a range in the text.
 pub trait Ranged {
   /// Gets the range.

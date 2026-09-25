@@ -16,6 +16,8 @@ pub struct Scanner<'a> {
   allow_single_quoted_strings: bool,
   allow_hexadecimal_numbers: bool,
   allow_unary_plus_numbers: bool,
+  allow_bare_decimal_point_numbers: bool,
+  allow_non_finite_numbers: bool,
 }
 
 /// Options for the scanner.
@@ -27,6 +29,10 @@ pub struct ScannerOptions {
   pub allow_hexadecimal_numbers: bool,
   /// Allow unary plus sign on numbers like +42 (defaults to `true`).
   pub allow_unary_plus_numbers: bool,
+  /// Allow a leading or trailing decimal point on numbers like .5 or 5. (defaults to `true`).
+  pub allow_bare_decimal_point_numbers: bool,
+  /// Allow the numbers Infinity, -Infinity and NaN (defaults to `true`).
+  pub allow_non_finite_numbers: bool,
 }
 
 impl Default for ScannerOptions {
@@ -35,6 +41,8 @@ impl Default for ScannerOptions {
       allow_single_quoted_strings: true,
       allow_hexadecimal_numbers: true,
       allow_unary_plus_numbers: true,
+      allow_bare_decimal_point_numbers: true,
+      allow_non_finite_numbers: true,
     }
   }
 }
@@ -51,6 +59,8 @@ impl<'a> Scanner<'a> {
       allow_single_quoted_strings: options.allow_single_quoted_strings,
       allow_hexadecimal_numbers: options.allow_hexadecimal_numbers,
       allow_unary_plus_numbers: options.allow_unary_plus_numbers,
+      allow_bare_decimal_point_numbers: options.allow_bare_decimal_point_numbers,
+      allow_non_finite_numbers: options.allow_non_finite_numbers,
     }
   }
 
@@ -102,6 +112,9 @@ impl<'a> Scanner<'a> {
           _ => Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken)),
         },
         b'-' | b'+' | b'0'..=b'9' => self.parse_number(),
+        b'.' if matches!(self.bytes.get(self.byte_index + 1), Some(b'0'..=b'9')) => self.parse_number(),
+        b'I' if self.allow_non_finite_numbers && self.try_move_whole_word("Infinity") => Ok(Token::Number("Infinity")),
+        b'N' if self.allow_non_finite_numbers && self.try_move_whole_word("NaN") => Ok(Token::Number("NaN")),
         b't' if self.try_move_word("true") => Ok(Token::Boolean(true)),
         b'f' if self.try_move_word("false") => Ok(Token::Boolean(false)),
         b'n' if self.try_move_word("null") => Ok(Token::Null),
@@ -248,6 +261,26 @@ impl<'a> Scanner<'a> {
           self.byte_index += 1;
         }
       }
+      Some(b'.') if matches!(self.bytes.get(self.byte_index + 1), Some(b'0'..=b'9')) => {
+        if !self.allow_bare_decimal_point_numbers {
+          return Err(self.create_error_for_current_token(ParseErrorKind::BareDecimalPointNumbersNotAllowed));
+        }
+      }
+      // only reached after a sign, so unlike in `scan` there is no word to keep whole
+      Some(b'I' | b'N') => {
+        let word = if self.bytes[self.byte_index] == b'I' {
+          "Infinity"
+        } else {
+          "NaN"
+        };
+        if !self.try_move_word(word) {
+          return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigitFollowingNegativeSign));
+        }
+        if !self.allow_non_finite_numbers {
+          return Err(self.create_error_for_current_token(ParseErrorKind::NonFiniteNumbersNotAllowed));
+        }
+        return Ok(Token::Number(&self.file_text[start_byte_index..self.byte_index]));
+      }
       _ => {
         return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigitFollowingNegativeSign));
       }
@@ -256,8 +289,8 @@ impl<'a> Scanner<'a> {
     if self.bytes.get(self.byte_index) == Some(&b'.') {
       self.byte_index += 1;
 
-      if !matches!(self.bytes.get(self.byte_index), Some(b'0'..=b'9')) {
-        return Err(self.create_error_for_current_char(ParseErrorKind::ExpectedDigit));
+      if !self.allow_bare_decimal_point_numbers && !matches!(self.bytes.get(self.byte_index), Some(b'0'..=b'9')) {
+        return Err(self.create_error_for_current_token(ParseErrorKind::BareDecimalPointNumbersNotAllowed));
       }
 
       while matches!(self.bytes.get(self.byte_index), Some(b'0'..=b'9')) {
@@ -380,6 +413,15 @@ impl<'a> Scanner<'a> {
     }
     self.byte_index = end;
     true
+  }
+
+  /// Like `try_move_word`, but also refuses the characters `parse_word` continues a word with,
+  /// so a property name like `Infinity_count` or `NaN-key` still scans as one word.
+  fn try_move_whole_word(&mut self, text: &str) -> bool {
+    if matches!(self.bytes.get(self.byte_index + text.len()), Some(b'-' | b'_')) {
+      return false;
+    }
+    self.try_move_word(text)
   }
 
   fn parse_word(&mut self) -> Result<Token<'a>, ParseError> {
@@ -566,6 +608,60 @@ mod tests {
         Token::Number("+1e10"),
         Token::Comma,
         Token::Number("+0xFF"),
+      ],
+    );
+  }
+
+  #[test]
+  fn it_tokenizes_bare_decimal_point_numbers() {
+    assert_has_tokens(
+      ".5, -.5, +.5, 5., -5., 5.e3",
+      vec![
+        Token::Number(".5"),
+        Token::Comma,
+        Token::Number("-.5"),
+        Token::Comma,
+        Token::Number("+.5"),
+        Token::Comma,
+        Token::Number("5."),
+        Token::Comma,
+        Token::Number("-5."),
+        Token::Comma,
+        Token::Number("5.e3"),
+      ],
+    );
+    assert_has_error(".", "Unexpected token on line 1 column 1");
+    assert_has_error("-.", "Expected digit following negative sign on line 1 column 2");
+  }
+
+  #[test]
+  fn it_tokenizes_non_finite_numbers() {
+    assert_has_tokens(
+      "Infinity, -Infinity, +Infinity, NaN, -NaN, Infinityx",
+      vec![
+        Token::Number("Infinity"),
+        Token::Comma,
+        Token::Number("-Infinity"),
+        Token::Comma,
+        Token::Number("+Infinity"),
+        Token::Comma,
+        Token::Number("NaN"),
+        Token::Comma,
+        Token::Number("-NaN"),
+        Token::Comma,
+        Token::Word("Infinityx"),
+      ],
+    );
+    assert_has_error("-Infinit", "Expected digit following negative sign on line 1 column 2");
+    // with missing commas, a signed keyword ends where `-1-1` would end
+    assert_has_tokens(
+      "-Infinity-1, -NaN_",
+      vec![
+        Token::Number("-Infinity"),
+        Token::Number("-1"),
+        Token::Comma,
+        Token::Number("-NaN"),
+        Token::Word("_"),
       ],
     );
   }

@@ -87,8 +87,8 @@ impl<'a> From<Value<'a>> for serde_json::Value {
           }
         } else {
           // standard decimal number
-          let num_for_parsing = num.value.trim_start_matches('+');
-          match serde_json::Number::from_str(num_for_parsing) {
+          let num_for_parsing = crate::common::fill_bare_decimal_point(num.value.trim_start_matches('+'));
+          match serde_json::Number::from_str(&num_for_parsing) {
             Ok(number) => serde_json::Value::Number(number),
             Err(_) => serde_json::Value::String(num.value.to_string()),
           }
@@ -654,6 +654,22 @@ mod test {
         ]
       })
     );
+  }
+
+  #[cfg(feature = "serde_json")]
+  #[test]
+  fn it_should_coerce_json5_numbers_to_serde_value() {
+    let ast = parse_to_ast(
+      r#"[.5, -.5, +5., 5.e3, Infinity]"#,
+      &Default::default(),
+      &ParseOptions::default(),
+    )
+    .unwrap();
+    let serde_value: serde_json::Value = ast.value.unwrap().into();
+
+    // serde_json cannot hold Infinity, so it keeps the existing fallback to a string
+    assert_eq!(serde_value, serde_json::json!([0.5, -0.5, 5.0, 5000.0, "Infinity"]));
+    assert!(serde_value[2].is_f64());
   }
 
   #[cfg(feature = "serde_json")]

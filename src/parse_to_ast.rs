@@ -63,6 +63,10 @@ pub struct ParseOptions {
   pub allow_hexadecimal_numbers: bool,
   /// Allow unary plus sign on numbers like +42 (defaults to `true`).
   pub allow_unary_plus_numbers: bool,
+  /// Allow a leading or trailing decimal point on numbers like .5 or 5. (defaults to `true`).
+  pub allow_bare_decimal_point_numbers: bool,
+  /// Allow the numbers Infinity, -Infinity and NaN (defaults to `true`).
+  pub allow_non_finite_numbers: bool,
 }
 
 impl Default for ParseOptions {
@@ -75,6 +79,8 @@ impl Default for ParseOptions {
       allow_single_quoted_strings: true,
       allow_hexadecimal_numbers: true,
       allow_unary_plus_numbers: true,
+      allow_bare_decimal_point_numbers: true,
+      allow_non_finite_numbers: true,
     }
   }
 }
@@ -253,6 +259,8 @@ pub fn parse_to_ast<'a>(
         allow_single_quoted_strings: parse_options.allow_single_quoted_strings,
         allow_hexadecimal_numbers: parse_options.allow_hexadecimal_numbers,
         allow_unary_plus_numbers: parse_options.allow_unary_plus_numbers,
+        allow_bare_decimal_point_numbers: parse_options.allow_bare_decimal_point_numbers,
+        allow_non_finite_numbers: parse_options.allow_non_finite_numbers,
       },
     ),
     comments: match collect_options.comments {
@@ -591,6 +599,27 @@ mod tests {
     );
   }
 
+  #[test]
+  fn strict_should_error_bare_decimal_point_number() {
+    assert_has_strict_error(
+      r#"{ "key": .5 }"#,
+      "Leading or trailing decimal points on numbers are not allowed on line 1 column 10",
+    );
+    assert_has_strict_error(
+      r#"{ "key": 5. }"#,
+      "Leading or trailing decimal points on numbers are not allowed on line 1 column 10",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_non_finite_number() {
+    assert_has_strict_error(
+      r#"{ "key": -Infinity }"#,
+      "Infinity and NaN are not allowed on line 1 column 10",
+    );
+    assert_has_strict_error(r#"{ "key": NaN }"#, "Unexpected word on line 1 column 10");
+  }
+
   #[track_caller]
   fn assert_has_strict_error(text: &str, message: &str) {
     let result = parse_to_ast(text, &Default::default(), &strict_options());
@@ -609,6 +638,8 @@ mod tests {
       allow_single_quoted_strings: false,
       allow_hexadecimal_numbers: false,
       allow_unary_plus_numbers: false,
+      allow_bare_decimal_point_numbers: false,
+      allow_non_finite_numbers: false,
     }
   }
 
@@ -706,6 +737,28 @@ mod tests {
 
     let number_value = obj.properties[0].value.as_number_lit().unwrap();
     assert_eq!(number_value.value, "+42");
+  }
+
+  #[test]
+  fn it_should_parse_json5_numbers_and_keep_non_finite_words_as_keys() {
+    let result = parse_to_ast(
+      r#"{ "a": .5, "b": 5., "c": -Infinity, Infinity: NaN }"#,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap();
+
+    let value = result.value.unwrap();
+    let obj = value.as_object().unwrap();
+    let values = obj
+      .properties
+      .iter()
+      .map(|p| (p.name.as_str(), p.value.as_number_lit().unwrap().value))
+      .collect::<Vec<_>>();
+    assert_eq!(
+      values,
+      vec![("a", ".5"), ("b", "5."), ("c", "-Infinity"), ("Infinity", "NaN")]
+    );
   }
 
   #[test]
