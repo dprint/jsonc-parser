@@ -67,6 +67,8 @@ pub struct ParseOptions {
   pub allow_bare_decimal_point_numbers: bool,
   /// Allow the numbers Infinity, -Infinity and NaN (defaults to `true`).
   pub allow_non_finite_numbers: bool,
+  /// Allow JSON5 string escapes like \x41, \v and line continuations (defaults to `true`).
+  pub allow_extended_string_escapes: bool,
 }
 
 impl Default for ParseOptions {
@@ -81,6 +83,7 @@ impl Default for ParseOptions {
       allow_unary_plus_numbers: true,
       allow_bare_decimal_point_numbers: true,
       allow_non_finite_numbers: true,
+      allow_extended_string_escapes: true,
     }
   }
 }
@@ -261,6 +264,7 @@ pub fn parse_to_ast<'a>(
         allow_unary_plus_numbers: parse_options.allow_unary_plus_numbers,
         allow_bare_decimal_point_numbers: parse_options.allow_bare_decimal_point_numbers,
         allow_non_finite_numbers: parse_options.allow_non_finite_numbers,
+        allow_extended_string_escapes: parse_options.allow_extended_string_escapes,
       },
     ),
     comments: match collect_options.comments {
@@ -640,6 +644,7 @@ mod tests {
       allow_unary_plus_numbers: false,
       allow_bare_decimal_point_numbers: false,
       allow_non_finite_numbers: false,
+      allow_extended_string_escapes: false,
     }
   }
 

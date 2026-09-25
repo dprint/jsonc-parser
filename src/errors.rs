@@ -214,8 +214,9 @@ impl fmt::Display for ParseError {
 fn get_line_and_column_display(range: Range, file_text: &str) -> (usize, usize) {
   let mut line_index = 0;
   let mut column_index = 0;
-  for c in file_text[..range.start].chars() {
-    if c == '\n' {
+  for (i, c) in file_text[..range.start].char_indices() {
+    // a lone \r ends a line comment, so it also counts as a line break here
+    if c == '\n' || c == '\r' && file_text.as_bytes().get(i + 1) != Some(&b'\n') {
       line_index += 1;
       column_index = 0;
     } else {

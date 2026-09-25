@@ -49,6 +49,7 @@ impl<'a> JsoncParser<'a> {
           allow_unary_plus_numbers: options.allow_unary_plus_numbers,
           allow_bare_decimal_point_numbers: options.allow_bare_decimal_point_numbers,
           allow_non_finite_numbers: options.allow_non_finite_numbers,
+          allow_extended_string_escapes: options.allow_extended_string_escapes,
         },
       ),
       text,

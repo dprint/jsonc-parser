@@ -18,6 +18,7 @@ pub struct Scanner<'a> {
   allow_unary_plus_numbers: bool,
   allow_bare_decimal_point_numbers: bool,
   allow_non_finite_numbers: bool,
+  allow_extended_string_escapes: bool,
 }
 
 /// Options for the scanner.
@@ -33,6 +34,8 @@ pub struct ScannerOptions {
   pub allow_bare_decimal_point_numbers: bool,
   /// Allow the numbers Infinity, -Infinity and NaN (defaults to `true`).
   pub allow_non_finite_numbers: bool,
+  /// Allow JSON5 string escapes like \x41, \v and line continuations (defaults to `true`).
+  pub allow_extended_string_escapes: bool,
 }
 
 impl Default for ScannerOptions {
@@ -43,6 +46,7 @@ impl Default for ScannerOptions {
       allow_unary_plus_numbers: true,
       allow_bare_decimal_point_numbers: true,
       allow_non_finite_numbers: true,
+      allow_extended_string_escapes: true,
     }
   }
 }
@@ -61,6 +65,7 @@ impl<'a> Scanner<'a> {
       allow_unary_plus_numbers: options.allow_unary_plus_numbers,
       allow_bare_decimal_point_numbers: options.allow_bare_decimal_point_numbers,
       allow_non_finite_numbers: options.allow_non_finite_numbers,
+      allow_extended_string_escapes: options.allow_extended_string_escapes,
     }
   }
 
@@ -208,7 +213,8 @@ impl<'a> Scanner<'a> {
     }
 
     // slow path: handle escape sequences via CharProvider
-    crate::string::parse_string_with_char_provider(self)
+    let allow_extended_escapes = self.allow_extended_string_escapes;
+    crate::string::parse_string_with_char_provider(self, allow_extended_escapes)
       .map(Token::String)
       // todo(dsherret): don't convert the error kind to a string here
       .map_err(|err| self.create_error_for_start(err.byte_index, ParseErrorKind::String(err.kind)))
@@ -329,13 +335,10 @@ impl<'a> Scanner<'a> {
     let start_byte_index = self.byte_index + 1;
     self.byte_index += 1;
 
-    // scan byte-by-byte for newline; \n (0x0A) and \r (0x0D) are ASCII
-    // and can never appear as UTF-8 continuation bytes
+    // scan byte-by-byte for \n or \r, which are ASCII and can never appear as UTF-8 continuation bytes;
+    // U+2028 and U+2029 do not end the comment, matching other JSONC parsers
     while let Some(&b) = self.bytes.get(self.byte_index) {
-      if b == b'\n' {
-        break;
-      }
-      if b == b'\r' && self.bytes.get(self.byte_index + 1) == Some(&b'\n') {
+      if b == b'\n' || b == b'\r' {
         break;
       }
       self.byte_index += 1;
@@ -525,9 +528,10 @@ mod tests {
 
   #[test]
   fn it_errors_escaping_single_quote_in_double_quote() {
-    assert_has_error(
+    assert_has_error_with_options(
       r#""t\'est""#,
       "Invalid escape in double quote string on line 1 column 3",
+      &no_extended_string_escapes(),
     );
   }
 
@@ -546,10 +550,75 @@ mod tests {
 
   #[test]
   fn it_errors_escaping_double_quote_in_single_quote() {
-    assert_has_error(
+    assert_has_error_with_options(
       r#"'t\"est'"#,
       "Invalid escape in single quote string on line 1 column 3",
+      &no_extended_string_escapes(),
     );
+  }
+
+  #[test]
+  fn it_tokenizes_extended_string_escapes() {
+    assert_has_tokens(
+      "\"it\\'s\", 'say \\\"hi\\\"', '\\v\\0\\x41\\a', 'a\\\nb', 'a\\\rb', 'a\\\r\nb', 'a\\\u{2028}b', 'a\\\u{2029}b'",
+      vec![
+        Token::String(Cow::Borrowed("it's")),
+        Token::Comma,
+        Token::String(Cow::Borrowed("say \"hi\"")),
+        Token::Comma,
+        Token::String(Cow::Borrowed("\u{0B}\0Aa")),
+        Token::Comma,
+        Token::String(Cow::Borrowed("ab")),
+        Token::Comma,
+        Token::String(Cow::Borrowed("ab")),
+        Token::Comma,
+        Token::String(Cow::Borrowed("ab")),
+        Token::Comma,
+        Token::String(Cow::Borrowed("ab")),
+        Token::Comma,
+        Token::String(Cow::Borrowed("ab")),
+      ],
+    );
+  }
+
+  #[test]
+  fn it_errors_invalid_extended_string_escapes() {
+    assert_has_error(r#""\1""#, "Invalid escape on line 1 column 2");
+    assert_has_error(r#""\01""#, "Invalid escape on line 1 column 2");
+    assert_has_error(r#""\x4""#, "Expected two hex digits on line 1 column 2");
+    assert_has_error_with_options(
+      r#""\v""#,
+      "Invalid escape on line 1 column 2",
+      &no_extended_string_escapes(),
+    );
+    assert_has_error_with_options(
+      "\"a\\\nb\"",
+      "Invalid escape on line 1 column 3",
+      &no_extended_string_escapes(),
+    );
+  }
+
+  #[test]
+  fn it_ends_comment_line_at_a_lone_carriage_return() {
+    assert_has_tokens(
+      "//a\r1,//b\u{2028}2\n3",
+      vec![
+        Token::CommentLine("a"),
+        Token::Number("1"),
+        Token::Comma,
+        Token::CommentLine("b\u{2028}2"),
+        Token::Number("3"),
+      ],
+    );
+    assert_has_error("//x\r@", "Unexpected token on line 2 column 1");
+    assert_has_error("//x\r\n@", "Unexpected token on line 2 column 1");
+  }
+
+  fn no_extended_string_escapes() -> ScannerOptions {
+    ScannerOptions {
+      allow_extended_string_escapes: false,
+      ..Default::default()
+    }
   }
 
   #[test]
@@ -745,7 +814,12 @@ mod tests {
   }
 
   fn assert_has_error(text: &str, message: &str) {
-    let mut scanner = Scanner::new(text, &Default::default());
+    assert_has_error_with_options(text, message, &Default::default());
+  }
+
+  #[track_caller]
+  fn assert_has_error_with_options(text: &str, message: &str, options: &ScannerOptions) {
+    let mut scanner = Scanner::new(text, options);
     let mut error_message = String::new();
 
     loop {

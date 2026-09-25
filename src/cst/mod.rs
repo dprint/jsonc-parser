@@ -5213,6 +5213,17 @@ value3: true
     }
 
     #[test]
+    fn test_cst_json5_strings_and_line_terminators() {
+      let text = "{\r  // a\r  'k': 'line\\\ncontinued \\x41\\v',\u{2028}  // b\r  \"it\\'s\": 1,\r}";
+      let root = build_cst(text);
+      assert_eq!(root.to_string(), text);
+      assert_eq!(
+        root.to_serde_value().unwrap(),
+        serde_json::json!({ "k": "linecontinued A\u{0B}", "it's": 1 })
+      );
+    }
+
+    #[test]
     fn test_cst_to_serde_value_array() {
       let root = build_cst(r#"[1, 2, 3]"#);
       let value = root.to_serde_value().unwrap();
