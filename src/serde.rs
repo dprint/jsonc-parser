@@ -524,6 +524,17 @@ mod tests {
   }
 
   #[test]
+  fn it_should_parse_keywords_as_loose_property_names() {
+    let result = parse_to_serde_value::<SerdeValue>(r#"{ true: 1, false: 2 null: 3 }"#, &Default::default()).unwrap();
+    assert_eq!(result, serde_json::json!({ "true": 1, "false": 2, "null": 3 }));
+    assert_has_strict_error(
+      r#"{ null: 1 }"#,
+      "Expected string for object property on line 1 column 3",
+    );
+    assert_has_strict_error(r#"{ "a": 1 true: 2 }"#, "Expected comma on line 1 column 9");
+  }
+
+  #[test]
   fn it_should_parse_unary_plus_numbers() {
     let result = parse_to_serde_value::<SerdeValue>(
       r#"{

@@ -336,11 +336,11 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
       Some(Token::String(prop_name)) => {
         properties.push(parse_object_property(context, PropName::String(prop_name))?);
       }
-      Some(Token::Word(prop_name)) | Some(Token::Number(prop_name)) => {
-        properties.push(parse_object_property(context, PropName::Word(prop_name))?);
-      }
       None => return Err(context.create_error_for_current_range(ParseErrorKind::UnterminatedObject)),
-      _ => return Err(context.create_error(ParseErrorKind::UnexpectedTokenInObject)),
+      Some(token) => match token.as_loose_property_name() {
+        Some(prop_name) => properties.push(parse_object_property(context, PropName::Word(prop_name))?),
+        None => return Err(context.create_error(ParseErrorKind::UnexpectedTokenInObject)),
+      },
     }
 
     // skip the comma
@@ -354,7 +354,9 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
           return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
         }
       }
-      Some(Token::String(_) | Token::Word(_) | Token::Number(_)) if !context.allow_missing_commas => {
+      Some(Token::String(_) | Token::Word(_) | Token::Number(_) | Token::Boolean(_) | Token::Null)
+        if !context.allow_missing_commas =>
+      {
         let range = Range {
           start: after_value_end,
           end: after_value_end,
@@ -577,6 +579,11 @@ mod tests {
       r#"{ word: 5 }"#,
       "Expected string for object property on line 1 column 3",
     );
+    assert_has_strict_error(
+      r#"{ true: 5 }"#,
+      "Expected string for object property on line 1 column 3",
+    );
+    assert_has_strict_error(r#"{ "a": 1 null: 2 }"#, "Expected comma on line 1 column 9");
   }
 
   #[test]
@@ -742,6 +749,25 @@ mod tests {
 
     let number_value = obj.properties[0].value.as_number_lit().unwrap();
     assert_eq!(number_value.value, "+42");
+  }
+
+  #[test]
+  fn it_should_parse_keywords_as_loose_property_names() {
+    let result = parse_to_ast(
+      r#"{ true: 1, false: null null: true }"#,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap();
+    let value = result.value.unwrap();
+    let names = value
+      .as_object()
+      .unwrap()
+      .properties
+      .iter()
+      .map(|p| p.name.as_str())
+      .collect::<Vec<_>>();
+    assert_eq!(names, vec!["true", "false", "null"]);
   }
 
   #[test]

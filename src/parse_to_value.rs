@@ -579,6 +579,39 @@ mod tests {
   }
 
   #[test]
+  fn it_should_parse_keywords_as_loose_property_names() {
+    let value = parse_to_value(r#"{ true: 1, false: 2 null: 3 }"#, &Default::default())
+      .unwrap()
+      .unwrap();
+    let obj = match &value {
+      JsonValue::Object(o) => o,
+      _ => panic!("Expected object"),
+    };
+    assert_eq!(obj.get_number("true").unwrap(), "1");
+    assert_eq!(obj.get_number("false").unwrap(), "2");
+    assert_eq!(obj.get_number("null").unwrap(), "3");
+  }
+
+  #[test]
+  fn it_should_parse_loose_property_names_with_dollar_signs() {
+    let value = parse_to_value(
+      r#"{ $: 1, _$_: 2, $_$hello123: 3, NaN$: 4, true$: 5 }"#,
+      &Default::default(),
+    )
+    .unwrap()
+    .unwrap();
+    let obj = match &value {
+      JsonValue::Object(o) => o,
+      _ => panic!("Expected object"),
+    };
+    assert_eq!(obj.get_number("$").unwrap(), "1");
+    assert_eq!(obj.get_number("_$_").unwrap(), "2");
+    assert_eq!(obj.get_number("$_$hello123").unwrap(), "3");
+    assert_eq!(obj.get_number("NaN$").unwrap(), "4");
+    assert_eq!(obj.get_number("true$").unwrap(), "5");
+  }
+
+  #[test]
   fn it_should_parse_loose_property_names_starting_with_infinity_or_nan() {
     let value = parse_to_value(r#"{ Infinity_count: 1, NaN-key: 2 }"#, &Default::default())
       .unwrap()

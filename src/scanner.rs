@@ -401,9 +401,9 @@ impl<'a> Scanner<'a> {
     if &self.bytes[self.byte_index..end] != text_bytes {
       return false;
     }
-    // ensure the word is not followed by an alphanumeric character
+    // ensure the word is not followed by an alphanumeric character or `$`
     if let Some(&next_byte) = self.bytes.get(end) {
-      if next_byte.is_ascii_alphanumeric() {
+      if next_byte.is_ascii_alphanumeric() || next_byte == b'$' {
         return false;
       }
       // check non-ASCII alphanumeric
@@ -437,7 +437,8 @@ impl<'a> Scanner<'a> {
         if b.is_ascii_whitespace() || b == b':' {
           break;
         }
-        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' {
+        // `$` is valid anywhere in a JSON5 (ECMAScript) identifier
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'$' {
           self.byte_index += 1;
         } else {
           return Err(self.create_error_for_current_token(ParseErrorKind::UnexpectedToken));

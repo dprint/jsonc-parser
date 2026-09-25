@@ -45,6 +45,17 @@ impl<'a> Token<'a> {
     }
   }
 
+  /// The text of a token that can be an unquoted property name, which in JSON5 includes `true`, `false` and `null`.
+  pub(crate) fn as_loose_property_name(&self) -> Option<&'a str> {
+    match self {
+      Token::Word(value) | Token::Number(value) => Some(value),
+      Token::Boolean(true) => Some("true"),
+      Token::Boolean(false) => Some("false"),
+      Token::Null => Some("null"),
+      _ => None,
+    }
+  }
+
   /// Whether this token can begin a JSON value.
   pub(crate) fn is_value_start(&self) -> bool {
     matches!(
