@@ -6,6 +6,7 @@ use super::common::Range;
 
 #[derive(Debug)]
 pub enum ParseErrorKind {
+  BareDecimalPointNumbersNotAllowed,
   CommentsNotAllowed,
   ExpectedColonAfterObjectKey,
   ExpectedObjectValue,
@@ -16,6 +17,7 @@ pub enum ParseErrorKind {
   HexadecimalNumbersNotAllowed,
   ExpectedComma,
   MultipleRootJsonValues,
+  NonFiniteNumbersNotAllowed,
   SingleQuotedStringsNotAllowed,
   String(ParseStringErrorKind),
   TrailingCommasNotAllowed,
@@ -40,6 +42,9 @@ impl std::fmt::Display for ParseErrorKind {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     use ParseErrorKind::*;
     match self {
+      BareDecimalPointNumbersNotAllowed => {
+        write!(f, "Leading or trailing decimal points on numbers are not allowed")
+      }
       CommentsNotAllowed => {
         write!(f, "Comments are not allowed")
       }
@@ -69,6 +74,9 @@ impl std::fmt::Display for ParseErrorKind {
       }
       MultipleRootJsonValues => {
         write!(f, "Text cannot contain more than one JSON value")
+      }
+      NonFiniteNumbersNotAllowed => {
+        write!(f, "Infinity and NaN are not allowed")
       }
       SingleQuotedStringsNotAllowed => {
         write!(f, "Single-quoted strings are not allowed")
@@ -206,8 +214,9 @@ impl fmt::Display for ParseError {
 fn get_line_and_column_display(range: Range, file_text: &str) -> (usize, usize) {
   let mut line_index = 0;
   let mut column_index = 0;
-  for c in file_text[..range.start].chars() {
-    if c == '\n' {
+  for (i, c) in file_text[..range.start].char_indices() {
+    // a lone \r ends a line comment, so it also counts as a line break here
+    if c == '\n' || c == '\r' && file_text.as_bytes().get(i + 1) != Some(&b'\n') {
       line_index += 1;
       column_index = 0;
     } else {

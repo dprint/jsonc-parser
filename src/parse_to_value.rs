@@ -359,6 +359,9 @@ mod tests {
       allow_single_quoted_strings: false,
       allow_hexadecimal_numbers: false,
       allow_unary_plus_numbers: false,
+      allow_bare_decimal_point_numbers: false,
+      allow_non_finite_numbers: false,
+      allow_extended_string_escapes: false,
     }
   }
 
@@ -573,6 +576,64 @@ mod tests {
       _ => panic!("Expected object"),
     };
     assert_eq!(obj.get_number("CP_CanFuncReqId").unwrap(), "0x7DF");
+  }
+
+  #[test]
+  fn it_should_parse_keywords_as_loose_property_names() {
+    let value = parse_to_value(r#"{ true: 1, false: 2 null: 3 }"#, &Default::default())
+      .unwrap()
+      .unwrap();
+    let obj = match &value {
+      JsonValue::Object(o) => o,
+      _ => panic!("Expected object"),
+    };
+    assert_eq!(obj.get_number("true").unwrap(), "1");
+    assert_eq!(obj.get_number("false").unwrap(), "2");
+    assert_eq!(obj.get_number("null").unwrap(), "3");
+  }
+
+  #[test]
+  fn it_should_parse_loose_property_names_with_dollar_signs() {
+    let value = parse_to_value(
+      r#"{ $: 1, _$_: 2, $_$hello123: 3, NaN$: 4, true$: 5 }"#,
+      &Default::default(),
+    )
+    .unwrap()
+    .unwrap();
+    let obj = match &value {
+      JsonValue::Object(o) => o,
+      _ => panic!("Expected object"),
+    };
+    assert_eq!(obj.get_number("$").unwrap(), "1");
+    assert_eq!(obj.get_number("_$_").unwrap(), "2");
+    assert_eq!(obj.get_number("$_$hello123").unwrap(), "3");
+    assert_eq!(obj.get_number("NaN$").unwrap(), "4");
+    assert_eq!(obj.get_number("true$").unwrap(), "5");
+  }
+
+  #[test]
+  fn it_should_parse_loose_property_names_starting_with_infinity_or_nan() {
+    let value = parse_to_value(r#"{ Infinity_count: 1, NaN-key: 2 }"#, &Default::default())
+      .unwrap()
+      .unwrap();
+    let obj = match &value {
+      JsonValue::Object(o) => o,
+      _ => panic!("Expected object"),
+    };
+    assert_eq!(obj.get_number("Infinity_count").unwrap(), "1");
+    assert_eq!(obj.get_number("NaN-key").unwrap(), "2");
+  }
+
+  #[test]
+  fn it_should_keep_keyword_boundaries_with_missing_commas() {
+    let value = parse_to_value("[true-1]", &Default::default()).unwrap().unwrap();
+    let arr = match value {
+      JsonValue::Array(a) => a,
+      _ => panic!("Expected array"),
+    };
+    assert_eq!(arr.len(), 2);
+    assert!(matches!(arr.get(0), Some(JsonValue::Boolean(true))));
+    assert!(matches!(arr.get(1), Some(JsonValue::Number("-1"))));
   }
 
   #[test]

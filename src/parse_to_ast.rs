@@ -63,6 +63,12 @@ pub struct ParseOptions {
   pub allow_hexadecimal_numbers: bool,
   /// Allow unary plus sign on numbers like +42 (defaults to `true`).
   pub allow_unary_plus_numbers: bool,
+  /// Allow a leading or trailing decimal point on numbers like .5 or 5. (defaults to `true`).
+  pub allow_bare_decimal_point_numbers: bool,
+  /// Allow the numbers Infinity, -Infinity and NaN (defaults to `true`).
+  pub allow_non_finite_numbers: bool,
+  /// Allow JSON5 string escapes like \x41, \v and line continuations (defaults to `true`).
+  pub allow_extended_string_escapes: bool,
 }
 
 impl Default for ParseOptions {
@@ -75,6 +81,9 @@ impl Default for ParseOptions {
       allow_single_quoted_strings: true,
       allow_hexadecimal_numbers: true,
       allow_unary_plus_numbers: true,
+      allow_bare_decimal_point_numbers: true,
+      allow_non_finite_numbers: true,
+      allow_extended_string_escapes: true,
     }
   }
 }
@@ -253,6 +262,9 @@ pub fn parse_to_ast<'a>(
         allow_single_quoted_strings: parse_options.allow_single_quoted_strings,
         allow_hexadecimal_numbers: parse_options.allow_hexadecimal_numbers,
         allow_unary_plus_numbers: parse_options.allow_unary_plus_numbers,
+        allow_bare_decimal_point_numbers: parse_options.allow_bare_decimal_point_numbers,
+        allow_non_finite_numbers: parse_options.allow_non_finite_numbers,
+        allow_extended_string_escapes: parse_options.allow_extended_string_escapes,
       },
     ),
     comments: match collect_options.comments {
@@ -324,11 +336,11 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
       Some(Token::String(prop_name)) => {
         properties.push(parse_object_property(context, PropName::String(prop_name))?);
       }
-      Some(Token::Word(prop_name)) | Some(Token::Number(prop_name)) => {
-        properties.push(parse_object_property(context, PropName::Word(prop_name))?);
-      }
       None => return Err(context.create_error_for_current_range(ParseErrorKind::UnterminatedObject)),
-      _ => return Err(context.create_error(ParseErrorKind::UnexpectedTokenInObject)),
+      Some(token) => match token.as_loose_property_name() {
+        Some(prop_name) => properties.push(parse_object_property(context, PropName::Word(prop_name))?),
+        None => return Err(context.create_error(ParseErrorKind::UnexpectedTokenInObject)),
+      },
     }
 
     // skip the comma
@@ -342,7 +354,9 @@ fn parse_object<'a>(context: &mut Context<'a>) -> Result<Object<'a>, ParseError>
           return Err(context.create_error_for_range(comma_range, ParseErrorKind::TrailingCommasNotAllowed));
         }
       }
-      Some(Token::String(_) | Token::Word(_) | Token::Number(_)) if !context.allow_missing_commas => {
+      Some(Token::String(_) | Token::Word(_) | Token::Number(_) | Token::Boolean(_) | Token::Null)
+        if !context.allow_missing_commas =>
+      {
         let range = Range {
           start: after_value_end,
           end: after_value_end,
@@ -565,6 +579,11 @@ mod tests {
       r#"{ word: 5 }"#,
       "Expected string for object property on line 1 column 3",
     );
+    assert_has_strict_error(
+      r#"{ true: 5 }"#,
+      "Expected string for object property on line 1 column 3",
+    );
+    assert_has_strict_error(r#"{ "a": 1 null: 2 }"#, "Expected comma on line 1 column 9");
   }
 
   #[test]
@@ -591,6 +610,27 @@ mod tests {
     );
   }
 
+  #[test]
+  fn strict_should_error_bare_decimal_point_number() {
+    assert_has_strict_error(
+      r#"{ "key": .5 }"#,
+      "Leading or trailing decimal points on numbers are not allowed on line 1 column 10",
+    );
+    assert_has_strict_error(
+      r#"{ "key": 5. }"#,
+      "Leading or trailing decimal points on numbers are not allowed on line 1 column 10",
+    );
+  }
+
+  #[test]
+  fn strict_should_error_non_finite_number() {
+    assert_has_strict_error(
+      r#"{ "key": -Infinity }"#,
+      "Infinity and NaN are not allowed on line 1 column 10",
+    );
+    assert_has_strict_error(r#"{ "key": NaN }"#, "Unexpected word on line 1 column 10");
+  }
+
   #[track_caller]
   fn assert_has_strict_error(text: &str, message: &str) {
     let result = parse_to_ast(text, &Default::default(), &strict_options());
@@ -609,6 +649,9 @@ mod tests {
       allow_single_quoted_strings: false,
       allow_hexadecimal_numbers: false,
       allow_unary_plus_numbers: false,
+      allow_bare_decimal_point_numbers: false,
+      allow_non_finite_numbers: false,
+      allow_extended_string_escapes: false,
     }
   }
 
@@ -706,6 +749,47 @@ mod tests {
 
     let number_value = obj.properties[0].value.as_number_lit().unwrap();
     assert_eq!(number_value.value, "+42");
+  }
+
+  #[test]
+  fn it_should_parse_keywords_as_loose_property_names() {
+    let result = parse_to_ast(
+      r#"{ true: 1, false: null null: true }"#,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap();
+    let value = result.value.unwrap();
+    let names = value
+      .as_object()
+      .unwrap()
+      .properties
+      .iter()
+      .map(|p| p.name.as_str())
+      .collect::<Vec<_>>();
+    assert_eq!(names, vec!["true", "false", "null"]);
+  }
+
+  #[test]
+  fn it_should_parse_json5_numbers_and_keep_non_finite_words_as_keys() {
+    let result = parse_to_ast(
+      r#"{ "a": .5, "b": 5., "c": -Infinity, Infinity: NaN }"#,
+      &Default::default(),
+      &Default::default(),
+    )
+    .unwrap();
+
+    let value = result.value.unwrap();
+    let obj = value.as_object().unwrap();
+    let values = obj
+      .properties
+      .iter()
+      .map(|p| (p.name.as_str(), p.value.as_number_lit().unwrap().value))
+      .collect::<Vec<_>>();
+    assert_eq!(
+      values,
+      vec![("a", ".5"), ("b", "5."), ("c", "-Infinity"), ("Infinity", "NaN")]
+    );
   }
 
   #[test]

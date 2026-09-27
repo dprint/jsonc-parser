@@ -1518,8 +1518,8 @@ impl CstNumberLit {
       }
     } else {
       // standard decimal number - strip leading + if present (serde_json doesn't accept it)
-      let num_for_parsing = raw.trim_start_matches('+');
-      match serde_json::Number::from_str(num_for_parsing) {
+      let parsed = serde_json::Number::from_str(&crate::common::fill_bare_decimal_point(raw.trim_start_matches('+')));
+      match parsed {
         Ok(number) => Some(serde_json::Value::Number(number)),
         // if the number is invalid, return it as a string (same behavior as AST conversion)
         Err(_) => Some(serde_json::Value::String(raw)),
@@ -2372,9 +2372,10 @@ pub enum CstNewlineKind {
   #[default]
   LineFeed,
   CarriageReturnLineFeed,
+  CarriageReturn,
 }
 
-/// Newline character (Lf or crlf).
+/// Newline character (Lf, crlf, or cr).
 #[derive(Debug, Clone)]
 pub struct CstNewline(Rc<RefCell<CstValueInner<CstNewlineKind>>>);
 
@@ -2385,7 +2386,7 @@ impl CstNewline {
     Self(CstValueInner::new(kind))
   }
 
-  /// Whether this is a line feed (LF) or carriage return line feed (CRLF).
+  /// Whether this is a line feed (LF), carriage return line feed (CRLF), or carriage return (CR).
   pub fn kind(&self) -> CstNewlineKind {
     self.0.borrow().value
   }
@@ -2407,6 +2408,7 @@ impl Display for CstNewline {
       #[allow(clippy::write_with_newline)] // better to be explicit
       CstNewlineKind::LineFeed => write!(f, "\n"),
       CstNewlineKind::CarriageReturnLineFeed => write!(f, "\r\n"),
+      CstNewlineKind::CarriageReturn => write!(f, "\r"),
     }
   }
 }
@@ -2614,6 +2616,10 @@ impl<'a> CstBuilder<'a> {
         container.raw_append_child(CstNewline::new(CstNewlineKind::CarriageReturnLineFeed).into());
         last_found_index = i + 2;
         chars.next(); // move past the \n
+      } else if c == '\r' {
+        maybe_add_previous_text(last_found_index, i);
+        container.raw_append_child(CstNewline::new(CstNewlineKind::CarriageReturn).into());
+        last_found_index = i + 1;
       } else if c == '\n' {
         maybe_add_previous_text(last_found_index, i);
         container.raw_append_child(CstNewline::new(CstNewlineKind::LineFeed).into());
@@ -3874,6 +3880,7 @@ mod test {
   use pretty_assertions::assert_eq;
 
   use crate::cst::CstInputValue;
+  use crate::cst::CstNewlineKind;
   use crate::cst::TrailingCommaMode;
   use crate::json;
 
@@ -5204,6 +5211,26 @@ value3: true
     }
 
     #[test]
+    fn test_cst_to_serde_value_json5_numbers() {
+      let root = build_cst(r#"[.5, -.5, +5., 5.e3, NaN]"#);
+      let value = root.to_serde_value().unwrap();
+      assert_eq!(value, serde_json::json!([0.5, -0.5, 5.0, 5000.0, "NaN"]));
+      assert!(value[2].is_f64());
+      assert_eq!(root.to_string(), "[.5, -.5, +5., 5.e3, NaN]");
+    }
+
+    #[test]
+    fn test_cst_json5_strings_and_line_terminators() {
+      let text = "{\r  // a\r  'k': 'line\\\ncontinued \\x41\\v',\u{2028}  // b\r  \"it\\'s\": 1,\r}";
+      let root = build_cst(text);
+      assert_eq!(root.to_string(), text);
+      assert_eq!(
+        root.to_serde_value().unwrap(),
+        serde_json::json!({ "k": "linecontinued A\u{0B}", "it's": 1 })
+      );
+    }
+
+    #[test]
     fn test_cst_to_serde_value_array() {
       let root = build_cst(r#"[1, 2, 3]"#);
       let value = root.to_serde_value().unwrap();
@@ -5512,5 +5539,33 @@ value3: true
       .decoded_value()
       .unwrap();
     assert_eq!(decoded, "key\\with\\backslash");
+  }
+
+  #[test]
+  fn lone_carriage_return_ends_line_comment() {
+    // a lone \r ends a line comment, so edits should behave the same as with \n
+    #[track_caller]
+    fn run_test(json: &str, edit: impl Fn(&CstRootNode)) {
+      let lf_cst = build_cst(json);
+      edit(&lf_cst);
+      let cr_cst = build_cst(&json.replace('\n', "\r"));
+      assert_eq!(cr_cst.newline_kind(), CstNewlineKind::CarriageReturn);
+      edit(&cr_cst);
+      assert_eq!(cr_cst.to_string(), lf_cst.to_string().replace('\n', "\r"));
+    }
+
+    run_test("[ // note\n]", |cst| {
+      cst.array_value().unwrap().append(json!(3));
+    });
+    run_test("[\n  1 // one\n]", |cst| {
+      cst.array_value().unwrap().append(json!(3));
+    });
+    run_test("{\n  \"b\": 1, // bee\n  \"a\": 2\n}", |cst| {
+      cst
+        .object_value()
+        .unwrap()
+        .sort_properties()
+        .by_key(|prop| prop.decoded_name());
+    });
   }
 }

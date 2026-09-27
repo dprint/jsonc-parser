@@ -10,6 +10,7 @@ pub enum ParseStringErrorKind {
   InvalidEscapeInSingleQuoteString,
   InvalidEscapeInDoubleQuoteString,
   ExpectedFourHexDigits,
+  ExpectedTwoHexDigits,
   InvalidUnicodeEscapeSequence(String),
   InvalidEscape,
   UnterminatedStringLiteral,
@@ -28,6 +29,9 @@ impl std::fmt::Display for ParseStringErrorKind {
       }
       ParseStringErrorKind::ExpectedFourHexDigits => {
         write!(f, "Expected four hex digits")
+      }
+      ParseStringErrorKind::ExpectedTwoHexDigits => {
+        write!(f, "Expected two hex digits")
       }
       ParseStringErrorKind::InvalidUnicodeEscapeSequence(value) => {
         write!(
@@ -92,11 +96,13 @@ pub fn parse_string(text: &str) -> Result<Cow<'_, str>, ParseStringError> {
     chars,
   };
 
-  parse_string_with_char_provider(&mut provider)
+  // the scanner already validated this text, or the caller set it raw, so decode it leniently
+  parse_string_with_char_provider(&mut provider, true)
 }
 
 pub fn parse_string_with_char_provider<'a, T: CharProvider<'a>>(
   chars: &mut T,
+  allow_extended_escapes: bool,
 ) -> Result<Cow<'a, str>, ParseStringError> {
   debug_assert!(
     chars.current_char() == Some('\'') || chars.current_char() == Some('"'),
@@ -113,6 +119,17 @@ pub fn parse_string_with_char_provider<'a, T: CharProvider<'a>>(
   while let Some(current_char) = chars.move_next_char() {
     if last_was_backslash {
       let escape_start = chars.byte_index() - 1; // -1 for backslash
+      if allow_extended_escapes && let Some(decoded) = parse_extended_escape(chars, current_char, escape_start)? {
+        let previous_text = &chars.text()[last_start_byte_index..escape_start];
+        let text = text.get_or_insert_with(String::new);
+        text.push_str(previous_text);
+        if let Some(decoded) = decoded {
+          text.push(decoded);
+        }
+        last_start_byte_index = chars.byte_index() + chars.current_char().map(|c| c.len_utf8()).unwrap_or(0);
+        last_was_backslash = false;
+        continue;
+      }
       match current_char {
         '"' | '\'' | '\\' | '/' | 'b' | 'f' | 'u' | 'r' | 'n' | 't' => {
           if current_char == '"' {
@@ -186,6 +203,56 @@ pub fn parse_string_with_char_provider<'a, T: CharProvider<'a>>(
       kind: ParseStringErrorKind::UnterminatedStringLiteral,
     })
   }
+}
+
+// `Ok(None)` leaves the escape to the JSON path; `Ok(Some(None))` is a line continuation, which decodes to nothing
+fn parse_extended_escape<'a, T: CharProvider<'a>>(
+  chars: &mut T,
+  current_char: char,
+  escape_start: usize,
+) -> Result<Option<Option<char>>, ParseStringError> {
+  let invalid_escape = || ParseStringError {
+    byte_index: escape_start,
+    kind: ParseStringErrorKind::InvalidEscape,
+  };
+  let decoded = match current_char {
+    'v' => Some('\u{0B}'),
+    '0' => {
+      // `\0` must not be followed by a digit, which would make it an octal escape
+      let next_index = chars.byte_index() + 1;
+      if chars.text()[next_index..].starts_with(|c: char| c.is_ascii_digit()) {
+        return Err(invalid_escape());
+      }
+      Some('\0')
+    }
+    'x' => {
+      let mut value = 0;
+      for _ in 0..2 {
+        match chars.move_next_char().and_then(|c| c.to_digit(16)) {
+          Some(digit) => value = value * 16 + digit,
+          None => {
+            return Err(ParseStringError {
+              byte_index: escape_start,
+              kind: ParseStringErrorKind::ExpectedTwoHexDigits,
+            });
+          }
+        }
+      }
+      // two hex digits are at most 0xFF, which is always a valid char
+      Some(char::from_u32(value).unwrap())
+    }
+    '\n' | '\u{2028}' | '\u{2029}' => None,
+    '\r' => {
+      if chars.text()[chars.byte_index() + 1..].starts_with('\n') {
+        chars.move_next_char();
+      }
+      None
+    }
+    '1'..='9' => return Err(invalid_escape()),
+    '\\' | '/' | 'b' | 'f' | 'u' | 'r' | 'n' | 't' => return Ok(None),
+    _ => Some(current_char),
+  };
+  Ok(Some(decoded))
 }
 
 fn read_four_hex_digits<'a, T: CharProvider<'a>>(

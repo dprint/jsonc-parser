@@ -524,6 +524,17 @@ mod tests {
   }
 
   #[test]
+  fn it_should_parse_keywords_as_loose_property_names() {
+    let result = parse_to_serde_value::<SerdeValue>(r#"{ true: 1, false: 2 null: 3 }"#, &Default::default()).unwrap();
+    assert_eq!(result, serde_json::json!({ "true": 1, "false": 2, "null": 3 }));
+    assert_has_strict_error(
+      r#"{ null: 1 }"#,
+      "Expected string for object property on line 1 column 3",
+    );
+    assert_has_strict_error(r#"{ "a": 1 true: 2 }"#, "Expected comma on line 1 column 9");
+  }
+
+  #[test]
   fn it_should_parse_unary_plus_numbers() {
     let result = parse_to_serde_value::<SerdeValue>(
       r#"{
@@ -547,6 +558,23 @@ mod tests {
     );
 
     assert_eq!(result, SerdeValue::Object(expected_value));
+  }
+
+  #[test]
+  fn it_should_parse_bare_decimal_point_numbers() {
+    let result = parse_to_serde_value::<SerdeValue>(r#"[.5, -.5, 5., 5.e3]"#, &Default::default()).unwrap();
+    assert_eq!(result, serde_json::json!([0.5, -0.5, 5.0, 5000.0]));
+    assert!(result[2].is_f64());
+  }
+
+  #[test]
+  fn it_should_error_for_non_finite_numbers() {
+    // serde_json has no representation for these
+    assert_has_error(r#"{ "a": Infinity }"#, "Number is out of range on line 1 column 8");
+    assert_has_error("[-Infinity]", "Number is out of range on line 1 column 2");
+    assert_has_error("NaN", "Number is out of range on line 1 column 1");
+    let value = parse_to_serde_value::<f64>("-Infinity", &Default::default());
+    assert!(value.is_err());
   }
 
   #[test]
@@ -866,6 +894,9 @@ mod tests {
         allow_single_quoted_strings: false,
         allow_hexadecimal_numbers: false,
         allow_unary_plus_numbers: false,
+        allow_bare_decimal_point_numbers: false,
+        allow_non_finite_numbers: false,
+        allow_extended_string_escapes: false,
       },
     )
   }

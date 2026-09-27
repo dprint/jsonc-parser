@@ -47,6 +47,9 @@ impl<'a> JsoncParser<'a> {
           allow_single_quoted_strings: options.allow_single_quoted_strings,
           allow_hexadecimal_numbers: options.allow_hexadecimal_numbers,
           allow_unary_plus_numbers: options.allow_unary_plus_numbers,
+          allow_bare_decimal_point_numbers: options.allow_bare_decimal_point_numbers,
+          allow_non_finite_numbers: options.allow_non_finite_numbers,
+          allow_extended_string_escapes: options.allow_extended_string_escapes,
         },
       ),
       text,
@@ -126,7 +129,8 @@ impl<'a> JsoncParser<'a> {
   /// between entries. Pass `first = true` for the first entry.
   pub fn scan_object_entry(&mut self, first: bool) -> Result<Option<ObjectKey<'a>>, ParseError> {
     if first {
-      return self.scan_object_key();
+      let token = self.scan()?;
+      return self.object_key(token);
     }
 
     let after_value_end = self.scanner.token_end();
@@ -134,7 +138,8 @@ impl<'a> JsoncParser<'a> {
     match token {
       Some(Token::Comma) => {
         let comma_range = Range::new(self.scanner.token_start(), self.scanner.token_end());
-        let key = self.scan_object_key()?;
+        let token = self.scan()?;
+        let key = self.object_key(token)?;
         if key.is_none() && !self.allow_trailing_commas {
           return Err(
             self
@@ -144,19 +149,10 @@ impl<'a> JsoncParser<'a> {
         }
         Ok(key)
       }
-      Some(Token::CloseBrace) => Ok(None),
-      Some(Token::String(s)) if self.allow_missing_commas => Ok(Some(ObjectKey::String(s))),
-      Some(Token::Word(s) | Token::Number(s)) if self.allow_missing_commas => {
-        if !self.allow_loose_object_property_names {
-          return Err(
-            self
-              .scanner
-              .create_error_for_current_token(ParseErrorKind::ExpectedStringObjectProperty),
-          );
-        }
-        Ok(Some(ObjectKey::Word(s)))
-      }
-      Some(Token::String(_) | Token::Word(_) | Token::Number(_)) => {
+      Some(ref token)
+        if !self.allow_missing_commas
+          && (matches!(token, Token::String(_)) || token.as_loose_property_name().is_some()) =>
+      {
         let range = Range::new(after_value_end, after_value_end);
         Err(
           self
@@ -164,16 +160,7 @@ impl<'a> JsoncParser<'a> {
             .create_error_for_range(range, ParseErrorKind::ExpectedComma),
         )
       }
-      None => Err(
-        self
-          .scanner
-          .create_error_for_current_token(ParseErrorKind::UnterminatedObject),
-      ),
-      _ => Err(
-        self
-          .scanner
-          .create_error_for_current_token(ParseErrorKind::UnexpectedTokenInObject),
-      ),
+      token => self.object_key(token),
     }
   }
 
@@ -219,30 +206,28 @@ impl<'a> JsoncParser<'a> {
     }
   }
 
-  fn scan_object_key(&mut self) -> Result<Option<ObjectKey<'a>>, ParseError> {
-    match self.scan()? {
+  fn object_key(&self, token: Option<Token<'a>>) -> Result<Option<ObjectKey<'a>>, ParseError> {
+    match token {
       Some(Token::CloseBrace) => Ok(None),
       Some(Token::String(s)) => Ok(Some(ObjectKey::String(s))),
-      Some(Token::Word(s) | Token::Number(s)) => {
-        if !self.allow_loose_object_property_names {
-          return Err(
-            self
-              .scanner
-              .create_error_for_current_token(ParseErrorKind::ExpectedStringObjectProperty),
-          );
-        }
-        Ok(Some(ObjectKey::Word(s)))
-      }
       None => Err(
         self
           .scanner
           .create_error_for_current_token(ParseErrorKind::UnterminatedObject),
       ),
-      _ => Err(
-        self
-          .scanner
-          .create_error_for_current_token(ParseErrorKind::UnexpectedTokenInObject),
-      ),
+      Some(token) => match token.as_loose_property_name() {
+        Some(_) if !self.allow_loose_object_property_names => Err(
+          self
+            .scanner
+            .create_error_for_current_token(ParseErrorKind::ExpectedStringObjectProperty),
+        ),
+        Some(s) => Ok(Some(ObjectKey::Word(s))),
+        None => Err(
+          self
+            .scanner
+            .create_error_for_current_token(ParseErrorKind::UnexpectedTokenInObject),
+        ),
+      },
     }
   }
 }
